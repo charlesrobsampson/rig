@@ -1,0 +1,70 @@
+version: "3"
+
+vars:
+  BIN: rig
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+
+tasks:
+  build:
+    desc: Build ./rig
+    cmds:
+      - go build -ldflags "-X main.version={{.VERSION}}" -o {{.BIN}} ./cmd/rig
+
+  test:
+    desc: Default tests (offline, no build tags)
+    cmds:
+      - go test ./...
+
+  test:race:
+    desc: Default tests with the race detector
+    cmds:
+      - go test -race ./...
+
+  test:integration:
+    desc: Tests tagged integration (real tmux/Herdr); pass packages after --
+    cmds:
+      - go test -tags integration {{.CLI_ARGS | default "./..."}}
+
+  test:docker:
+    desc: Tests tagged docker (real Docker); pass packages after --
+    cmds:
+      - go test -tags docker {{.CLI_ARGS | default "./..."}}
+
+  test:llm:
+    desc: Tests tagged llm (local Ollama); pass packages after --
+    cmds:
+      - go test -tags llm {{.CLI_ARGS | default "./..."}}
+
+  vet:
+    desc: go vet
+    cmds:
+      - go vet ./...
+
+  fmt:
+    desc: Format all Go files
+    cmds:
+      - gofmt -w .
+
+  fmt:check:
+    desc: Fail if any Go file is unformatted
+    cmds:
+      - test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
+  check:
+    desc: Pre-commit gate (fmt:check, vet, test)
+    cmds:
+      - task: fmt:check
+      - task: vet
+      - task: test
+
+  tidy:
+    desc: go mod tidy
+    cmds:
+      - go mod tidy
+
+  clean:
+    desc: Remove build output
+    cmds:
+      - rm -f {{.BIN}}
+      - rm -rf dist

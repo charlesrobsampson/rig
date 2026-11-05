@@ -13,7 +13,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 ## Phase 0: Foundations and spikes
 
 ### 01 · Repo bootstrap
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/01-bootstrap` · Depends: none
 - Note: the directory is not yet a git repo. `git init -b master`, create `.gitignore`, and commit the existing `manifest.md`, `checklist.md`, `process.md`, `docs/formats.md` as the initial commit before recording the session.
@@ -21,6 +21,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: `.gitignore` (build output, `.DS_Store`, `*.log`, `spikes/**/bin`); `go mod init github.com/charlesrobsampson/rig`; empty package dirs with a `doc.go` each; `cmd/rig/main.go` using cobra, printing a version with `--version`; `Taskfile.yml` (go-task) with the tasks in `process.md` "Commands: use Taskfile" (`build`, `test`, `test:race`, `test:integration`, `test:docker`, `test:llm`, `vet`, `fmt`, `fmt:check`, `check`, `tidy`, `clean`; the tagged test tasks accept package paths after `--`, default `./...`); update the manifest §6 layout to include the extra packages and `Taskfile.yml`.
 - Tests: none (scaffolding). `task test` must run (zero tests is fine).
 - Manual check: `task --list` shows every task; `task build && ./rig --version` prints a version; `task check` passes; `git log` shows the initial commit; `git status` clean.
+- Notes: git identity is repo-local (`charlesrobsampson` + GitHub noreply email); no global identity is set. Module is `github.com/charlesrobsampson/rig`, Go 1.27.3, cobra v1.10.2. `cmd/rig/main.go` has `newRootCmd()` returning the root cobra command with `--version` (value injected via `-ldflags -X main.version`, from `git describe`). `docs/spikes/`, `spikes/`, `tools/` exist locally but are untracked while empty; create files in them as needed. Taskfile tagged tasks use `{{.CLI_ARGS | default "./..."}}`.
 
 ### 02 · Spike: Herdr integration
 - [ ] Done

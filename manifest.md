@@ -168,18 +168,28 @@ harness: claude-code
 ### Layout
 ```text
 rig/
-├── cmd/            # root, new, start, list, logs, attach, approve, review, push, stop, daemon
+├── cmd/rig/        # main + cobra commands (new, start, list, logs, attach, approve, review, push, stop, daemon, ...); thin clients of the daemon API
 ├── internal/
 │   ├── api/        # socket protocol shared by daemon + clients
-│   ├── config/     # global + ticket parsing, precedence
-│   ├── daemon/     # server, store, lifecycle state machine, recovery
-│   ├── ticket/     # TicketSource interface + impls
-│   ├── git/        # worktree provisioning, dirty checks, push/PR
+│   ├── clock/      # injectable clock (real implementation)
+│   ├── config/     # global + ticket parsing
+│   ├── contract/   # contract.md template + parser
+│   ├── daemon/     # server, router, supervisor, recovery
 │   ├── docker/     # networks, containers, port allocator
-│   ├── terminal/   # TerminalBackend interface + herdr impl
+│   ├── git/        # worktree provisioning, dirty checks, push/PR
 │   ├── harness/    # agent launchers
+│   ├── policy/     # precedence resolution (flags > service > ticket > global)
+│   ├── state/      # state.json reader/writer + phase machine
+│   ├── store/      # runtime cache store (JSON, SQLite later)
 │   ├── summary/    # LLM summaries
+│   ├── terminal/   # TerminalBackend interface + herdr and tmux impls
+│   ├── testkit/    # fakes (clock, docker, terminal, gh, ticket source) and fake agent
+│   ├── ticket/     # TicketSource interface + impls
 │   └── tui/        # Bubble Tea app, views, components
+├── docs/           # formats.md, spikes/
+├── spikes/         # throwaway spike prototypes
+├── tools/          # Go programs for non-trivial scripts, run by Taskfile
+├── Taskfile.yml    # dev scripts (development only; not a runtime dependency)
 ├── go.mod
 └── go.sum
 ```
