@@ -1,0 +1,12 @@
+# build output
+/rig
+/dist/
+
+# OS / editor
+.DS_Store
+
+# logs
+*.log
+
+# spike prototypes
+spikes/**/bin

@@ -1,0 +1,193 @@
+# RIG Formats and Contracts
+
+The exact shapes that every part of rig shares. `manifest.md` says *what* and *why*; this file says *exactly how*. If a task needs a shape not defined here, stop and ask the user, then add it here in the same branch.
+
+**Change rules:** adding a field, method, event, or enum value is fine (additive). Renaming, removing, or changing the meaning of anything needs the user's approval. Readers must ignore unknown fields; writers must keep `schema_version`.
+
+---
+
+## 1. Conventions
+- Timestamps: RFC 3339 UTC (`2026-11-05T14:03:00Z`). Durations in Go-style strings (`30s`, `5m`).
+- JSON keys: `snake_case`. YAML keys: `snake_case`.
+- Ticket id: `^[a-z0-9][a-z0-9-]{0,62}$`. Service/dependency name: `^[a-z][a-z0-9-]{0,30}$`. Names are unique within a ticket (services and dependencies share one namespace).
+- All paths stored in files are absolute, except `ticket.yaml` service `path` (relative to the ticket dir).
+- Every persisted JSON file has `"schema_version": 1` at the top level.
+
+## 2. Filesystem locations
+| What | Path | Override |
+|---|---|---|
+| rig home | `~/.rig` | `RIG_HOME` |
+| global config | `~/.config/rig/config.json` | `RIG_CONFIG` |
+| tickets | `<rig home>/tickets/<id>/` | |
+| daemon socket | `<rig home>/rigd.sock` | |
+| daemon pid | `<rig home>/rigd.pid` | |
+| daemon log | `<rig home>/rigd.log` | |
+| runtime cache store | `<rig home>/store.json` | |
+
+## 3. Ticket directory
+```text
+<rig home>/tickets/<id>/
+├── ticket.yaml        # human-owned config
+├── state.json         # rig-owned truth (phase, approvals, ports, ids)
+├── plan.md            # human + agent
+├── tasks.md           # agent; GitHub checkboxes `- [ ]` / `- [x]`, progress = counted boxes
+├── manual-tests.md    # agent-written; see §10
+├── contract.md        # multi-service tickets only; see §9
+└── <service path>/    # git worktree (default `./<service name>`)
+```
+`state.json` is the only file rig writes besides stubs created by `rig new`. Agents must never edit `state.json` or `ticket.yaml`. `store.json` is a rebuildable cache (see manifest §1, principle 4).
+
+## 4. `ticket.yaml`
+Shape per manifest §5, plus:
+- `services[].base`: base branch for the worktree and diffs. Default: the repo's default branch (`origin/HEAD`, else `main`, else `master`).
+- `services[].path`: default `./<name>`.
+- `services[].policy.gates`: absent = inherit; `[]` = no gates.
+- `secrets`: names only. Values that look like secrets in `env` (high-entropy or known token prefixes) are rejected.
+- Known gate names: `plan_approval`, `review_approval`, `manual_test_signoff`.
+- Unknown keys are errors naming the key and line.
+
+## 5. `state.json`
+```json
+{
+  "schema_version": 1,
+  "ticket_id": "ticket-412",
+  "phase": "plan",
+  "approvals": [
+    {"gate": "plan_approval", "service": "", "by": "human", "at": "2026-11-05T14:03:00Z"}
+  ],
+  "transitions": [
+    {"from": "plan", "to": "implement", "by": "human", "reason": "", "at": "2026-11-05T14:05:00Z"}
+  ],
+  "services": {
+    "backend": {
+      "status": "pending",
+      "worktree": "/abs/path",
+      "branch": "feat/x",
+      "base": "main",
+      "host_port": 0,
+      "container_id": "",
+      "agent": {"backend": "herdr", "pane_id": "", "state": "unknown", "container_id": ""},
+      "push": {"status": "pending", "pr_url": "", "error": ""},
+      "error": ""
+    }
+  },
+  "dependencies": {"db": {"container_id": "", "status": "pending"}},
+  "network": {"name": "", "id": ""},
+  "contract": {"pending": false},
+  "manual_tests": {"steps": {}, "signed_off": false},
+  "created_at": "2026-11-05T14:00:00Z",
+  "updated_at": "2026-11-05T14:05:00Z"
+}
+```
+- `approvals[].service` empty = applies to every service that requires the gate.
+- `transitions[].by`: `human` or `agent:<service>`. `reason` required for backward moves.
+- `services[].status`: `pending | provisioned | running | stopped | error`.
+- `agent.state` / `AgentState`: `working | blocked | idle | unknown | exited`.
+- `push.status`: `pending | done | failed`.
+- Writes are atomic (temp file + rename) and serialized per ticket.
+
+## 6. Lifecycle rules
+- Phases: `plan → implement → test → review → push → done`.
+- Forward: exactly one step at a time. Backward: to any earlier phase, with a reason. `done` is terminal.
+- Gate checks (a gate applies per service; a ticket moves only when every service that requires it has approved, or an approval with empty `service` exists):
+  | Transition | Gate |
+  |---|---|
+  | plan → implement | `plan_approval` |
+  | test → review | `manual_test_signoff` |
+  | review → push | `review_approval` |
+- Default policy gates: `[plan_approval, review_approval]`.
+- Agents may *request* forward transitions; rig grants only if gates pass. Agents may not approve gates.
+
+## 7. Naming and container topology
+- Network: `rig-<ticket>`. Service container: `rig-<ticket>-<service>`. Agent container: `rig-<ticket>-<service>-agent`. Dependency: `rig-<ticket>-dep-<name>`. Egress proxy: `rig-<ticket>-proxy`.
+- Labels on every Docker object: `rig.ticket=<id>`, `rig.service=<name>` (when applicable), `rig.role=service|agent|dependency|proxy|network`.
+- **Working topology (spike 04 confirms or amends):** per service, a *service container* runs the `start` command, and an *agent container* (toolchain image with the agent installed) runs the agent. Both bind-mount the same worktree and join the ticket network, so the agent can run tests and reach the service by name. Dependencies are siblings on the same network.
+- In-network URL of a service: `http://<service>:<internal_port>`. Host URL: `http://localhost:<host_port>`.
+- Git push credentials are never mounted into any container.
+
+## 8. Daemon API
+Transport: unix socket, JSON lines (one JSON object per line, UTF-8, max 1 MiB per line).
+
+Request: `{"v":1,"id":"<client-chosen>","method":"ticket.list","params":{}}`
+Response: `{"v":1,"id":"<same>","ok":true,"result":{}}` or `{"v":1,"id":"<same>","ok":false,"error":{"code":"not_found","message":"..."}}`.
+Streaming methods (`events.subscribe`, `logs.stream`) send many lines with the same `id`: `{"v":1,"id":"..","stream":{...}}`, ending with `{"v":1,"id":"..","ok":true,"end":true}`.
+The first message on a connection must be `hello`: `{"method":"hello","params":{"client":"rig-cli","version":"x"}}`; the server replies with its protocol version. Mismatched major version is rejected.
+
+Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `error.details` lists reasons), `unavailable` (Docker/terminal backend down), `not_running`, `internal`.
+
+| Method | Purpose |
+|---|---|
+| `hello`, `status` | handshake; daemon version, pid, uptime |
+| `config.get` | effective global config |
+| `ticket.list`, `ticket.get`, `ticket.rescan` | read tickets |
+| `ticket.new`, `ticket.start`, `ticket.stop` | create / provision / teardown (`stop` params: `force`, `keep_worktrees`) |
+| `gate.list`, `gate.approve` | pending gates / approve |
+| `phase.set`, `transition.request` | human move / agent request |
+| `agent.attach`, `agent.message` | returns attach command / injects text |
+| `contract.list`, `contract.accept`, `contract.reject` | contract proposals |
+| `review.diff` | per-service diff and stat |
+| `push.run` | run push policy |
+| `tests.render` | rendered manual tests |
+| `logs.stream` | container logs |
+| `events.subscribe` | event stream |
+| `reconcile.run` | drift report, optional fix |
+| `daemon.stop` | graceful shutdown |
+
+New methods may be added by later tasks following the same envelope.
+
+## 9. Events
+Envelope: `{"type":"phase.changed","ticket":"ticket-412","service":"","at":"...","data":{}}`.
+
+| Type | `data` |
+|---|---|
+| `ticket.created`, `ticket.started`, `ticket.stopped` | `{}` |
+| `service.status` | `{"status":"running"}` |
+| `phase.changed` | `{"from","to","by","reason"}` |
+| `gate.approved` | `{"gate","service"}` |
+| `agent.state` | `{"state","previous"}` |
+| `contract.pending` | `{"proposal":"P-backend-1"}` |
+| `contract.violation` | `{"detail"}` (agreed section edited directly) |
+| `contract.resolved` | `{"proposal","outcome":"accepted|rejected"}` |
+| `error` | `{"message"}` |
+
+## 10. CLI conventions
+- Every command that prints data supports `--json`, printing exactly the API `result` payload.
+- Human output to stdout, diagnostics and errors to stderr.
+- Exit codes: `0` ok, `1` generic failure, `2` usage/invalid input, `3` blocked (gate, dirty worktree, limit), `4` daemon/backend unavailable, `5` not found.
+- Destructive commands (`stop --force`, `reconcile --fix`) prompt unless `--yes`.
+
+## 11. `contract.md`
+````markdown
+# Contract: ticket-412
+
+## Agreed
+Free markdown. Machine-readable parts use fenced blocks tagged `endpoint` or `schema`:
+
+```endpoint
+POST /api/v1/dashboard
+request: {"user_id": "string"}
+response: {"widgets": ["string"]}
+errors: 400 invalid_user
+```
+
+## Proposed changes
+### P-backend-1 · from backend · open
+**What:** add `locale` to the request.
+**Why:** frontend needs localized widget names.
+
+## Changelog
+- 2026-11-05 P-backend-1 accepted by human: added `locale`.
+````
+- Proposal heading regex: `^### (P-[a-z][a-z0-9-]*-\d+) · from ([a-z][a-z0-9-]*) · (open|accepted|rejected)$`. The id embeds the proposing service, so agents never collide. The number is that service's next integer.
+- Rejected proposals carry a `**Rejected:** <reason>` line.
+- Agents append proposals only. Rig edits `## Agreed` and `## Changelog` on accept.
+- Malformed proposals are reported, never silently dropped, and never hide valid ones.
+
+## 12. `manual-tests.md`
+- Each step is a level-3 heading `### <step-id>: <title>` (id: `^[a-z0-9-]+$`, unique) followed by free markdown, usually with fenced shell blocks.
+- Placeholders (rendered at read time): `{{<service>.url}}` (host URL), `{{<service>.port}}` (host port), `{{<service>.internal_url}}`, `{{<dependency>.host}}`, `{{ticket.id}}`. Unknown placeholders are errors listing every offender.
+- Step completion is stored in `state.json` `manual_tests.steps[<step-id>]`, not in the file.
+
+## 13. Harness prompt contract
+- The launch prompt is assembled from: ticket title, current phase, `plan.md`, `tasks.md`, `contract.md` (multi-service only), and the rules for that phase. It never includes secret values.
+- Rules every agent receives: edit only your service's worktree; never edit `state.json`, `ticket.yaml`, or `## Agreed`; propose contract changes under `## Proposed changes`; request phase transitions, never assume them; write `manual-tests.md` with placeholders during/after `implement`.
