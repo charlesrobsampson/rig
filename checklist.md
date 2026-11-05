@@ -14,7 +14,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 01 · Repo bootstrap
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/01-bootstrap` · Depends: none
 - Note: the directory is not yet a git repo. `git init -b master`, create `.gitignore`, and commit the existing `manifest.md`, `checklist.md`, `process.md`, `docs/formats.md` as the initial commit before recording the session.
 - Read: `process.md`, `manifest.md` §6, `docs/formats.md` §1–2
