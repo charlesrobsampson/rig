@@ -77,13 +77,14 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Notes: `clock.Clock` has `Now`, `After`, `NewTimer`, `AfterFunc`, `NewTicker`; `clock.Real()` is the production clock. `testkit.NewFakeClock(start)` moves only with `Advance(d)`, firing due timers in deadline order (ties by creation order), delivering the deadline as the timer's value, and running `AfterFunc` callbacks synchronously inside `Advance` (callbacks may schedule more work due inside the same call). Ticker/timer channels have capacity 1, so a receiver that doesn't drain misses ticks, like the real ticker. `internal/clock/doc.go` was replaced by `clock.go`.
 
 ### 07 · Domain types
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/07-domain` · Depends: 01
 - Read: `manifest.md` §2, §3, §5, `docs/formats.md` §1, §4–6
 - Build: Go types for `Ticket`, `Service`, `Dependency`, `Policy` (`Gates`, `Push{Mode}`), `Phase` enum, `ServiceStatus`, `AgentState` (`working|blocked|idle|unknown|exited`), `PushStatus`, `PushMode` enum, `Sandbox` enum, `NetworkMode` enum, `Gate` enum (`plan_approval|review_approval|manual_test_signoff`). Exact string forms from formats §4–6 for YAML/JSON. No behavior beyond validation of enums and ids (ticket id and service-name regexes from formats §1, name uniqueness across services and dependencies).
 - Tests: table: enum round trip to/from string; invalid enum errors; ticket id validation (path traversal, empty, spaces, uppercase, 64+ chars rejected); service name validation; duplicate names across services and dependencies rejected.
 - Manual check: none.
+- Notes: lives in `internal/domain` (added to the manifest layout). Enums are string types with `Valid()` plus `MarshalText`/`UnmarshalText`, so they work with `encoding/json` and YAML libraries that honor `TextUnmarshaler`; marshaling an invalid or zero value is an error, so use `omitempty` on optional enum fields (done). `Policy.Gates == nil` means inherit, `[]Gate{}` means no gates (so the tags do not omit it). `Service` also carries optional `Sandbox` and `Harness` overrides for task 10; `Ticket.Policy` is the ticket-level policy. Validation helpers: `ValidateTicketID`, `ValidateName`, `CheckUniqueNames` (services and dependencies share one namespace). The auth-profile enum is left for task 09. No parsing yet (task 08). Tag names match docs/formats.md.
 
 ### 08 · Ticket config loader
 - [ ] Done
