@@ -11,7 +11,7 @@ import (
 func runRig(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	var out bytes.Buffer
-	cmd := newRootCmd()
+	cmd := newRootCmd(deps{})
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
 	cmd.SetArgs(args)
