@@ -124,6 +124,7 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 | `gate.list`, `gate.approve` | pending gates / approve |
 | `phase.set`, `transition.request` | human move / agent request |
 | `agent.attach`, `agent.message` | returns attach command / injects text |
+| `agent.event` | agent hook reports a state (`ready\|working\|blocked\|idle\|exited`) for a ticket/service |
 | `contract.list`, `contract.accept`, `contract.reject` | contract proposals |
 | `review.diff` | per-service diff and stat |
 | `push.run` | run push policy |
