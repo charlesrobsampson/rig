@@ -47,7 +47,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 04 · Spike: agent inside a container
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/04-spike-agent-container` · Depends: 01
 - Context: manifest §4 makes container the default agent location. Need to know it is practical.
 - Read: `manifest.md` §4, `docs/formats.md` §7
