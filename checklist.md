@@ -24,7 +24,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Notes: git identity is repo-local (`charlesrobsampson` + GitHub noreply email); no global identity is set. Module is `github.com/charlesrobsampson/rig`, Go 1.27.3, cobra v1.10.2. `cmd/rig/main.go` has `newRootCmd()` returning the root cobra command with `--version` (value injected via `-ldflags -X main.version`, from `git describe`). `docs/spikes/`, `spikes/`, `tools/` exist locally but are untracked while empty; create files in them as needed. Taskfile tagged tasks use `{{.CLI_ARGS | default "./..."}}`.
 
 ### 02 · Spike: Herdr integration
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/02-spike-herdr` · Depends: 01
 - Context: manifest §7 relies on Herdr reporting `working | blocked | idle` and being scriptable. Stability is a known risk.
@@ -32,6 +32,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: `docs/spikes/02-herdr.md`. Install/locate Herdr; document its CLI and socket API; prove: spawn a pane with a given cwd and command, list panes, read agent state for a running Claude Code, send text to a pane, close a pane. Note versions, latency, and failure modes (Herdr not running, pane died). Prototype under `spikes/herdr/`. Recommend the minimal `TerminalBackend` method set it can support.
 - Tests: none (manual spike).
 - Manual check: user watches a pane spawn, change state, receive injected text, and close.
+- Notes: full findings in `docs/spikes/02-herdr.md`. Decision: Herdr is the primary backend, driven over its unix-socket JSON-lines API in a dedicated `rig` named session (headless via `herdr --session rig server`; start it if `server_not_running`). Quirks for tasks 26–32: `done` means idle-but-unseen (treat as idle); external `report-agent` is dropped within ~1 s unless `--agent` is a known kind (so the fake agent cannot use a custom label with real Herdr); `send-text` does not press Enter; `wait-output` matches the typed command echo; key names are `ctrl+d` style; fresh worktrees hit Claude Code's trust dialog (reported `blocked`), so task 29 must decide pre-trust vs surfacing it. The real Claude Code check (idle → working → done, injection intact) was run and passed; see the doc §8.
 
 ### 03 · Spike: tmux state detection and message injection
 - [ ] Done
@@ -281,7 +282,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/27-herdr-backend` · Depends: 26
 - Read: `docs/spikes/02-herdr.md`
-- Build: Herdr implementation of `TerminalBackend`, passing the contract suite under the `integration` tag; clear errors when Herdr is absent or not running.
+- Build: Herdr implementation of `TerminalBackend` over the socket API in the dedicated `rig` session (mapping and quirks in `docs/spikes/02-herdr.md` §4–5), passing the contract suite under the `integration` tag; starts the headless session server when absent; clear errors when Herdr is absent or not running.
 - Tests: contract suite (tagged); default tests cover only argument building and error mapping against a fake executable.
 - Manual check: `task test:integration -- ./internal/terminal/herdr/...` passes with Herdr running (uses the fake agent from 26b, not Claude Code).
 
@@ -298,7 +299,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - [ ] Done
 - Session: _(fill on start)_
 - Branch: `task/29-harness` · Depends: 10, 26
-- Read: `manifest.md` §6 (interfaces), §3 (artifacts), `docs/formats.md` §13
+- Read: `manifest.md` §6 (interfaces), §3 (artifacts), `docs/formats.md` §13, `docs/spikes/02-herdr.md` §5 (trust dialog)
 - Build: `internal/harness` interface (`Command(ticket, service, seed) -> {cmd, env, cwd}`); claude-code implementation seeds the agent with a prompt built from `plan.md`, `tasks.md`, current phase, and (when present) `contract.md`; harness selectable per ticket.
 - Tests: generated command per phase; prompt includes the artifact files; contract included only for multi-service tickets; unknown harness errors; env excludes secrets not listed in `secrets`.
 - Manual check: print the generated command for a demo ticket with `rig start --dry-run` (add flag).
