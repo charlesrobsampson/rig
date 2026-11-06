@@ -132,7 +132,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 12 · API protocol
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/12-api-protocol` · Depends: 07
 - Read: `manifest.md` §6, `docs/formats.md` §8–9
 - Build: `internal/api`: the envelope, streaming form, `hello` handshake, error codes, and the method-name constants from formats §8; typed payloads for `hello`, `status`, `ticket.list`, `ticket.get`, and the event envelope + types from formats §9. Payload types for the other methods are added by the tasks that implement them (additively, per formats). Pure types + codec, no sockets yet.
