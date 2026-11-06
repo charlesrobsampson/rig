@@ -17,11 +17,15 @@ func main() {
 }
 
 func newRootCmd() *cobra.Command {
-	return &cobra.Command{
+	var configPath string
+	root := &cobra.Command{
 		Use:           "rig",
 		Short:         "Run AI coding agents in parallel, each isolated",
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	root.PersistentFlags().StringVar(&configPath, "config", "", "global config file (default $RIG_CONFIG, then ~/.config/rig/config.json)")
+	root.AddCommand(newConfigCmd(&configPath))
+	return root
 }

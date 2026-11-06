@@ -100,7 +100,7 @@ func validateTicket(t *domain.Ticket, repoCheck func(string) error) []string {
 	}
 
 	problems = append(problems, checkEnv("env", t.Env)...)
-	problems = append(problems, checkSecrets(t.Secrets)...)
+	problems = append(problems, checkSecrets("secrets", t.Secrets)...)
 	return problems
 }
 
@@ -182,19 +182,22 @@ func checkEnv(prefix string, env map[string]string) []string {
 	return problems
 }
 
-// checkSecrets never echoes anything after "=": a mistaken NAME=value is probably real.
-func checkSecrets(secrets []string) []string {
+// checkSecrets never echoes anything after "=" or an entry that looks like a secret:
+// a mistaken NAME=value or pasted token is probably real.
+func checkSecrets(prefix string, secrets []string) []string {
 	var problems []string
 	var seen []string
 	for _, s := range secrets {
 		name, _, hasValue := strings.Cut(s, "=")
 		switch {
 		case hasValue:
-			problems = append(problems, fmt.Sprintf("secrets: entry %q has a value; list names only, never values", name))
+			problems = append(problems, fmt.Sprintf("%s: entry %q has a value; list names only, never values", prefix, name))
+		case !envVarName.MatchString(s) && looksLikeSecret(s):
+			problems = append(problems, fmt.Sprintf("%s: an entry is not an environment variable name and looks like a secret value; list names only, never values", prefix))
 		case !envVarName.MatchString(s):
-			problems = append(problems, fmt.Sprintf("secrets: %q is not a valid environment variable name", s))
+			problems = append(problems, fmt.Sprintf("%s: %q is not a valid environment variable name", prefix, s))
 		case slices.Contains(seen, s):
-			problems = append(problems, fmt.Sprintf("secrets: duplicate %q", s))
+			problems = append(problems, fmt.Sprintf("%s: duplicate %q", prefix, s))
 		}
 		seen = append(seen, s)
 	}
