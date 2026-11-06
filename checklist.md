@@ -25,7 +25,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 02 · Spike: Herdr integration
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/02-spike-herdr` · Depends: 01
 - Context: manifest §7 relies on Herdr reporting `working | blocked | idle` and being scriptable. Stability is a known risk.
 - Read: `manifest.md` §6, §7, §8; Herdr docs/CLI help on this machine
