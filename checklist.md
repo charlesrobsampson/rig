@@ -58,7 +58,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 05 · Spike: egress proxy for `internal` network mode
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/05-spike-egress` · Depends: 01
 - Read: `manifest.md` §4, §8
 - Build: `docs/spikes/05-egress.md`. Compare: minimal Go allowlist HTTP(S) CONNECT proxy vs. reusing an existing proxy image (e.g. tinyproxy/squid). Prove: container on a Docker `--internal` network reaches only the proxy; proxy allows the model API host and a configurable allowlist; everything else is refused. Check TLS handling (CONNECT tunneling only, no interception). Recommend one with config shape and image size.
