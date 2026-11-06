@@ -180,6 +180,7 @@ rig/
 │   ├── daemon/     # server, router, supervisor, recovery
 │   ├── docker/     # networks, containers, port allocator
 │   ├── domain/     # shared types: Ticket, Service, Policy, enums, id validation
+│   ├── fsutil/     # atomic file writes and cross-process locks
 │   ├── git/        # checkout provisioning (clone/worktree), dirty checks, import, push/PR
 │   ├── harness/    # agent launchers
 │   ├── policy/     # precedence resolution (flags > service > ticket > global)
