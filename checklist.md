@@ -78,7 +78,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 07 · Domain types
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/07-domain` · Depends: 01
 - Read: `manifest.md` §2, §3, §5, `docs/formats.md` §1, §4–6
 - Build: Go types for `Ticket`, `Service`, `Dependency`, `Policy` (`Gates`, `Push{Mode}`), `Phase` enum, `ServiceStatus`, `AgentState` (`working|blocked|idle|unknown|exited`), `PushStatus`, `PushMode` enum, `Sandbox` enum, `NetworkMode` enum, `Gate` enum (`plan_approval|review_approval|manual_test_signoff`). Exact string forms from formats §4–6 for YAML/JSON. No behavior beyond validation of enums and ids (ticket id and service-name regexes from formats §1, name uniqueness across services and dependencies).
