@@ -122,6 +122,24 @@ func (n *NetworkMode) UnmarshalText(b []byte) error {
 	return unmarshalEnum("network mode", networkModes, b, n)
 }
 
+type AuthType string
+
+const (
+	AuthHostLogin  AuthType = "host_login"
+	AuthOAuthToken AuthType = "oauth_token"
+	AuthAPIKey     AuthType = "api_key"
+	AuthAuthToken  AuthType = "auth_token"
+	AuthBedrock    AuthType = "bedrock"
+	AuthVertex     AuthType = "vertex"
+	AuthFoundry    AuthType = "foundry"
+)
+
+var authTypes = []AuthType{AuthHostLogin, AuthOAuthToken, AuthAPIKey, AuthAuthToken, AuthBedrock, AuthVertex, AuthFoundry}
+
+func (a AuthType) Valid() bool                   { return slices.Contains(authTypes, a) }
+func (a AuthType) MarshalText() ([]byte, error)  { return marshalEnum("auth type", a, a.Valid()) }
+func (a *AuthType) UnmarshalText(b []byte) error { return unmarshalEnum("auth type", authTypes, b, a) }
+
 type Gate string
 
 const (
