@@ -68,7 +68,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 06 · Clock package and fake
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/06-clock` · Depends: 01
 - Read: `process.md` §4
 - Build: `internal/clock` (interface with `Now()`, `After`, timer and ticker creation) + real implementation; `internal/testkit` fake clock whose time advances only via `Advance(d)` and fires timers deterministically.
