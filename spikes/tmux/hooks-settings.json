@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "SessionStart":      [{"hooks": [{"type": "command", "command": "rig agent-event ready"}]}],
+    "UserPromptSubmit":  [{"hooks": [{"type": "command", "command": "rig agent-event working"}]}],
+    "PreToolUse":        [{"matcher": "*", "hooks": [{"type": "command", "command": "rig agent-event working"}]}],
+    "PermissionRequest": [{"matcher": "*", "hooks": [{"type": "command", "command": "rig agent-event blocked"}]}],
+    "Stop":              [{"hooks": [{"type": "command", "command": "rig agent-event idle"}]}],
+    "SessionEnd":        [{"hooks": [{"type": "command", "command": "rig agent-event exited"}]}]
+  }
+}
