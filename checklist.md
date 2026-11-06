@@ -87,13 +87,14 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Notes: lives in `internal/domain` (added to the manifest layout). Enums are string types with `Valid()` plus `MarshalText`/`UnmarshalText`, so they work with `encoding/json` and YAML libraries that honor `TextUnmarshaler`; marshaling an invalid or zero value is an error, so use `omitempty` on optional enum fields (done). `Policy.Gates == nil` means inherit, `[]Gate{}` means no gates (so the tags do not omit it). `Service` also carries optional `Sandbox` and `Harness` overrides for task 10; `Ticket.Policy` is the ticket-level policy. Validation helpers: `ValidateTicketID`, `ValidateName`, `CheckUniqueNames` (services and dependencies share one namespace). The auth-profile enum is left for task 09. No parsing yet (task 08). Tag names match docs/formats.md.
 
 ### 08 · Ticket config loader
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/08-ticket-config` · Depends: 07
 - Read: `manifest.md` §5 (ticket), `docs/formats.md` §4
-- Build: `internal/config` parses `ticket.yaml` into domain types with validation: required fields, repo path exists (injectable check), unique ports and names, `secrets` are names only (reject values that look like secrets inline), unknown keys are errors naming the key and line.
+- Build: `internal/config` parses `ticket.yaml` into domain types with validation: required fields, repo path exists (injectable check), unique names (container ports are not compared: each service has its own container, and host ports are allocated at run time), `secrets` are names only (reject values that look like secrets inline), unknown keys are errors naming the key and line.
 - Tests: table: the manifest example parses; missing required field names the field; unknown key errors; duplicate service name; two services same `path`; inline secret-looking env value rejected; per-service policy override parses.
 - Manual check: none.
+- Notes: API is `config.ParseTicket(data, config.TicketOptions{RepoCheck})` and `config.LoadTicket(path, opts)`; `RepoCheck` nil means "must be an existing directory". Parsing is strict YAML (`gopkg.in/yaml.v3`, unknown keys fail with the key and line). Validation collects every problem and returns one error listing them all (`invalid ticket.yaml:\n  - ...`). Defaults applied: `services[].path` = `./<name>`, `source.type` = `manual`; `services[].base` is left empty (resolved from the repo's default branch at provisioning, task 17). Extra checks beyond the task: repo must be an absolute path; service `path` must be relative, stay inside the ticket dir, and not collide or nest with another service's path; two services may not use the same repo + branch. `secrets` entries must be bare env-var names; errors never echo anything after `=` or a secret-looking value. Secret detection (`secretlike.go`): known token patterns, credentials inside URLs, or 32+ chars with no whitespace and entropy at least 4.2 bits (git SHAs pass). Auth-profile and egress fields parse but are only validated by later tasks (09, 42). The invalid-enum error names the enum kind and valid values but has no line number.
 
 ### 09 · Global config loader
 - [ ] Done
