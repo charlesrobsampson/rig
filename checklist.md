@@ -67,13 +67,14 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Notes: findings in `docs/spikes/05-egress.md`. Decision: a minimal Go allowlist HTTPS-CONNECT proxy (7.6 MB `scratch` image, config via `ALLOW_HOSTS`/`ALLOW_PORTS`, JSON decision logs, refuses allowlisted names that resolve to private addresses; tinyproxy tunnels to a private container and is 136 MB), run per ticket on an `--internal` network plus a separate egress network only the proxy joins. Verified with real Claude Code: it works through the proxy (only `api.anthropic.com` is required; `downloads.claude.ai` and telemetry hosts are denied harmlessly, silence with `DISABLE_AUTOUPDATER`/`DISABLE_TELEMETRY`/`DISABLE_ERROR_REPORTING`). Set proxy env in both cases and `no_proxy` for in-network service names. Unverified: whether OAuth-token auth needs `claude.ai`/`platform.claude.com`. Ship by embedding prebuilt static Linux binaries and building a `FROM scratch` image locally (§7). Formats/manifest updated (network name `rig-<t>-egress`, `egress.allow`, event `egress.denied`). The manual check was run by the assistant and passed. Probe: `spikes/egress/probe.sh`.
 
 ### 06 · Clock package and fake
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/06-clock` · Depends: 01
 - Read: `process.md` §4
 - Build: `internal/clock` (interface with `Now()`, `After`, timer and ticker creation) + real implementation; `internal/testkit` fake clock whose time advances only via `Advance(d)` and fires timers deterministically.
 - Tests: table: timer fires only after enough `Advance`; multiple timers fire in order; stopped timer never fires; ticker fires N times for N intervals.
 - Manual check: none (library).
+- Notes: `clock.Clock` has `Now`, `After`, `NewTimer`, `AfterFunc`, `NewTicker`; `clock.Real()` is the production clock. `testkit.NewFakeClock(start)` moves only with `Advance(d)`, firing due timers in deadline order (ties by creation order), delivering the deadline as the timer's value, and running `AfterFunc` callbacks synchronously inside `Advance` (callbacks may schedule more work due inside the same call). Ticker/timer channels have capacity 1, so a receiver that doesn't drain misses ticks, like the real ticker. `internal/clock/doc.go` was replaced by `clock.go`.
 
 ### 07 · Domain types
 - [ ] Done
