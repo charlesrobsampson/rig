@@ -108,7 +108,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 10 · Policy and config precedence
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/10-policy` · Depends: 08, 09
 - Read: `manifest.md` §5 (precedence, push modes), §3 (gates)
 - Build: `internal/policy` resolves effective settings per service with precedence CLI flags > service > ticket > global. Covers gates, push mode, sandbox, network mode, harness, terminal backend.
