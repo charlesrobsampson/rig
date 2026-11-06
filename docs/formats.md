@@ -117,6 +117,7 @@ Transport: unix socket, JSON lines (one JSON object per line, UTF-8, max 1 MiB p
 Request: `{"v":1,"id":"<client-chosen>","method":"ticket.list","params":{}}`
 Response: `{"v":1,"id":"<same>","ok":true,"result":{}}` or `{"v":1,"id":"<same>","ok":false,"error":{"code":"not_found","message":"..."}}`.
 Streaming methods (`events.subscribe`, `logs.stream`) send many lines with the same `id`: `{"v":1,"id":"..","stream":{...}}`, ending with `{"v":1,"id":"..","ok":true,"end":true}`.
+The daemon handles each request on a connection concurrently, so responses may arrive in a different order than the requests: clients match them by `id`. A client that wants a stream (`events.subscribe`, `logs.stream`) should open a dedicated connection for it; the stream ends when the client disconnects.
 The first message on a connection must be `hello`: `{"method":"hello","params":{"client":"rig-cli","version":"x"}}`; the server replies with its protocol version. Mismatched major version is rejected.
 
 Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `error.details` lists reasons), `unavailable` (Docker/terminal backend down), `not_running`, `internal`.
