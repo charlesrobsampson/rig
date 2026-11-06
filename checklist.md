@@ -118,7 +118,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 11 · Store interface and JSON implementation
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/11-store` · Depends: 07
 - Read: `manifest.md` §1 (files are truth), §6 (Store), §7 (recovery), `docs/formats.md` §2, §3, §5
 - Build: (a) `internal/store` interface (get/put/list/delete ticket runtime records, atomic multi-record update) + JSON file impl with atomic write (temp + rename), file lock, `0600` permissions, schema version field. Runtime records hold cache only. (b) `internal/state` reader/writer for `state.json` per formats §5: typed struct, atomic write, per-ticket write serialization, `Load`/`Update(fn)` helper so concurrent updates never lose writes. Later tasks (20, 21, 23, 24, …) use this and never touch the file directly.
