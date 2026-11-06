@@ -712,3 +712,16 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: README (install, quickstart, architecture, config examples, sandbox model and its limits), example `ticket.yaml` files, license, CI running `task check` and `task test:race` (plus the tagged suites where the runner supports them), and a `task release` target producing release builds. Contributors need only Go and `go-task`.
 - Tests: none. CI must pass.
 - Manual check: a clean machine follows the README to a running two-service demo ticket.
+
+---
+
+## Backlog (not scheduled)
+
+### 71 · Image overrides for services, agents, and dependencies
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/71-image-overrides` · Depends: 37, 40
+- Read: `docs/spikes/04-agent-container.md` §1, `docs/formats.md` §4, §7
+- Build: let `ticket.yaml` (and global config as a default) name the image a container runs in instead of rig building one: `services[].image` (service container), `services[].agent_image` (agent base; rig still layers git, certs, and the agent on top unless `agent_image_final: true`), and `dependencies[].image` (already supported). Validate that overridden agent images contain what rig needs (git, a shell, the agent binary) with a clear error at start.
+- Tests (fake Docker): override used instead of a build; precedence service > ticket > global; missing required tools reported before any container starts; cache key includes the override digest.
+- Manual check: point a service at a prebuilt image and run it.
