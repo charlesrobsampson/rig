@@ -88,7 +88,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 08 · Ticket config loader
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/08-ticket-config` · Depends: 07
 - Read: `manifest.md` §5 (ticket), `docs/formats.md` §4
 - Build: `internal/config` parses `ticket.yaml` into domain types with validation: required fields, repo path exists (injectable check), unique ports and names, `secrets` are names only (reject values that look like secrets inline), unknown keys are errors naming the key and line.
