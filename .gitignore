@@ -13,3 +13,4 @@ spikes/**/bin
 
 # spike: machine-specific certificates
 spikes/**/certs/
+spikes/**/corp-ca.pem
