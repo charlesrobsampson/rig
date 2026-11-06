@@ -211,7 +211,7 @@ rig/
 
 * **Worktrees:** shared object store, isolated checkouts. `stop` refuses to delete dirty worktrees without `--force`; branches are kept by default.
 * **Networking:** per-ticket bridge/internal network; dynamic host port mapping; port map persisted and verified on daemon restart.
-* **Terminal state:** backend reports `working | blocked | idle`; rig overlays lifecycle phase.
+* **Terminal state:** backend reports `working | blocked | idle`; rig overlays lifecycle phase. Herdr is accessed over its local socket API in a dedicated named session (`rig`), so rig never touches the user's default Herdr workspaces; attach with `herdr session attach rig` (see `docs/spikes/02-herdr.md`).
 * **Recovery:** on daemon restart, reconcile `state.json` against actual containers, worktrees, and terminals; mark drift instead of guessing.
 * **Summaries:** background LLM compresses diffs + `plan.md`/`tasks.md`. Always shown beside raw status and diff stats; summary is advisory.
 * **Manual testing:** agent writes `manual-tests.md` with placeholders like `{{backend.url}}`; rig substitutes live ports and shows it in the TUI.
