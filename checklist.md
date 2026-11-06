@@ -142,7 +142,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 13 · Daemon server lifecycle
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/13-daemon-server` · Depends: 11, 12
 - Read: `manifest.md` §6, `process.md` §4 (sockets)
 - Build: `internal/daemon` server: unix socket (path configurable), PID file, single-instance lock, context-driven graceful shutdown, stale socket/PID cleanup, request router with handler registry.
