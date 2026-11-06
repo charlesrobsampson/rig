@@ -152,7 +152,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 14 · Client and daemon auto-start
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/14-client` · Depends: 13
 - Read: `manifest.md` §6, `docs/formats.md` §8, §10
 - Build: client library: connect, hello, call, typed helpers; auto-start via an injectable spawner (detached re-exec of `rig daemon run`); `rig daemon status|stop|run`. Shared CLI helpers implementing formats §10: `--json` output, stderr for errors, exit-code mapping from API error codes (`blocked`→3, `unavailable`/`not_running`→4, `not_found`→5, `invalid`→2).
