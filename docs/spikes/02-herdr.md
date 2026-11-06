@@ -80,9 +80,15 @@ Probe script: `spikes/herdr/probe.sh` (self-contained, uses a private session, c
 - Backend interface per §4; quirks per §5 become backend behavior and contract-suite cases.
 - Not blocked on anything: no contradiction with `manifest.md`. Small manifest additions made (named session, socket API).
 
-## 8. Left for the manual check
-Interactive Claude Code state transitions (`idle` → `working` → `idle`) and real injection into a running Claude Code prompt need a trusted folder, so the user does them:
-1. `herdr session attach rig-spike`: the `rig-spike-test` workspace holds a Claude Code pane stuck on the trust dialog.
-2. Press "Yes, I trust" in that pane, then in another terminal: `herdr --session rig-spike agent get rigclaude` should show `idle` (its pane is `w1:p2`).
-3. `herdr --session rig-spike pane send-text w1:p2 "say hi in five words"` then `pane send-keys w1:p2 Enter`: state should flip to `working`, then `idle`/`done`, and the text should appear intact in the prompt.
-4. Clean up: `herdr session stop rig-spike`.
+## 8. Real Claude Code check (done)
+Run in a directory Claude already trusts (the repo), via `agent start rigclaude --kind claude --pane <pane>`:
+
+| Step | Observed |
+|---|---|
+| after `agent start` (about 3.7 s) | `idle`, `interactive_ready: true` |
+| `pane send-text` of the prompt, before Enter | still `idle`; text sits in the input box |
+| `pane send-keys Enter` | `working` within 1 s |
+| Claude replies (about 1 s) | `done`, and it **stays** `done` while nobody is attached (see quirk 1) |
+| Screen | prompt arrived intact and Claude answered it |
+
+Conclusion: state detection, injection, and the send-text-then-Enter split all work against real Claude Code. The trust dialog (quirk 5) only appears in untrusted directories.
