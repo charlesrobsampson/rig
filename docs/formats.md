@@ -140,7 +140,7 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 | `reconcile.run` | drift report, optional fix |
 | `daemon.stop` | graceful shutdown |
 
-New methods may be added by later tasks following the same envelope.
+New methods may be added by later tasks following the same envelope. Method payload types (`ticket.list`, `ticket.get`, `status`, and later ones) are defined in `internal/api`, whose JSON field names are the reference; this file fixes the envelope, error codes, method names, and events.
 
 ## 9. Events
 Envelope: `{"type":"phase.changed","ticket":"ticket-412","service":"","at":"...","data":{}}`.
