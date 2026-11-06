@@ -36,7 +36,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 03 · Spike: tmux state detection and message injection
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/03-spike-tmux` · Depends: 01
 - Context: tmux is the fallback backend and has no native `working/blocked/idle`. Contract-change notices (manifest §3) need a way to push a message into a running agent.
 - Read: `manifest.md` §3 (contract), §7, §8
