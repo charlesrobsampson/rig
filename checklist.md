@@ -98,7 +98,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 09 · Global config loader
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/09-global-config` · Depends: 07
 - Read: `manifest.md` §5 (global)
 - Build: load `~/.config/rig/config.json` (path overridable) with defaults: harness, sandbox, terminal backend, ticket source, default policy, `limits.max_active_tickets`, summarizer, paths (`~/.rig`), `auth.profiles` / `auth.default`, `docker.extra_ca_certs` (formats §4). Unknown keys are errors; profiles hold secret names only.
