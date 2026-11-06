@@ -209,6 +209,9 @@ rig/
 * `rig review <id>` open `delta` diff
 * `rig push <id>` run push policy
 * `rig logs <id>` stream logs
+* `rig daemon start|status|stop|run` manage the background daemon (`run` is the foreground form the others re-exec)
+* `rig config show` print the effective global config
+* Global flags: `--config <file>`, `--json`
 
 ---
 
