@@ -46,7 +46,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Notes: full findings in `docs/spikes/03-tmux.md`. Decisions: agent state comes from Claude Code hooks passed per launch with `claude --settings` (`PermissionRequest`→blocked is immediate; `Notification` is ~6 s late), reported by a new `rig agent-event <state>` subcommand using `RIG_TICKET`/`RIG_SERVICE` env, with a screen heuristic as fallback; `TerminalBackend.State` returns only liveness (+ optional heuristic) and the supervisor merges. Injection = `send-keys -l` (or bracketed paste) then a separate `Enter`; Claude queues text sent while working; **never inject while `blocked`** (an injected Enter approved a permission prompt in testing); wait for `SessionStart` before the first injection. tmux needs `set-option -g remain-on-exit on` to read exit status. Added `agent.event` to formats §8. The manual check was run by the assistant against real Claude Code and passed.
 
 ### 04 · Spike: agent inside a container
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/04-spike-agent-container` · Depends: 01
 - Context: manifest §4 makes container the default agent location. Need to know it is practical.
@@ -54,6 +54,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: `docs/spikes/04-agent-container.md`. Run Claude Code inside a container with a bind-mounted worktree: confirm or amend the working topology in formats §7 (service container + agent container sharing the worktree and network); **authentication** (does the user use an API key or a subscription login? find a safe way to give the container access to either, e.g. env key, or a mounted read-only credentials dir, and state the risks); toolchain image strategy, API key injection via env, interactive TTY attach from a Herdr/tmux pane (`docker exec -it`), file ownership/uid mapping on macOS, git commits from inside without push credentials, performance of bind mounts, how to run the service and tests from inside. State what the image must contain and how long a cold/warm start takes. Prototype under `spikes/container/`.
 - Tests: none.
 - Manual check: user attaches to the containerized agent, makes a commit in the worktree, and sees it on the host.
+- Notes: findings in `docs/spikes/04-agent-container.md`. Verified: overlay image (`FROM <service image>` + native Claude installer) runs Go + Claude as any uid; corporate TLS inspection (Zscaler) breaks image builds unless the root CA is baked in (`docker.extra_ca_certs`); host ownership is a non-issue on macOS; `docker exec -it` in tmux gives a proper PTY; hook events cross the boundary via a mounted events dir; auth is env-based with per-ticket/per-service **auth profiles** (design in §7, added to manifest §4 and formats §4). **Pending user decision (not applied to tasks 17/18/21/22):** a worktree mounted into a container needs the main repo's `.git` read-write (agent can rewrite any branch); the spike recommends an isolated `git clone --shared` checkout for container mode and real worktrees for host mode behind one `internal/git` checkout abstraction (§3). **Not verified:** an authenticated Claude turn inside a container (needs a setup-token or API key; optional, covered by task 40's manual check). Probe: `spikes/container/probe.sh`; images: `spikes/container/Dockerfile`, `overlay.Dockerfile`.
 
 ### 05 · Spike: egress proxy for `internal` network mode
 - [ ] Done
@@ -96,7 +97,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/09-global-config` · Depends: 07
 - Read: `manifest.md` §5 (global)
-- Build: load `~/.config/rig/config.json` (path overridable) with defaults: harness, sandbox, terminal backend, ticket source, default policy, `limits.max_active_tickets`, summarizer, paths (`~/.rig`). Unknown keys are errors.
+- Build: load `~/.config/rig/config.json` (path overridable) with defaults: harness, sandbox, terminal backend, ticket source, default policy, `limits.max_active_tickets`, summarizer, paths (`~/.rig`), `auth.profiles` / `auth.default`, `docker.extra_ca_certs` (formats §4). Unknown keys are errors; profiles hold secret names only.
 - Tests: defaults when file missing; partial file merges over defaults; unknown key names the key; invalid enum value names the key.
 - Manual check: `rig config show` (add the command) prints effective config as JSON.
 
@@ -301,7 +302,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/29-harness` · Depends: 10, 26
 - Read: `manifest.md` §6 (interfaces), §3 (artifacts), `docs/formats.md` §13, `docs/spikes/02-herdr.md` §5 (trust dialog)
-- Build: `internal/harness` interface (`Command(ticket, service, seed) -> {cmd, env, cwd}`; for claude-code the command includes `--settings` with the hooks config from `docs/spikes/03-tmux.md` §2 and env `RIG_TICKET`/`RIG_SERVICE`); claude-code implementation seeds the agent with a prompt built from `plan.md`, `tasks.md`, current phase, and (when present) `contract.md`; harness selectable per ticket.
+- Build: `internal/harness` interface (`Command(ticket, service, seed) -> {cmd, env, cwd}`, plus `AuthEnv(profile) -> env` mapping an auth profile type to the harness's env vars (claude-code: `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, Bedrock/Vertex/Foundry flags); for claude-code the command includes `--settings` with the hooks config from `docs/spikes/03-tmux.md` §2 and env `RIG_TICKET`/`RIG_SERVICE`); claude-code implementation seeds the agent with a prompt built from `plan.md`, `tasks.md`, current phase, and (when present) `contract.md`; harness selectable per ticket.
 - Tests: generated command per phase; prompt includes the artifact files; contract included only for multi-service tickets; unknown harness errors; env excludes secrets not listed in `secrets`.
 - Manual check: print the generated command for a demo ticket with `rig start --dry-run` (add flag).
 
@@ -403,7 +404,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - [ ] Done
 - Session: _(fill on start)_
 - Branch: `task/40-agent-container` · Depends: 04, 31, 37
-- Read: `docs/spikes/04-agent-container.md`, `docs/spikes/03-tmux.md` §4 (hook events from inside a container), `manifest.md` §4, `docs/formats.md` §7
+- Read: `docs/spikes/04-agent-container.md` (all of it: overlay image, CA certs, git decision, auth), `docs/spikes/03-tmux.md` §4 (hook events from inside a container), `manifest.md` §4, `docs/formats.md` §7
 - Build: with `sandbox: container` (default), an agent container (`rig-<ticket>-<service>-agent`, per the topology in formats §7 as confirmed by spike 04) shares the worktree and ticket network, the harness command runs inside it, and the pane attaches via exec; auth is provided the way spike 04 decided; `sandbox: host` keeps the old path with a loud warning at start; no git push credentials enter the container.
 - Tests (fake Docker + fake backend): pane command is an exec into the right container; host mode prints the warning and uses the host path; container env lacks git credential variables; agent API key present only if listed in `secrets`.
 - Manual check: attach to the in-container agent, commit, see the commit on the host worktree.
@@ -413,7 +414,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/41-secrets` · Depends: 08
 - Read: `manifest.md` §4, §5
-- Build: resolve names listed in `secrets` from macOS Keychain or a `.env` reference path (injectable resolver); missing secret fails start with the name; values never written to the ticket dir, logs, or `--json` output.
+- Build: resolve names listed in `secrets` and the secret names of the selected auth profile (service profile > ticket profile > `auth.default`) from macOS Keychain or a `.env` reference path (injectable resolver); reject a `host_login` profile when `sandbox: container`; missing secret fails start with the name; values never written to the ticket dir, logs, or `--json` output.
 - Tests: resolved from fake keychain; from `.env`; missing secret names the secret; values absent from logs and API payloads; precedence keychain > `.env`.
 - Manual check: `rig start` with a real keychain entry; grep the ticket dir for the value finds nothing.
 

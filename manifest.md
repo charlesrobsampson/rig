@@ -75,6 +75,8 @@ Multi-service tickets need agents in different repos to agree on interfaces. The
 | Multiple instances of same service | Per-ticket networks mean identical service names/DNS never collide across tickets. |
 | Host ports | Dynamic allocation, persisted in `state.json`, checked against host-in-use. Container ports stay fixed. |
 | Git credentials | **Never in the container.** Agent commits locally; rig pushes from host. |
+| Agent auth | Named **auth profiles** (`oauth_token`, `api_key`, `auth_token`, `bedrock`, `vertex`, `foundry`, `host_login` for host mode only) chosen per ticket or per service; values resolved from Keychain/`.env` and injected as env. The macOS login can't be mounted into a container; a `claude setup-token` OAuth token or an API key is used instead (`docs/spikes/04-agent-container.md` §7). |
+| Corporate TLS inspection | `docker.extra_ca_certs` PEM paths are baked into agent/service images and mounted read-only at run time. |
 | API keys / secrets | Injected as env at start from keychain or a `.env` reference. Never written into `ticket.yaml`. |
 | Network egress | `network_mode`: `bridge` (open) or `internal` (no internet; model API and a configurable allowlist reachable only through a rig-run egress proxy). In v1 scope. |
 | Host-needed cases | `sandbox: host` runs the agent on the host, services still in Docker. Rig warns loudly. |

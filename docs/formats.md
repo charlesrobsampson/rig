@@ -44,6 +44,8 @@ Shape per manifest §5, plus:
 - `services[].policy.gates`: absent = inherit; `[]` = no gates.
 - `secrets`: names only. Values that look like secrets in `env` (high-entropy or known token prefixes) are rejected.
 - Known gate names: `plan_approval`, `review_approval`, `manual_test_signoff`.
+- `auth`: name of an auth profile from the global config (`auth.profiles`); ticket-level, overridable per service (`services[].auth`). Profile types: `host_login` (host mode only), `oauth_token`, `api_key`, `auth_token`, `bedrock`, `vertex`, `foundry`. A profile lists secret *names* (and non-secret env such as region); values never appear in any rig file or API payload. `sandbox: container` with a `host_login` profile is a validation error.
+- Global config also has `auth.default` (profile name) and `docker.extra_ca_certs` (list of PEM file paths).
 - Unknown keys are errors naming the key and line.
 
 ## 5. `state.json`
