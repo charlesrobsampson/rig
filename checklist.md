@@ -35,7 +35,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Notes: full findings in `docs/spikes/02-herdr.md`. Decision: Herdr is the primary backend, driven over its unix-socket JSON-lines API in a dedicated `rig` named session (headless via `herdr --session rig server`; start it if `server_not_running`). Quirks for tasks 26–32: `done` means idle-but-unseen (treat as idle); external `report-agent` is dropped within ~1 s unless `--agent` is a known kind (so the fake agent cannot use a custom label with real Herdr); `send-text` does not press Enter; `wait-output` matches the typed command echo; key names are `ctrl+d` style; fresh worktrees hit Claude Code's trust dialog (reported `blocked`), so task 29 must decide pre-trust vs surfacing it. The real Claude Code check (idle → working → done, injection intact) was run and passed; see the doc §8.
 
 ### 03 · Spike: tmux state detection and message injection
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/03-spike-tmux` · Depends: 01
 - Context: tmux is the fallback backend and has no native `working/blocked/idle`. Contract-change notices (manifest §3) need a way to push a message into a running agent.
@@ -43,6 +43,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: `docs/spikes/03-tmux.md`. Try: spawn a window with cwd+command on a private socket (`tmux -L`), read output (`capture-pane`), infer state for Claude Code (output heuristics, hooks, idle timers), inject a message (`send-keys` vs paste-buffer, escaping, behavior while the agent is mid-response). Also check Claude Code hooks/other harness-native channels as an alternative injection path. Decide the injection mechanism and state-detection approach for both backends. Prototype under `spikes/tmux/`.
 - Tests: none.
 - Manual check: user sees an injected message land in a running agent without corrupting its input.
+- Notes: full findings in `docs/spikes/03-tmux.md`. Decisions: agent state comes from Claude Code hooks passed per launch with `claude --settings` (`PermissionRequest`→blocked is immediate; `Notification` is ~6 s late), reported by a new `rig agent-event <state>` subcommand using `RIG_TICKET`/`RIG_SERVICE` env, with a screen heuristic as fallback; `TerminalBackend.State` returns only liveness (+ optional heuristic) and the supervisor merges. Injection = `send-keys -l` (or bracketed paste) then a separate `Enter`; Claude queues text sent while working; **never inject while `blocked`** (an injected Enter approved a permission prompt in testing); wait for `SessionStart` before the first injection. tmux needs `set-option -g remain-on-exit on` to read exit status. Added `agent.event` to formats §8. The manual check was run by the assistant against real Claude Code and passed.
 
 ### 04 · Spike: agent inside a container
 - [ ] Done
@@ -264,7 +265,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/26-terminal-iface` · Depends: 02, 03, 06
 - Read: `docs/spikes/02-herdr.md`, `docs/spikes/03-tmux.md`, `manifest.md` §6, §7
-- Build: `internal/terminal` interface sized from the spikes (spawn pane with cwd/cmd/env, list, state, send input, close, attach command); `testkit` fake backend with scriptable agent states and recorded input; a shared contract test suite that any implementation can run.
+- Build: `internal/terminal` interface sized from the spikes (spawn pane with cwd/cmd/env, list, state as liveness + exit status + optional heuristic (not the authoritative agent state; see spike 03 §2), send input, close, attach command); `testkit` fake backend with scriptable agent states and recorded input; a shared contract test suite that any implementation can run.
 - Tests: the contract suite passes against the fake: spawn then list; state transitions observed; sent input recorded in order; closing removes the pane; spawn in missing cwd errors; operations on a closed pane error.
 - Manual check: none.
 
@@ -291,7 +292,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/28-tmux-backend` · Depends: 26
 - Read: `docs/spikes/03-tmux.md`
-- Build: tmux implementation (private socket, session per ticket), state detection and input injection per the spike, passing the contract suite under the `integration` tag; `terminal_backend: herdr|tmux` selection from config.
+- Build: tmux implementation (private socket, one session per ticket, one window per service, `remain-on-exit on`), liveness/exit status from `list-panes`, screen-heuristic fallback and input injection per `docs/spikes/03-tmux.md` §1–3, passing the contract suite under the `integration` tag; `terminal_backend: herdr|tmux` selection from config.
 - Tests: contract suite (tagged); default tests cover state-heuristic parsing on captured sample output (synthetic fixtures) and config selection.
 - Manual check: `task test:integration -- ./internal/terminal/tmux/...` passes; switch config to tmux and spawn a pane.
 
@@ -300,7 +301,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/29-harness` · Depends: 10, 26
 - Read: `manifest.md` §6 (interfaces), §3 (artifacts), `docs/formats.md` §13, `docs/spikes/02-herdr.md` §5 (trust dialog)
-- Build: `internal/harness` interface (`Command(ticket, service, seed) -> {cmd, env, cwd}`); claude-code implementation seeds the agent with a prompt built from `plan.md`, `tasks.md`, current phase, and (when present) `contract.md`; harness selectable per ticket.
+- Build: `internal/harness` interface (`Command(ticket, service, seed) -> {cmd, env, cwd}`; for claude-code the command includes `--settings` with the hooks config from `docs/spikes/03-tmux.md` §2 and env `RIG_TICKET`/`RIG_SERVICE`); claude-code implementation seeds the agent with a prompt built from `plan.md`, `tasks.md`, current phase, and (when present) `contract.md`; harness selectable per ticket.
 - Tests: generated command per phase; prompt includes the artifact files; contract included only for multi-service tickets; unknown harness errors; env excludes secrets not listed in `secrets`.
 - Manual check: print the generated command for a demo ticket with `rig start --dry-run` (add flag).
 
@@ -309,8 +310,8 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/30-supervisor` · Depends: 16, 26
 - Read: `manifest.md` §7 (terminal state)
-- Build: daemon component that polls the backend (injected clock) and updates per-service `AgentState`, publishing events on change; detects pane death; survives backend errors with backoff.
-- Tests (fake backend + fake clock): state change produces one event; unchanged state produces none; pane death marks service `exited`; backend error backs off then recovers; stops on context cancel.
+- Build: daemon component that merges agent state from `agent.event` reports (hooks), backend facts and heuristics (fresh hook state wins; dead pane = `exited`), updating per-service `AgentState` and publishing events on change; implements the `agent.event` API method and the `rig agent-event <state>` subcommand (reads `RIG_TICKET`/`RIG_SERVICE`, must exit 0 quickly even if the daemon is unreachable); polls the backend on the injected clock; survives backend errors with backoff.
+- Tests (fake backend + fake clock): hook report beats a stale heuristic; `agent.event` for an unknown ticket/service errors; the subcommand exits 0 with no daemon; state change produces one event; unchanged state produces none; pane death marks service `exited`; backend error backs off then recovers; stops on context cancel.
 - Manual check: none.
 
 ### 31 · Start launches agents; `rig attach`
@@ -327,8 +328,8 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/32-inject` · Depends: 03, 31
 - Read: `docs/spikes/03-tmux.md`, `manifest.md` §3 (contract change protocol)
-- Build: `agent.message` API + `rig msg <id> <service> "<text>"` using the injection mechanism chosen in the spike; refuses or queues when the agent is mid-response per the spike; records each message in the ticket log.
-- Tests (fake backend): text delivered exactly (multiline, quotes, control characters escaped); queued when state is `working` if the spike says so; unknown service errors; log entry written. Tagged `integration`: the fake agent's `wait-input` receives the exact text through real tmux.
+- Build: `agent.message` API + `rig msg <id> <service> "<text>"` implementing the injection rules in `docs/spikes/03-tmux.md` §3: refuse (or hold in rig) when state is `blocked` or the pane is dead, wait for `ready` before the first injection, send text then a separate Enter after a short pause, use bracketed paste for multi-line/large text, prefix with `[rig]`; records each message in the ticket log.
+- Tests (fake backend): text delivered exactly (multiline, quotes, control characters escaped); refused when `blocked` (no keys sent at all); allowed when `working`; held until `ready` on a fresh agent; unknown service errors; log entry written. Tagged `integration`: the fake agent's `wait-input` receives the exact text through real tmux.
 - Manual check: inject a message into a real running Claude Code agent and watch it appear intact.
 
 ---
@@ -402,7 +403,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - [ ] Done
 - Session: _(fill on start)_
 - Branch: `task/40-agent-container` · Depends: 04, 31, 37
-- Read: `docs/spikes/04-agent-container.md`, `manifest.md` §4, `docs/formats.md` §7
+- Read: `docs/spikes/04-agent-container.md`, `docs/spikes/03-tmux.md` §4 (hook events from inside a container), `manifest.md` §4, `docs/formats.md` §7
 - Build: with `sandbox: container` (default), an agent container (`rig-<ticket>-<service>-agent`, per the topology in formats §7 as confirmed by spike 04) shares the worktree and ticket network, the harness command runs inside it, and the pane attaches via exec; auth is provided the way spike 04 decided; `sandbox: host` keeps the old path with a loud warning at start; no git push credentials enter the container.
 - Tests (fake Docker + fake backend): pane command is an exec into the right container; host mode prints the warning and uses the host path; container env lacks git credential variables; agent API key present only if listed in `secrets`.
 - Manual check: attach to the in-container agent, commit, see the commit on the host worktree.
