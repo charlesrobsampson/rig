@@ -24,7 +24,7 @@ The first image build failed: `npm error UNABLE_TO_GET_ISSUER_CERT_LOCALLY`. HTT
 - Rig design: global config `docker.extra_ca_certs` (list of PEM paths) used at image build, and mounted read-only at run time for any service that reaches the network. Never committed (`spikes/**/certs/` is git-ignored). A machine without inspection simply has none.
 - Interacts with the egress proxy (spike 05): the proxy must not break these CA settings.
 
-## 3. Git inside the container (decision needed)
+## 3. Git inside the container (decided: isolated clone)
 A git worktree's `.git` is a **file** pointing at a host path (`gitdir: /abs/host/path/repo/.git/worktrees/wt`). Results, all verified:
 
 | Setup | Result |
@@ -38,7 +38,7 @@ A git worktree's `.git` is a **file** pointing at a host path (`gitdir: /abs/hos
 
 **Recommendation:** for `sandbox: container`, use the **isolated shared clone**; keep real worktrees for `sandbox: host`. Both sit behind one `internal/git` "checkout" abstraction (`Provision`, `IsDirty`, `Remove`, `Import`), so everything above it (phases, review diff, push) is identical. Caveats to handle: `--shared` clones depend on the main repo's objects, so rig must fetch the clone's branch into the main repo before the main repo prunes (also done at `rig push`/`review`), and `git gc` in the main repo should not be run while tickets are active.
 
-**This changes tasks 17, 18, 21, 22 (worktree-only today) and the `worktree` field in formats §5.** I have **not** changed them. Needs the user's approval; see "Open items".
+**Decision (approved by the user):** container mode uses the isolated shared clone; host mode keeps worktrees. Applied to tasks 17, 17b, 18, 21, 22, 40, 44, 45, 46, to `docs/formats.md` (§3, §5 `checkout`, §7 repository access) and to the manifest. One consequence found while applying it: because the agent can write the clone's `.git` (hooks, config, attributes), every host-side git command run in a clone must go through a **hardened runner** (no hooks, fsmonitor, external diff/textconv, pager, or credential helpers), and a clone must be imported into the main repo before it is deleted. Both are in the task definitions with tests that plant a malicious hook/config and assert it never runs.
 
 ## 4. Files, performance, startup
 - **Ownership:** files created in the container appear on the host as the host user (`502:20`) whatever uid the container uses (Docker Desktop VirtioFS). No chown problems on macOS. (On Linux the container uid must equal the host uid; `--user` already does that.)
@@ -75,14 +75,13 @@ A git worktree's `.git` is a **file** pointing at a host path (`gitdir: /abs/hos
 4. Enterprise policy may forbid `setup-token` or API keys; the profile model lets the user pick whatever their org permits.
 
 ## 8. Open items
-1. **Approval for the git decision (§3):** use isolated shared clones for container mode?
-2. **Authenticated check:** to prove an authenticated Claude turn inside a container, the user stores a token in Keychain (`security add-generic-password -a $USER -s rig-spike-claude-token -w`, which prompts, so the token never enters chat), after `claude setup-token`; then re-run with `-e CLAUDE_CODE_OAUTH_TOKEN`. Optional now; task 40's manual check covers it.
+1. **Authenticated check:** to prove an authenticated Claude turn inside a container, the user stores a token in Keychain (`security add-generic-password -a $USER -s rig-spike-claude-token -w`, which prompts, so the token never enters chat), after `claude setup-token`; then re-run with `-e CLAUDE_CODE_OAUTH_TOKEN`. Optional now; task 40's manual check covers it.
 
 ## 9. Impact on later tasks
 | Task | Change |
 |---|---|
 | 09, 08 | Add `auth.profiles`/`auth.default` (global) and `auth` (ticket/service) plus `docker.extra_ca_certs`. |
-| 17, 18, 21, 22 | Pending the git decision: checkout abstraction with worktree (host) and shared clone (container) implementations. |
+| 17, 17b, 18, 21, 22 | Applied: hardened git runner, `Checkout` interface with worktree (host) and shared clone (container) implementations, import-before-remove. |
 | 29 | `Harness.AuthEnv(profile)`; claude-code maps profile types to env. |
 | 34, 37, 40 | Build the overlay agent image (cached by base digest + Claude version); bake/mount extra CAs; run as host uid; `docker exec -it` pane command; events dir mount; set `RIG_TICKET`/`RIG_SERVICE`. |
 | 41 | Resolve profile secrets (Keychain / `.env`); reject `host_login` in container mode. |

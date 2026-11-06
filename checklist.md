@@ -6,7 +6,7 @@ Tasks are in dependency order. Each task = one branch (`task/NN-slug`). Tick the
 
 Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §6 (task 01 reconciles the layout, adding `clock`, `store`, `state`, `contract`, `policy`, `testkit`); fakes live in `internal/testkit`.
 
-**MVP cut:** tasks 01–32 give tickets, worktrees, gated lifecycle, agents in Herdr/tmux panes, message injection, and `rig list`. Docker (33–44) is next.
+**MVP cut:** tasks 01–32 give tickets, isolated checkouts, gated lifecycle, agents in Herdr/tmux panes, message injection, and `rig list`. Docker (33–44) is next.
 
 ---
 
@@ -54,7 +54,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: `docs/spikes/04-agent-container.md`. Run Claude Code inside a container with a bind-mounted worktree: confirm or amend the working topology in formats §7 (service container + agent container sharing the worktree and network); **authentication** (does the user use an API key or a subscription login? find a safe way to give the container access to either, e.g. env key, or a mounted read-only credentials dir, and state the risks); toolchain image strategy, API key injection via env, interactive TTY attach from a Herdr/tmux pane (`docker exec -it`), file ownership/uid mapping on macOS, git commits from inside without push credentials, performance of bind mounts, how to run the service and tests from inside. State what the image must contain and how long a cold/warm start takes. Prototype under `spikes/container/`.
 - Tests: none.
 - Manual check: user attaches to the containerized agent, makes a commit in the worktree, and sees it on the host.
-- Notes: findings in `docs/spikes/04-agent-container.md`. Verified: overlay image (`FROM <service image>` + native Claude installer) runs Go + Claude as any uid; corporate TLS inspection (Zscaler) breaks image builds unless the root CA is baked in (`docker.extra_ca_certs`); host ownership is a non-issue on macOS; `docker exec -it` in tmux gives a proper PTY; hook events cross the boundary via a mounted events dir; auth is env-based with per-ticket/per-service **auth profiles** (design in §7, added to manifest §4 and formats §4). **Pending user decision (not applied to tasks 17/18/21/22):** a worktree mounted into a container needs the main repo's `.git` read-write (agent can rewrite any branch); the spike recommends an isolated `git clone --shared` checkout for container mode and real worktrees for host mode behind one `internal/git` checkout abstraction (§3). **Not verified:** an authenticated Claude turn inside a container (needs a setup-token or API key; optional, covered by task 40's manual check). Probe: `spikes/container/probe.sh`; images: `spikes/container/Dockerfile`, `overlay.Dockerfile`.
+- Notes: findings in `docs/spikes/04-agent-container.md`. Verified: overlay image (`FROM <service image>` + native Claude installer) runs Go + Claude as any uid; corporate TLS inspection (Zscaler) breaks image builds unless the root CA is baked in (`docker.extra_ca_certs`); host ownership is a non-issue on macOS; `docker exec -it` in tmux gives a proper PTY; hook events cross the boundary via a mounted events dir; auth is env-based with per-ticket/per-service **auth profiles** (design in §7, added to manifest §4 and formats §4). **Decision (approved by the user, applied to 17, 17b, 18, 21, 22, 40, 44, 45, 46):** a worktree mounted into a container would need the main repo's `.git` read-write (agent could rewrite any branch), so container mode uses an isolated `git clone --shared` checkout (only the clone rw, main objects ro) and host mode keeps real worktrees, behind one `Checkout` interface; host-side git on a clone uses a hardened runner; work leaves a clone only via `Import`. **Not verified:** an authenticated Claude turn inside a container (needs a setup-token or API key; optional, covered by task 40's manual check). Probe: `spikes/container/probe.sh`; images: `spikes/container/Dockerfile`, `overlay.Dockerfile`.
 
 ### 05 · Spike: egress proxy for `internal` network mode
 - [ ] Done
@@ -170,24 +170,33 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ---
 
-## Phase 2: Tickets and worktrees (no Docker yet)
+## Phase 2: Tickets and checkouts (no Docker yet)
 
-### 17 · Git: throwaway repos and worktree create
+### 17 · Git: hardened runner, checkout interface, worktree
 - [ ] Done
 - Session: _(fill on start)_
-- Branch: `task/17-git-worktree` · Depends: 07
-- Read: `manifest.md` §7 (worktrees)
-- Build: `internal/testkit` helper creating real temp git repos with commits; `internal/git` `AddWorktree(repo, branch, path, base)` (creates the branch if missing, reuses if it exists and is free), `Branches`, `CurrentCommit`. Shell out to `git` with explicit env.
-- Tests (real git on temp repos): new branch created from base; existing branch reused; branch already checked out elsewhere errors clearly; path exists and non-empty errors; two worktrees of one repo share the object store.
+- Branch: `task/17-git-checkout` · Depends: 07
+- Read: `manifest.md` §4 (repo access), §7 (checkouts), `docs/formats.md` §5, §7, `docs/spikes/04-agent-container.md` §3
+- Build: `internal/testkit` helper creating real temp git repos with commits (fixed author, `GIT_CONFIG_GLOBAL=/dev/null`). `internal/git`: (a) a runner that shells out to `git` with an explicit env, in two flavors: *trusted* (the user's main repo) and **hardened** (any directory an agent can write to: `-c core.hooksPath=<empty dir> -c core.fsmonitor=false -c core.pager=cat -c credential.helper=`, `--no-ext-diff --no-textconv` on diff/log/show, `GIT_TERMINAL_PROMPT=0`, no system/global config that could be overridden by repo config); (b) the `Checkout` interface (`Kind()`, `Path()`, `Branch()`, `IsDirty`, `Remove`, `Import`, filled in by tasks 17b and 18) with a `Provision(spec{repo, branch, base, path, kind})` factory; (c) the `worktree` implementation of `Provision` (creates the branch if missing, reuses if it exists and is free), plus `Branches`, `CurrentCommit`, `DefaultBranch`.
+- Tests (real git on temp repos): new branch created from base; existing branch reused; branch already checked out elsewhere errors clearly; path exists and non-empty errors; default-branch detection (`origin/HEAD`, `main`, `master`); **hardening**: a planted `core.fsmonitor` command, `diff.external`, a `textconv` driver via `.gitattributes`, a `post-checkout`/`pre-commit` hook, and a `credential.helper`, each writing a marker file, do **not** run through the hardened runner but **do** run through the trusted one (proves the test is real).
 - Manual check: none.
 
-### 18 · Git: remove worktree and dirty check
+### 17b · Git: isolated shared clone
 - [ ] Done
 - Session: _(fill on start)_
-- Branch: `task/18-git-dirty` · Depends: 17
-- Read: `manifest.md` §7
-- Build: `IsDirty` (uncommitted, untracked, unpushed-commits-ahead-of-base counted separately), `RemoveWorktree(path, force)`, prune. Branch is always kept.
-- Tests: clean worktree removes; modified tracked file → dirty; untracked file → dirty; committed-but-unpushed reported as "ahead"; remove without force refuses on dirty; force removes; branch remains after removal.
+- Branch: `task/17b-git-clone` · Depends: 17
+- Read: `docs/formats.md` §7 (repository access), `docs/spikes/04-agent-container.md` §3
+- Build: the `clone` implementation of `Checkout`: `git clone --shared <repo> <path>`, branch created from `base` (or reused), `origin` left pointing at the main repo; `ObjectsMounts()` returns the real (symlink-resolved) host paths of the main repo's object store plus any chained alternates, for read-only mounting at the same path in a container (git records real paths; spike 04). Runs only through the hardened runner after provisioning.
+- Tests (real git): clone is small (`.git` under 1 MB for a repo with history) and has working alternates; a commit made in the clone is absent from the main repo until imported; branch exists in the clone with the right base; `ObjectsMounts` returns resolved real paths (including a path under a symlinked temp dir) and chained alternates; the clone has no write path into the main repo (main refs/hooks/config untouched after clone operations).
+- Manual check: none.
+
+### 18 · Git: dirty check, import, and remove (both checkout kinds)
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/18-git-dirty` · Depends: 17, 17b
+- Read: `manifest.md` §7, `docs/formats.md` §7
+- Build: for both kinds, `IsDirty` (uncommitted, untracked, and commits ahead of base reported separately; clone checks use the hardened runner), `Import(force)` (clone: `git fetch <clone> branch:branch` into the main repo, refusing a non-fast-forward unless `force`; worktree: no-op since the branch already lives in the main repo), and `Remove(force)` (clone: delete the directory; worktree: `git worktree remove` + prune). Remove never deletes a clone whose branch has not been imported unless `force`. Branches are always kept.
+- Tests: clean checkout removes; modified tracked file → dirty; untracked file → dirty; committed-but-not-imported clone reports "ahead" and `Remove` refuses without force; after `Import`, the main repo has the branch with the clone's commits and `Remove` succeeds; non-fast-forward import refused with a clear error; force removes anyway; both kinds behave identically through the interface (shared contract suite).
 - Manual check: none.
 
 ### 19 · TicketSource interface and manual source
@@ -208,23 +217,23 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Tests: created files exist with valid content; the generated `ticket.yaml` passes the loader; existing id errors without touching files; `--from` fake source seeds the plan; multi-service flag creates all services.
 - Manual check: `rig new --id demo --title Demo --service api=/path/to/repo` then `rig list`.
 
-### 21 · Provisioning: `rig start` (worktrees)
+### 21 · Provisioning: `rig start` (checkouts)
 - [ ] Done
 - Session: _(fill on start)_
-- Branch: `task/21-start-worktrees` · Depends: 10, 11, 17, 20
-- Read: `manifest.md` §2, §7, `docs/formats.md` §3, §5
-- Build: `rig start <id>` creates one worktree per service at `<ticket>/<service>` on the configured branch, records provisioning state in `state.json`, idempotent on re-run, rolls back worktrees created in this call if a later service fails.
-- Tests: two-service ticket yields two worktrees on the right branches; re-run is a no-op; failure on service 2 removes service 1's new worktree; state records per-service status.
+- Branch: `task/21-start-checkouts` · Depends: 10, 11, 17, 17b, 20
+- Read: `manifest.md` §2, §7, `docs/formats.md` §3, §5, §7
+- Build: `rig start <id>` provisions one checkout per service at `<ticket>/<service>` on the configured branch, choosing the kind from the resolved sandbox (`container` → shared clone, `host` → worktree), records `checkout: {kind, path}` and provisioning status in `state.json`, idempotent on re-run, rolls back checkouts created in this call if a later service fails.
+- Tests: two-service ticket with `sandbox: container` yields two clones on the right branches; with `sandbox: host` yields worktrees; mixed per-service sandboxes yield mixed kinds; re-run is a no-op; failure on service 2 removes service 1's new checkout; state records kind, path, and per-service status.
 - Manual check: `rig start demo` then `git -C ~/.rig/tickets/demo/api status`.
 
-### 22 · `rig stop` (worktrees)
+### 22 · `rig stop` (checkouts)
 - [ ] Done
 - Session: _(fill on start)_
-- Branch: `task/22-stop-worktrees` · Depends: 18, 21
-- Read: `manifest.md` §7
-- Build: `rig stop <id> [--force] [--keep-worktrees]` removes worktrees, refusing on dirty with a per-service report unless `--force`; branches always kept; state updated. Stop is the extension point for later teardown (agents, containers).
-- Tests: clean ticket stops; dirty service blocks the whole stop and lists which; `--force` proceeds; `--keep-worktrees` leaves dirs; branch survives; stopping a non-started ticket errors clearly.
-- Manual check: edit a file in a worktree, `rig stop demo` refuses, `rig stop demo --force` works.
+- Branch: `task/22-stop-checkouts` · Depends: 18, 21
+- Read: `manifest.md` §7, `docs/formats.md` §7
+- Build: `rig stop <id> [--force] [--keep-checkouts]` first **imports** each clone's branch into the main repo, then removes checkouts, refusing on dirty (or on a failed import) with a per-service report unless `--force`; branches always kept; state updated. Stop is the extension point for later teardown (agents, containers).
+- Tests: clean ticket stops; a clone with commits is imported before removal (main repo then has the commits); dirty service blocks the whole stop and lists which; failed import blocks the stop; `--force` proceeds; `--keep-checkouts` leaves dirs; branch survives; stopping a non-started ticket errors clearly.
+- Manual check: edit a file in a checkout, `rig stop demo` refuses, `rig stop demo --force` works; commit in a clone, `rig stop demo`, and see the commit on the branch in the main repo.
 
 ---
 
@@ -320,7 +329,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/31-start-agents` · Depends: 21, 29, 30
 - Read: `manifest.md` §6 (CLI), §7
-- Build: `rig start` also spawns one agent pane per service via the harness and backend (`sandbox: host` for now); `rig attach <id> [service]` jumps to the pane; `rig list` shows agent state; `rig stop` closes panes before removing worktrees.
+- Build: `rig start` also spawns one agent pane per service via the harness and backend (`sandbox: host` for now); `rig attach <id> [service]` jumps to the pane; `rig list` shows agent state; `rig stop` closes panes before removing checkouts.
 - Tests (fake backend): one pane per service with right cwd and command; list shows state from the supervisor; stop closes panes first; attach calls backend with the correct pane; attaching an unknown service errors.
 - Manual check: with Herdr, `rig start demo` opens agents; `rig attach demo api` lands in the pane; `rig list` shows `working/idle`.
 
@@ -378,7 +387,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/37-service-containers` · Depends: 35, 36, 21
 - Read: `manifest.md` §4 (service definition), §5, `docs/formats.md` §5, §7
-- Build: build the service image from its Dockerfile, run the container on the ticket network with the worktree bind-mounted, env injected, internal port mapped to the allocated host port, `start`/`test`/`healthcheck` honored; `state.json` records container id, ports, health; `rig list` shows URLs.
+- Build: build the service image from its Dockerfile, run the container on the ticket network with the service's checkout bind-mounted at `/work`, env injected, internal port mapped to the allocated host port, `start`/`test`/`healthcheck` honored; `state.json` records container id, ports, health; `rig list` shows URLs.
 - Tests (fake Docker): container has mount, env, labels, correct port mapping; health flips reflect in status; unhealthy start surfaces an error with the last log lines; stop removes container; missing Dockerfile errors before any side effects.
 - Manual check: a real service starts, `curl localhost:<port>/healthz` works, `rig list` shows the same port.
 
@@ -405,9 +414,9 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/40-agent-container` · Depends: 04, 31, 37
 - Read: `docs/spikes/04-agent-container.md` (all of it: overlay image, CA certs, git decision, auth), `docs/spikes/03-tmux.md` §4 (hook events from inside a container), `manifest.md` §4, `docs/formats.md` §7
-- Build: with `sandbox: container` (default), an agent container (`rig-<ticket>-<service>-agent`, per the topology in formats §7 as confirmed by spike 04) shares the worktree and ticket network, the harness command runs inside it, and the pane attaches via exec; auth is provided the way spike 04 decided; `sandbox: host` keeps the old path with a loud warning at start; no git push credentials enter the container.
-- Tests (fake Docker + fake backend): pane command is an exec into the right container; host mode prints the warning and uses the host path; container env lacks git credential variables; agent API key present only if listed in `secrets`.
-- Manual check: attach to the in-container agent, commit, see the commit on the host worktree.
+- Build: with `sandbox: container` (default), an agent container (`rig-<ticket>-<service>-agent`, per the topology in formats §7 as confirmed by spike 04) mounts the service's checkout at `/work` (clone kind: plus the main repo's object store read-only at its real host path via `ObjectsMounts()`; never the main `.git`, hooks, or config) and joins the ticket network, the harness command runs inside it, and the pane attaches via exec; auth is provided the way spike 04 decided; `sandbox: host` keeps the old path with a loud warning at start; no git push credentials enter the container.
+- Tests (fake Docker + fake backend): mounts are exactly the checkout (rw) and the objects paths (ro), with no main `.git`; pane command is an exec into the right container; host mode prints the warning and uses the host path; container env lacks git credential variables; agent API key present only if listed in `secrets`.
+- Manual check: attach to the in-container agent, commit, run `rig stop` (which imports) and see the commit on the branch in the main repo; confirm the agent cannot see or change other branches.
 
 ### 41 · Secrets
 - [ ] Done
@@ -441,8 +450,8 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/44-stop-containers` · Depends: 22, 38, 40, 42
 - Read: `manifest.md` §7
-- Build: extend `rig stop` to stop agents, services, dependencies, proxy, then the network, free ports, then worktrees (still with the dirty check first, before anything is destroyed).
-- Tests (fake Docker + fake backend): order of operations; dirty worktree aborts before containers are touched; partial failure is reported and remaining resources listed; ports freed; running twice is a no-op.
+- Build: extend `rig stop` to stop agents, services, dependencies, proxy, then the network, free ports, then checkouts (import and dirty check first, before anything is destroyed).
+- Tests (fake Docker + fake backend): order of operations; dirty checkout aborts before containers are touched; partial failure is reported and remaining resources listed; ports freed; running twice is a no-op.
 - Manual check: `rig stop demo` leaves no containers, networks, or ports (`docker ps -a`, `rig list`).
 
 ---
@@ -454,7 +463,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/45-review` · Depends: 18, 25
 - Read: `manifest.md` §3 (review), §7
-- Build: per-service diff against the base branch piped through `delta` (fallback to plain `git diff` if absent, with a notice); `--stat` summary; moves the ticket into `review` if requested.
+- Build: per-service diff against the base branch (clone checkouts through the hardened runner) piped through `delta` (fallback to plain `git diff` if absent, with a notice); `--stat` summary; moves the ticket into `review` if requested.
 - Tests: diff includes committed and uncommitted changes; stat counts correct; missing `delta` falls back with the notice; multi-service output separated per service.
 - Manual check: `rig review demo` shows a side-by-side diff in `delta`.
 
@@ -463,8 +472,8 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/46-push-modes` · Depends: 18, 10
 - Read: `manifest.md` §5 (push modes)
-- Build: `internal/git` push implementations run on the host: `none` (report only), `push-branch` (push the feature branch), `merge` (merge into base and push, refusing non-fast-forward unless configured). Credentials stay on the host.
-- Tests (real git against a local bare remote): push-branch updates the remote branch; merge fast-forwards the base; diverged base is refused with a clear error; `none` pushes nothing.
+- Build: `internal/git` push implementations run on the host, always **after `Import`** (so the branch is in the main repo) and from the main repo with the user's credentials, never from a clone: `none` (report only), `push-branch` (push the feature branch), `merge` (merge into base and push, refusing non-fast-forward unless configured). Credentials stay on the host.
+- Tests (real git against a local bare remote): a clone's commits reach the remote only via import then push; push-branch updates the remote branch; merge fast-forwards the base; diverged base is refused with a clear error; `none` pushes nothing.
 - Manual check: run against a throwaway remote repo.
 
 ### 47 · Push mode: PR
@@ -663,7 +672,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/66-reconcile` · Depends: 44, 30
 - Read: `manifest.md` §7 (recovery)
-- Build: on daemon start, reconcile `state.json` against real containers (by labels), worktrees, and panes; mark drift (missing, orphaned) and expose it in `rig list`; `rig reconcile --fix` removes orphans after confirmation.
+- Build: on daemon start, reconcile `state.json` against real containers (by labels), checkouts, and panes; mark drift (missing, orphaned) and expose it in `rig list`; `rig reconcile --fix` removes orphans after confirmation.
 - Tests (fakes): clean state yields no drift; killed container shows as missing; orphan container found by label; `--fix` removes only rig-labeled orphans; agents keep running across a daemon restart.
 - Manual check: kill the daemon mid-ticket, restart, and see nothing lost.
 
