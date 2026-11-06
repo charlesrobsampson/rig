@@ -46,6 +46,7 @@ Shape per manifest §5, plus:
 - Known gate names: `plan_approval`, `review_approval`, `manual_test_signoff`.
 - `auth`: name of an auth profile from the global config (`auth.profiles`); ticket-level, overridable per service (`services[].auth`). Profile types: `host_login` (host mode only), `oauth_token`, `api_key`, `auth_token`, `bedrock`, `vertex`, `foundry`. A profile lists secret *names* (and non-secret env such as region); values never appear in any rig file or API payload. `sandbox: container` with a `host_login` profile is a validation error.
 - Global config also has `auth.default` (profile name) and `docker.extra_ca_certs` (list of PEM file paths).
+- `egress.allow`: extra hostnames reachable through the egress proxy when `docker.network_mode: internal` (ticket-wide, and per service as `services[].egress.allow`; the ticket's proxy enforces the union). Global config: `egress.default_allow` (default `["api.anthropic.com"]`) and `egress.default_ports` (default `[443]`). Hostnames are exact or `*.suffix`.
 - Unknown keys are errors naming the key and line.
 
 ## 5. `state.json`
@@ -101,7 +102,7 @@ Shape per manifest §5, plus:
 - Agents may *request* forward transitions; rig grants only if gates pass. Agents may not approve gates.
 
 ## 7. Naming and container topology
-- Network: `rig-<ticket>`. Service container: `rig-<ticket>-<service>`. Agent container: `rig-<ticket>-<service>-agent`. Dependency: `rig-<ticket>-dep-<name>`. Egress proxy: `rig-<ticket>-proxy`.
+- Network: `rig-<ticket>` (created `--internal` when `network_mode: internal`); `rig-<ticket>-egress` (normal bridge, joined only by the egress proxy). Service container: `rig-<ticket>-<service>`. Agent container: `rig-<ticket>-<service>-agent`. Dependency: `rig-<ticket>-dep-<name>`. Egress proxy: `rig-<ticket>-proxy`.
 - Labels on every Docker object: `rig.ticket=<id>`, `rig.service=<name>` (when applicable), `rig.role=service|agent|dependency|proxy|network`.
 - **Working topology (spike 04 confirms or amends):** per service, a *service container* runs the `start` command, and an *agent container* (toolchain image with the agent installed) runs the agent. Both bind-mount the same worktree and join the ticket network, so the agent can run tests and reach the service by name. Dependencies are siblings on the same network.
 - In-network URL of a service: `http://<service>:<internal_port>`. Host URL: `http://localhost:<host_port>`.
@@ -154,6 +155,7 @@ Envelope: `{"type":"phase.changed","ticket":"ticket-412","service":"","at":"..."
 | `contract.pending` | `{"proposal":"P-backend-1"}` |
 | `contract.violation` | `{"detail"}` (agreed section edited directly) |
 | `contract.resolved` | `{"proposal","outcome":"accepted|rejected"}` |
+| `egress.denied` | `{"host","port","reason"}` (proxy refused a connection) |
 | `error` | `{"message"}` |
 
 ## 10. CLI conventions

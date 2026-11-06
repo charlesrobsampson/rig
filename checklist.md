@@ -57,13 +57,14 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Notes: findings in `docs/spikes/04-agent-container.md`. Verified: overlay image (`FROM <service image>` + native Claude installer) runs Go + Claude as any uid; corporate TLS inspection (Zscaler) breaks image builds unless the root CA is baked in (`docker.extra_ca_certs`); host ownership is a non-issue on macOS; `docker exec -it` in tmux gives a proper PTY; hook events cross the boundary via a mounted events dir; auth is env-based with per-ticket/per-service **auth profiles** (design in §7, added to manifest §4 and formats §4). **Decision (approved by the user, applied to 17, 17b, 18, 21, 22, 40, 44, 45, 46):** a worktree mounted into a container would need the main repo's `.git` read-write (agent could rewrite any branch), so container mode uses an isolated `git clone --shared` checkout (only the clone rw, main objects ro) and host mode keeps real worktrees, behind one `Checkout` interface; host-side git on a clone uses a hardened runner; work leaves a clone only via `Import`. **Not verified:** an authenticated Claude turn inside a container (needs a setup-token or API key; optional, covered by task 40's manual check). Probe: `spikes/container/probe.sh`; images: `spikes/container/Dockerfile`, `overlay.Dockerfile`.
 
 ### 05 · Spike: egress proxy for `internal` network mode
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/05-spike-egress` · Depends: 01
 - Read: `manifest.md` §4, §8
 - Build: `docs/spikes/05-egress.md`. Compare: minimal Go allowlist HTTP(S) CONNECT proxy vs. reusing an existing proxy image (e.g. tinyproxy/squid). Prove: container on a Docker `--internal` network reaches only the proxy; proxy allows the model API host and a configurable allowlist; everything else is refused. Check TLS handling (CONNECT tunneling only, no interception). Recommend one with config shape and image size.
 - Tests: none.
 - Manual check: from the sandboxed container, the model API call succeeds and `curl example.com` fails.
+- Notes: findings in `docs/spikes/05-egress.md`. Decision: a minimal Go allowlist HTTPS-CONNECT proxy (7.6 MB `scratch` image, config via `ALLOW_HOSTS`/`ALLOW_PORTS`, JSON decision logs, refuses allowlisted names that resolve to private addresses; tinyproxy tunnels to a private container and is 136 MB), run per ticket on an `--internal` network plus a separate egress network only the proxy joins. Verified with real Claude Code: it works through the proxy (only `api.anthropic.com` is required; `downloads.claude.ai` and telemetry hosts are denied harmlessly, silence with `DISABLE_AUTOUPDATER`/`DISABLE_TELEMETRY`/`DISABLE_ERROR_REPORTING`). Set proxy env in both cases and `no_proxy` for in-network service names. Unverified: whether OAuth-token auth needs `claude.ai`/`platform.claude.com`. Ship by embedding prebuilt static Linux binaries and building a `FROM scratch` image locally (§7). Formats/manifest updated (network name `rig-<t>-egress`, `egress.allow`, event `egress.denied`). The manual check was run by the assistant and passed. Probe: `spikes/egress/probe.sh`.
 
 ### 06 · Clock package and fake
 - [ ] Done
@@ -311,7 +312,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/29-harness` · Depends: 10, 26
 - Read: `manifest.md` §6 (interfaces), §3 (artifacts), `docs/formats.md` §13, `docs/spikes/02-herdr.md` §5 (trust dialog)
-- Build: `internal/harness` interface (`Command(ticket, service, seed) -> {cmd, env, cwd}`, plus `AuthEnv(profile) -> env` mapping an auth profile type to the harness's env vars (claude-code: `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, Bedrock/Vertex/Foundry flags); for claude-code the command includes `--settings` with the hooks config from `docs/spikes/03-tmux.md` §2 and env `RIG_TICKET`/`RIG_SERVICE`); claude-code implementation seeds the agent with a prompt built from `plan.md`, `tasks.md`, current phase, and (when present) `contract.md`; harness selectable per ticket.
+- Build: `internal/harness` interface (`Command(ticket, service, seed) -> {cmd, env, cwd}` (claude-code adds `DISABLE_AUTOUPDATER=1`, `DISABLE_TELEMETRY=1`, `DISABLE_ERROR_REPORTING=1` when the network mode is `internal`), plus `AuthEnv(profile) -> env` mapping an auth profile type to the harness's env vars (claude-code: `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, Bedrock/Vertex/Foundry flags); for claude-code the command includes `--settings` with the hooks config from `docs/spikes/03-tmux.md` §2 and env `RIG_TICKET`/`RIG_SERVICE`); claude-code implementation seeds the agent with a prompt built from `plan.md`, `tasks.md`, current phase, and (when present) `contract.md`; harness selectable per ticket.
 - Tests: generated command per phase; prompt includes the artifact files; contract included only for multi-service tickets; unknown harness errors; env excludes secrets not listed in `secrets`.
 - Manual check: print the generated command for a demo ticket with `rig start --dry-run` (add flag).
 
@@ -378,7 +379,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/36-network` · Depends: 10, 33
 - Read: `manifest.md` §4
-- Build: create/remove `rig-<ticket-id>` per ticket on start/stop honoring `network_mode` (`bridge` | `internal`); idempotent; removal waits for containers to detach.
+- Build: create/remove `rig-<ticket-id>` per ticket on start/stop honoring `network_mode` (`bridge` | `internal`; `internal` creates it with Docker's internal flag) and, in `internal` mode, the `rig-<ticket-id>-egress` bridge network for the proxy (formats §7); idempotent; removal waits for containers to detach.
 - Tests (fake Docker): network created once on repeated start; `internal` flag set from policy; stop removes it; two tickets have separate networks; removal with attached containers is deferred or errors clearly.
 - Manual check: `rig start demo` then `docker network ls` shows `rig-demo`.
 
@@ -431,9 +432,9 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - [ ] Done
 - Session: _(fill on start)_
 - Branch: `task/42-egress-proxy` · Depends: 05, 36
-- Read: `docs/spikes/05-egress.md`, `manifest.md` §4
-- Build: per-ticket proxy per the spike for `network_mode: internal`; allowlist defaults to the model API host plus the config list; agent/service env set to use it.
-- Tests: proxy config generated from allowlist (table); `internal` mode attaches containers only to the internal network plus the proxy; `bridge` mode starts no proxy; default tests use the fake Docker, the real allow/deny behavior is tagged `docker`.
+- Read: `docs/spikes/05-egress.md` (all of it), `manifest.md` §4, `docs/formats.md` §7, §9
+- Build: `internal/egress` (the Go allowlist CONNECT proxy from `spikes/egress/goproxy`, hardened and tested) plus a `cmd/rig-egress` main; `task release` builds static `linux/arm64` and `linux/amd64` binaries that are embedded with `go:embed` and turned into a `FROM scratch` image on first use (cached by content hash, `docs/spikes/05-egress.md` §7). One proxy container per ticket in `internal` mode, attached to both ticket networks; allowlist = `egress.default_allow` + ticket + service `egress.allow`; agent/service env gets `HTTPS_PROXY`/`https_proxy`/`HTTP_PROXY`/`http_proxy` and `NO_PROXY`/`no_proxy` (localhost, the proxy, all service and dependency names); the daemon turns the proxy's JSON log into `egress.denied` events.
+- Tests: proxy unit tests in-process (allowed host tunnels bytes both ways; denied host, plain HTTP, wrong port, and an allowlisted name resolving to loopback/private are refused; wildcard matching; JSON log lines); allowlist union and env generation (table); `internal` mode attaches containers only to the internal network, with only the proxy on the egress network; `bridge` mode starts no proxy; with the fake Docker, `egress.denied` events follow log lines; the real containment and allow/deny behavior is tagged `docker` (port `spikes/egress/probe.sh` checks).
 - Manual check: sandboxed container reaches the model API and cannot reach `example.com`.
 
 ### 43 · `rig logs`

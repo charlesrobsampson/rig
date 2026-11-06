@@ -79,7 +79,7 @@ Multi-service tickets need agents in different repos to agree on interfaces. The
 | Agent auth | Named **auth profiles** (`oauth_token`, `api_key`, `auth_token`, `bedrock`, `vertex`, `foundry`, `host_login` for host mode only) chosen per ticket or per service; values resolved from Keychain/`.env` and injected as env. The macOS login can't be mounted into a container; a `claude setup-token` OAuth token or an API key is used instead (`docs/spikes/04-agent-container.md` §7). |
 | Corporate TLS inspection | `docker.extra_ca_certs` PEM paths are baked into agent/service images and mounted read-only at run time. |
 | API keys / secrets | Injected as env at start from keychain or a `.env` reference. Never written into `ticket.yaml`. |
-| Network egress | `network_mode`: `bridge` (open) or `internal` (no internet; model API and a configurable allowlist reachable only through a rig-run egress proxy). In v1 scope. |
+| Network egress | `network_mode`: `bridge` (open) or `internal`. In `internal` mode all of a ticket's containers sit on an `--internal` network (no route out, no external DNS) and reach the outside only through a per-ticket allowlist proxy (HTTPS CONNECT tunnel, no TLS interception, refuses non-public addresses) that alone joins an egress network. Default allowlist: the model API; extend per ticket/service (`docs/spikes/05-egress.md`). |
 | Host-needed cases | `sandbox: host` runs the agent on the host, services still in Docker. Rig warns loudly. |
 
 **Tradeoff accepted:** container-agent costs image-setup effort per service (toolchain, deps) but gives real safety and reproducible parallel instances. Host mode is the escape hatch.
