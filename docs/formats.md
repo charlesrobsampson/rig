@@ -33,17 +33,19 @@ The exact shapes that every part of rig shares. `manifest.md` says *what* and *w
 ├── tasks.md           # agent; GitHub checkboxes `- [ ]` / `- [x]`, progress = counted boxes
 ├── manual-tests.md    # agent-written; see §10
 ├── contract.md        # multi-service tickets only; see §9
-└── <service path>/    # git worktree (default `./<service name>`)
+└── <service path>/    # checkout (default `./<service name>`): isolated shared clone in container mode, git worktree in host mode
 ```
 `state.json` is the only file rig writes besides stubs created by `rig new`. Agents must never edit `state.json` or `ticket.yaml`. `store.json` is a rebuildable cache (see manifest §1, principle 4).
 
 ## 4. `ticket.yaml`
 Shape per manifest §5, plus:
-- `services[].base`: base branch for the worktree and diffs. Default: the repo's default branch (`origin/HEAD`, else `main`, else `master`).
+- `services[].base`: base branch for the checkout and diffs. Default: the repo's default branch (`origin/HEAD`, else `main`, else `master`).
 - `services[].path`: default `./<name>`.
 - `services[].policy.gates`: absent = inherit; `[]` = no gates.
 - `secrets`: names only. Values that look like secrets in `env` (high-entropy or known token prefixes) are rejected.
 - Known gate names: `plan_approval`, `review_approval`, `manual_test_signoff`.
+- `auth`: name of an auth profile from the global config (`auth.profiles`); ticket-level, overridable per service (`services[].auth`). Profile types: `host_login` (host mode only), `oauth_token`, `api_key`, `auth_token`, `bedrock`, `vertex`, `foundry`. A profile lists secret *names* (and non-secret env such as region); values never appear in any rig file or API payload. `sandbox: container` with a `host_login` profile is a validation error.
+- Global config also has `auth.default` (profile name) and `docker.extra_ca_certs` (list of PEM file paths).
 - Unknown keys are errors naming the key and line.
 
 ## 5. `state.json`
@@ -61,7 +63,7 @@ Shape per manifest §5, plus:
   "services": {
     "backend": {
       "status": "pending",
-      "worktree": "/abs/path",
+      "checkout": {"kind": "clone", "path": "/abs/path"},
       "branch": "feat/x",
       "base": "main",
       "host_port": 0,
@@ -104,6 +106,9 @@ Shape per manifest §5, plus:
 - **Working topology (spike 04 confirms or amends):** per service, a *service container* runs the `start` command, and an *agent container* (toolchain image with the agent installed) runs the agent. Both bind-mount the same worktree and join the ticket network, so the agent can run tests and reach the service by name. Dependencies are siblings on the same network.
 - In-network URL of a service: `http://<service>:<internal_port>`. Host URL: `http://localhost:<host_port>`.
 - Git push credentials are never mounted into any container.
+- **Repository access (decided in spike 04):** the checkout kind follows the sandbox. `sandbox: container` provisions an **isolated shared clone** (`git clone --shared <repo> <path>`, branch created from `base`): the container mounts only that clone (rw, at `/work`) and the main repo's `.git/objects` **read-only at its real host path** (the clone's alternates point there). The main repo's refs, hooks, and config are never mounted, so an agent cannot touch other branches. `sandbox: host` provisions a real `git worktree`. `services[].checkout.kind` in `state.json` records which (`clone` or `worktree`).
+- Work leaves a clone only through rig: `Import` fetches the clone's branch into the main repo (`git fetch <clone> branch:branch`); `rig stop` and `rig push` import first. Commits never exist solely in a clone that rig deleted.
+- Host-side git against a clone is **untrusted-input safe**: rig runs those commands through a hardened runner that disables hooks, fsmonitor, external diff and textconv, pagers, and credential helpers, so a hook or config planted by the agent cannot run on the host.
 
 ## 8. Daemon API
 Transport: unix socket, JSON lines (one JSON object per line, UTF-8, max 1 MiB per line).
@@ -120,7 +125,7 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 | `hello`, `status` | handshake; daemon version, pid, uptime |
 | `config.get` | effective global config |
 | `ticket.list`, `ticket.get`, `ticket.rescan` | read tickets |
-| `ticket.new`, `ticket.start`, `ticket.stop` | create / provision / teardown (`stop` params: `force`, `keep_worktrees`) |
+| `ticket.new`, `ticket.start`, `ticket.stop` | create / provision / teardown (`stop` params: `force`, `keep_checkouts`) |
 | `gate.list`, `gate.approve` | pending gates / approve |
 | `phase.set`, `transition.request` | human move / agent request |
 | `agent.attach`, `agent.message` | returns attach command / injects text |
@@ -154,7 +159,7 @@ Envelope: `{"type":"phase.changed","ticket":"ticket-412","service":"","at":"..."
 ## 10. CLI conventions
 - Every command that prints data supports `--json`, printing exactly the API `result` payload.
 - Human output to stdout, diagnostics and errors to stderr.
-- Exit codes: `0` ok, `1` generic failure, `2` usage/invalid input, `3` blocked (gate, dirty worktree, limit), `4` daemon/backend unavailable, `5` not found.
+- Exit codes: `0` ok, `1` generic failure, `2` usage/invalid input, `3` blocked (gate, dirty checkout, limit), `4` daemon/backend unavailable, `5` not found.
 - Destructive commands (`stop --force`, `reconcile --fix`) prompt unless `--yes`.
 
 ## 11. `contract.md`
@@ -191,4 +196,4 @@ errors: 400 invalid_user
 
 ## 13. Harness prompt contract
 - The launch prompt is assembled from: ticket title, current phase, `plan.md`, `tasks.md`, `contract.md` (multi-service only), and the rules for that phase. It never includes secret values.
-- Rules every agent receives: edit only your service's worktree; never edit `state.json`, `ticket.yaml`, or `## Agreed`; propose contract changes under `## Proposed changes`; request phase transitions, never assume them; write `manual-tests.md` with placeholders during/after `implement`.
+- Rules every agent receives: edit only your service's checkout; never edit `state.json`, `ticket.yaml`, or `## Agreed`; propose contract changes under `## Proposed changes`; request phase transitions, never assume them; write `manual-tests.md` with placeholders during/after `implement`.

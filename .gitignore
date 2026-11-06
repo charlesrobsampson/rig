@@ -10,3 +10,6 @@
 
 # spike prototypes
 spikes/**/bin
+
+# spike: machine-specific certificates
+spikes/**/certs/

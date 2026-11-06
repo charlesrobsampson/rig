@@ -4,7 +4,7 @@
 ---
 
 ## 1. Summary
-**RIG** is a local daemon (`rigd`) + CLI/TUI (`rig`) that runs several AI coding agents in parallel, each fully isolated. Isolation comes from **Git worktrees** (code), **Docker** (runtime + sandbox), and **markdown lifecycle artifacts** (state). Terminal sessions are managed through a pluggable **terminal backend** (Herdr first, tmux fallback).
+**RIG** is a local daemon (`rigd`) + CLI/TUI (`rig`) that runs several AI coding agents in parallel, each fully isolated. Isolation comes from **isolated git checkouts** (code: a shared clone per service in container mode, a worktree in host mode), **Docker** (runtime + sandbox), and **markdown lifecycle artifacts** (state). Terminal sessions are managed through a pluggable **terminal backend** (Herdr first, tmux fallback).
 
 **Exact file, API, event, and naming shapes live in [`docs/formats.md`](docs/formats.md).** This manifest covers intent and design; that file is the precise contract.
 
@@ -31,8 +31,8 @@
 ├── contract.md        # cross-service interfaces (endpoints, schemas, events); only for multi-service tickets
 ├── tasks.md           # micro-steps + TDD checklist
 ├── manual-tests.md    # agent-written test steps; rig substitutes live ports
-├── backend/           # git worktree (repo A)
-└── frontend/          # git worktree (repo B)
+├── backend/           # checkout of repo A (isolated shared clone, or worktree in host mode)
+└── frontend/          # checkout of repo B
 ```
 
 ---
@@ -70,11 +70,14 @@ Multi-service tickets need agents in different repos to agree on interfaces. The
 
 | Concern | Decision |
 |---|---|
-| Agent location | Per-service container with the worktree bind-mounted rw. `sandbox: container` (default) or `host` (opt-in, per ticket). |
+| Agent location | Per-service container with the service's isolated checkout bind-mounted rw. `sandbox: container` (default) or `host` (opt-in, per ticket). |
+| Repo access | Container mode uses an **isolated shared clone**: only the clone is mounted rw, plus the main repo's object store read-only. The main repo's branches, hooks, and config are unreachable. Work returns via `git fetch <clone> branch:branch` done by rig on the host (`docs/spikes/04-agent-container.md` §3). Host mode uses a normal worktree. |
 | Dependent services (db, cache, other repos) | Sibling containers on a **per-ticket network** `rig-<ticket-id>`. |
 | Multiple instances of same service | Per-ticket networks mean identical service names/DNS never collide across tickets. |
 | Host ports | Dynamic allocation, persisted in `state.json`, checked against host-in-use. Container ports stay fixed. |
 | Git credentials | **Never in the container.** Agent commits locally; rig pushes from host. |
+| Agent auth | Named **auth profiles** (`oauth_token`, `api_key`, `auth_token`, `bedrock`, `vertex`, `foundry`, `host_login` for host mode only) chosen per ticket or per service; values resolved from Keychain/`.env` and injected as env. The macOS login can't be mounted into a container; a `claude setup-token` OAuth token or an API key is used instead (`docs/spikes/04-agent-container.md` §7). |
+| Corporate TLS inspection | `docker.extra_ca_certs` PEM paths are baked into agent/service images and mounted read-only at run time. |
 | API keys / secrets | Injected as env at start from keychain or a `.env` reference. Never written into `ticket.yaml`. |
 | Network egress | `network_mode`: `bridge` (open) or `internal` (no internet; model API and a configurable allowlist reachable only through a rig-run egress proxy). In v1 scope. |
 | Host-needed cases | `sandbox: host` runs the agent on the host, services still in Docker. Rig warns loudly. |
@@ -176,7 +179,7 @@ rig/
 │   ├── contract/   # contract.md template + parser
 │   ├── daemon/     # server, router, supervisor, recovery
 │   ├── docker/     # networks, containers, port allocator
-│   ├── git/        # worktree provisioning, dirty checks, push/PR
+│   ├── git/        # checkout provisioning (clone/worktree), dirty checks, import, push/PR
 │   ├── harness/    # agent launchers
 │   ├── policy/     # precedence resolution (flags > service > ticket > global)
 │   ├── state/      # state.json reader/writer + phase machine
@@ -209,14 +212,14 @@ rig/
 
 ## 7. Engineering Subsystems
 
-* **Worktrees:** shared object store, isolated checkouts. `stop` refuses to delete dirty worktrees without `--force`; branches are kept by default.
+* **Checkouts:** container mode = isolated `git clone --shared` per service (agent can only touch its own clone); host mode = `git worktree`. Both share the main repo's object store. `stop` imports the branch into the main repo first, then refuses to delete a dirty checkout without `--force`; branches are always kept. All host-side git on a clone uses a hardened runner (no hooks, fsmonitor, external diff, pager, credential helpers).
 * **Networking:** per-ticket bridge/internal network; dynamic host port mapping; port map persisted and verified on daemon restart.
 * **Terminal state:** agent state comes from Claude Code hooks (`--settings`, reported via `rig agent-event`) with backend detection/screen heuristics as fallback; rig overlays lifecycle phase. Message injection is keystrokes (text, then Enter) and is refused while an agent is `blocked` (see `docs/spikes/03-tmux.md`). Herdr is accessed over its local socket API in a dedicated named session (`rig`), so rig never touches the user's default Herdr workspaces; attach with `herdr session attach rig` (see `docs/spikes/02-herdr.md`).
-* **Recovery:** on daemon restart, reconcile `state.json` against actual containers, worktrees, and terminals; mark drift instead of guessing.
+* **Recovery:** on daemon restart, reconcile `state.json` against actual containers, checkouts, and terminals; mark drift instead of guessing.
 * **Summaries:** background LLM compresses diffs + `plan.md`/`tasks.md`. Always shown beside raw status and diff stats; summary is advisory.
 * **Manual testing:** agent writes `manual-tests.md` with placeholders like `{{backend.url}}`; rig substitutes live ports and shows it in the TUI.
 * **Limits & cost:** cap on concurrent active tickets; optional per-agent token/cost readout when the harness exposes it.
-* **Neovim + delta:** open a ticket's worktrees in Neovim; reviews use `delta`.
+* **Neovim + delta:** open a ticket's checkouts in Neovim; reviews use `delta`.
 
 ---
 
