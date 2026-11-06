@@ -160,7 +160,7 @@ Envelope: `{"type":"phase.changed","ticket":"ticket-412","service":"","at":"..."
 | `error` | `{"message"}` |
 
 ## 10. CLI conventions
-- Every command that prints data supports `--json`, printing exactly the API `result` payload.
+- Every command that prints data supports `--json` (a global flag), printing exactly the API `result` payload.
 - Human output to stdout, diagnostics and errors to stderr.
 - Exit codes: `0` ok, `1` generic failure, `2` usage/invalid input, `3` blocked (gate, dirty checkout, limit), `4` daemon/backend unavailable, `5` not found.
 - Destructive commands (`stop --force`, `reconcile --fix`) prompt unless `--yes`.

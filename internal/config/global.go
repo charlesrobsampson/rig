@@ -71,6 +71,13 @@ type Egress struct {
 	DefaultPorts []int    `json:"default_ports"`
 }
 
+// Locations under the rig home (docs/formats.md §2).
+func (g Global) SocketPath() string { return filepath.Join(g.Paths.Home, "rigd.sock") }
+func (g Global) PIDPath() string    { return filepath.Join(g.Paths.Home, "rigd.pid") }
+func (g Global) LogPath() string    { return filepath.Join(g.Paths.Home, "rigd.log") }
+func (g Global) StorePath() string  { return filepath.Join(g.Paths.Home, "store.json") }
+func (g Global) TicketsDir() string { return filepath.Join(g.Paths.Home, "tickets") }
+
 type GlobalOptions struct {
 	// Path is the config file; empty means $RIG_CONFIG, then ~/.config/rig/config.json.
 	Path     string

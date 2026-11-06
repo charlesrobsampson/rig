@@ -239,3 +239,28 @@ func TestLoadGlobalAuthProfiles(t *testing.T) {
 		})
 	}
 }
+
+func TestDerivedPathsLiveUnderRigHome(t *testing.T) {
+	home := t.TempDir()
+	got, err := load(t, "", env{"RIG_HOME": home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"socket":  filepath.Join(home, "rigd.sock"),
+		"pid":     filepath.Join(home, "rigd.pid"),
+		"log":     filepath.Join(home, "rigd.log"),
+		"store":   filepath.Join(home, "store.json"),
+		"tickets": filepath.Join(home, "tickets"),
+	}
+	have := map[string]string{
+		"socket":  got.SocketPath(),
+		"pid":     got.PIDPath(),
+		"log":     got.LogPath(),
+		"store":   got.StorePath(),
+		"tickets": got.TicketsDir(),
+	}
+	if !reflect.DeepEqual(have, want) {
+		t.Errorf("paths = %v, want %v", have, want)
+	}
+}
