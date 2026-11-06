@@ -71,6 +71,9 @@ func TestEnumsRoundTripAndRejectUnknownValues(t *testing.T) {
 	t.Run("AuthType", func(t *testing.T) {
 		checkEnum(t, []domain.AuthType{domain.AuthHostLogin, domain.AuthOAuthToken, domain.AuthAPIKey, domain.AuthAuthToken, domain.AuthBedrock, domain.AuthVertex, domain.AuthFoundry})
 	})
+	t.Run("CheckoutKind", func(t *testing.T) {
+		checkEnum(t, []domain.CheckoutKind{domain.CheckoutClone, domain.CheckoutWorktree})
+	})
 	t.Run("Gate", func(t *testing.T) {
 		checkEnum(t, []domain.Gate{domain.GatePlanApproval, domain.GateReviewApproval, domain.GateManualTestSignoff})
 	})

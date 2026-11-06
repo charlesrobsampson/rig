@@ -140,6 +140,23 @@ func (a AuthType) Valid() bool                   { return slices.Contains(authTy
 func (a AuthType) MarshalText() ([]byte, error)  { return marshalEnum("auth type", a, a.Valid()) }
 func (a *AuthType) UnmarshalText(b []byte) error { return unmarshalEnum("auth type", authTypes, b, a) }
 
+type CheckoutKind string
+
+const (
+	CheckoutClone    CheckoutKind = "clone"
+	CheckoutWorktree CheckoutKind = "worktree"
+)
+
+var checkoutKinds = []CheckoutKind{CheckoutClone, CheckoutWorktree}
+
+func (k CheckoutKind) Valid() bool { return slices.Contains(checkoutKinds, k) }
+func (k CheckoutKind) MarshalText() ([]byte, error) {
+	return marshalEnum("checkout kind", k, k.Valid())
+}
+func (k *CheckoutKind) UnmarshalText(b []byte) error {
+	return unmarshalEnum("checkout kind", checkoutKinds, b, k)
+}
+
 type Gate string
 
 const (
