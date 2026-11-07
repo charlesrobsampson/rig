@@ -186,7 +186,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 17 · Git: hardened runner, checkout interface, worktree
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/17-git-checkout` · Depends: 07
 - Read: `manifest.md` §4 (repo access), §7 (checkouts), `docs/formats.md` §5, §7, `docs/spikes/04-agent-container.md` §3
 - Build: `internal/testkit` helper creating real temp git repos with commits (fixed author, `GIT_CONFIG_GLOBAL=/dev/null`). `internal/git`: (a) a runner that shells out to `git` with an explicit env, in two flavors: *trusted* (the user's main repo) and **hardened** (any directory an agent can write to: `-c core.hooksPath=<empty dir> -c core.fsmonitor=false -c core.pager=cat -c credential.helper=`, `--no-ext-diff --no-textconv` on diff/log/show, `GIT_TERMINAL_PROMPT=0`, no system/global config that could be overridden by repo config); (b) the `Checkout` interface (`Kind()`, `Path()`, `Branch()`, `IsDirty`, `Remove`, `Import`, filled in by tasks 17b and 18) with a `Provision(spec{repo, branch, base, path, kind})` factory; (c) the `worktree` implementation of `Provision` (creates the branch if missing, reuses if it exists and is free), plus `Branches`, `CurrentCommit`, `DefaultBranch`.
