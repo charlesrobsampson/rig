@@ -162,7 +162,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 15 · Ticket registry and `rig list`
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/15-registry-list` · Depends: 08, 11, 14
 - Read: `manifest.md` §2, §6 (CLI), `docs/formats.md` §3, §5, §8
 - Build: daemon scans `~/.rig/tickets/*/ticket.yaml` + `state.json`, exposes `ticket.list` / `ticket.get`; `rig list` (table + `--json`) showing id, title, phase, per-service status, ports. Broken tickets are listed with an error flag, not hidden.
