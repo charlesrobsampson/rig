@@ -303,6 +303,7 @@ func TestEveryEventTypeHasTheSpecifiedName(t *testing.T) {
 		api.EventContractResolved:  "contract.resolved",
 		api.EventEgressDenied:      "egress.denied",
 		api.EventError:             "error",
+		api.EventSubscribed:        "subscribed",
 	}
 	for typ, name := range want {
 		if string(typ) != name {

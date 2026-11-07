@@ -158,6 +158,7 @@ Envelope: `{"type":"phase.changed","ticket":"ticket-412","service":"","at":"..."
 | `contract.resolved` | `{"proposal","outcome":"accepted|rejected"}` |
 | `egress.denied` | `{"host","port","reason"}` (proxy refused a connection) |
 | `error` | `{"message"}` |
+| `subscribed` | `{}` (first item of every `events.subscribe` stream: the subscription is live) |
 
 ## 10. CLI conventions
 - Every command that prints data supports `--json` (a global flag), printing exactly the API `result` payload.
