@@ -179,10 +179,12 @@ rig/
 │   ├── contract/   # contract.md template + parser
 │   ├── daemon/     # server, router, supervisor, recovery
 │   ├── docker/     # networks, containers, port allocator
+│   ├── events/     # in-process event bus feeding events.subscribe streams
 │   ├── domain/     # shared types: Ticket, Service, Policy, enums, id validation
 │   ├── fsutil/     # atomic file writes and cross-process locks
 │   ├── git/        # checkout provisioning (clone/worktree), dirty checks, import, push/PR
 │   ├── harness/    # agent launchers
+│   ├── registry/   # reads tickets (ticket.yaml + state.json) for list/get
 │   ├── policy/     # precedence resolution (flags > service > ticket > global)
 │   ├── state/      # state.json reader/writer + phase machine
 │   ├── store/      # runtime cache store (JSON, SQLite later)
@@ -209,6 +211,7 @@ rig/
 * `rig review <id>` open `delta` diff
 * `rig push <id>` run push policy
 * `rig logs <id>` stream logs
+* `rig events` print daemon events as they happen
 * `rig daemon start|status|stop|run` manage the background daemon (`run` is the foreground form the others re-exec)
 * `rig config show` print the effective global config
 * Global flags: `--config <file>`, `--json`
