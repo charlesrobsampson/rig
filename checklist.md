@@ -172,7 +172,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 16 · Event bus and subscribe
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/16-events` · Depends: 13
 - Read: `manifest.md` §6, `docs/formats.md` §9
 - Build: in-daemon event bus emitting exactly the event types in formats §9; `events.subscribe` API streaming events to clients; slow subscribers dropped without blocking publishers.
