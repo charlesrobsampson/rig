@@ -23,6 +23,9 @@ const (
 	EventContractResolved  EventType = "contract.resolved"
 	EventEgressDenied      EventType = "egress.denied"
 	EventError             EventType = "error"
+	// EventSubscribed is the first item of every events.subscribe stream: the
+	// subscription is live, so nothing published after it can be missed.
+	EventSubscribed EventType = "subscribed"
 )
 
 // Event types are not validated on decode: a client must keep working when a newer
