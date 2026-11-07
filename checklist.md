@@ -196,7 +196,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 17b · Git: isolated shared clone
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/17b-git-clone` · Depends: 17
 - Read: `docs/formats.md` §7 (repository access), `docs/spikes/04-agent-container.md` §3
 - Build: the `clone` implementation of `Checkout`: `git clone --shared <repo> <path>`, branch created from `base` (or reused), `origin` left pointing at the main repo; `ObjectsMounts()` returns the real (symlink-resolved) host paths of the main repo's object store plus any chained alternates, for read-only mounting at the same path in a container (git records real paths; spike 04). Runs only through the hardened runner after provisioning.
