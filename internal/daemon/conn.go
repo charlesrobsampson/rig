@@ -105,7 +105,13 @@ func (s *Server) dispatch(ctx context.Context, enc *api.Encoder, req api.Request
 func reply(enc *api.Encoder, id string, result any, err error) {
 	if err != nil {
 		var apiErr *api.Error
-		if !errors.As(err, &apiErr) {
+		switch {
+		case errors.As(err, &apiErr):
+		case errors.Is(err, context.Canceled):
+			// A request's context is cancelled only when the client leaves or the daemon
+			// stops, so a client still reading is being told about the shutdown.
+			apiErr = &api.Error{Code: api.CodeUnavailable, Message: "daemon is shutting down"}
+		default:
 			apiErr = &api.Error{Code: api.CodeInternal, Message: err.Error()}
 		}
 		enc.Write(api.Failure(id, apiErr))
