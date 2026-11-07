@@ -15,8 +15,11 @@ import (
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/client"
+	"github.com/charlesrobsampson/rig/internal/clock"
 	"github.com/charlesrobsampson/rig/internal/config"
 	"github.com/charlesrobsampson/rig/internal/daemon"
+	"github.com/charlesrobsampson/rig/internal/registry"
+	"github.com/charlesrobsampson/rig/internal/state"
 )
 
 func (a *app) global() (config.Global, error) {
@@ -75,12 +78,16 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	}
 	defer logFile.Close()
 	logger := slog.New(slog.NewTextHandler(logFile, nil))
+	clk := a.deps.clock
+	if clk == nil {
+		clk = clock.Real()
+	}
 
 	srv, err := daemon.Listen(daemon.Options{
 		SocketPath: g.SocketPath(),
 		PIDPath:    g.PIDPath(),
 		Version:    version,
-		Clock:      a.deps.clock,
+		Clock:      clk,
 		Logger:     logger,
 	})
 	if err != nil {
@@ -91,6 +98,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		srv.Stop()
 		return api.EmptyData{}, nil
 	})
+	daemon.RegisterTicketHandlers(srv, registry.New(g.TicketsDir(), state.NewManager(clk)))
 
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
