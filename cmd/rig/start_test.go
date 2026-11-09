@@ -164,3 +164,43 @@ func TestStartShowsTheTicketNetwork(t *testing.T) {
 		t.Errorf("networks after stop: %v", list)
 	}
 }
+
+func TestStartRunsServiceContainersAndShowsTheirURLs(t *testing.T) {
+	home, d, repo, _, dk := newEnvFull(t)
+	repo.Commit("Dockerfile", "FROM scratch\n", "add a Dockerfile")
+	newTicket(t, d, "demo", repo)
+	yamlPath := filepath.Join(home, "tickets", "demo", "ticket.yaml")
+	raw, _ := os.ReadFile(yamlPath)
+	os.WriteFile(yamlPath, []byte(strings.Replace(string(raw), "      branch: rig/", "      build: {dockerfile: Dockerfile}\n      internal_port: 8080\n      branch: rig/", 1)), 0o600)
+
+	stdout, stderr, code := rig(t, d, "start", "demo")
+	if code != 0 || !strings.Contains(stdout, "service svc1: running at http://localhost:41") {
+		t.Fatalf("code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	listing, _, _ := rig(t, d, "list")
+	if !strings.Contains(listing, "svc1:running") || !strings.Contains(listing, "41") {
+		t.Errorf("list should show the running service and its port:\n%s", listing)
+	}
+	list, _ := dk.ListContainers(context.Background(), map[string]string{"rig.ticket": "demo"})
+	if len(list) != 1 || list[0].Name != "rig-demo-svc1" {
+		t.Errorf("containers = %+v", list)
+	}
+
+	dk.Down(nil)
+	rig(t, d, "stop", "demo")
+	if left, _ := dk.ListContainers(context.Background(), nil); len(left) != 0 {
+		t.Errorf("containers after stop: %v", left)
+	}
+}
+
+func TestStartFailsLoudlyWhenAServiceBuildFails(t *testing.T) {
+	home, d, repo, _, _ := newEnvFull(t)
+	newTicket(t, d, "demo", repo) // no Dockerfile in the repo
+	yamlPath := filepath.Join(home, "tickets", "demo", "ticket.yaml")
+	raw, _ := os.ReadFile(yamlPath)
+	os.WriteFile(yamlPath, []byte(strings.Replace(string(raw), "      branch: rig/", "      build: {dockerfile: Dockerfile}\n      branch: rig/", 1)), 0o600)
+	_, stderr, code := rig(t, d, "start", "demo")
+	if code != 2 || !strings.Contains(stderr, "no Dockerfile") {
+		t.Errorf("code %d (want 2, invalid), stderr %q", code, stderr)
+	}
+}

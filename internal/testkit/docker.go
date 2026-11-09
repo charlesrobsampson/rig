@@ -136,6 +136,16 @@ func (f *FakeDocker) Resolve(from, name string) (string, error) {
 	return "", fmt.Errorf("%w: %s does not resolve from %s", docker.ErrNotFound, name, from)
 }
 
+// ContainerSpec returns the spec a container was created from (zero if unknown).
+func (f *FakeDocker) ContainerSpec(nameOrID string) docker.ContainerSpec {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if c := f.find(nameOrID); c != nil {
+		return c.spec
+	}
+	return docker.ContainerSpec{}
+}
+
 // HostPorts lists the host ports held by running containers, sorted.
 func (f *FakeDocker) HostPorts() []int {
 	f.mu.Lock()
