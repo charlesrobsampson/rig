@@ -73,6 +73,13 @@ func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 		return m.Start(ctx, p)
 	})
 	registerStop(s, m)
+	s.Handle(api.MethodPushRun, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.PushRunParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "push.run needs params like {\"id\": \"ticket-1\"}"}
+		}
+		return m.Push(ctx, p)
+	})
 	s.Handle(api.MethodReviewDiff, func(ctx context.Context, params json.RawMessage) (any, error) {
 		var p api.ReviewDiffParams
 		if err := json.Unmarshal(params, &p); err != nil {

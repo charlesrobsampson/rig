@@ -59,6 +59,8 @@ type Options struct {
 	ServiceStartTimeout time.Duration
 	HealthPoll          time.Duration
 	Settle              time.Duration
+	// GH runs the GitHub CLI for pull-request pushes (nil means the real `gh`).
+	GH git.GH
 	// EgressBinary finds the egress proxy's binary (nil means the embedded one).
 	EgressBinary egress.BinaryFinder
 	// StopGrace is how long a stopping container gets before it is killed (default 10s).

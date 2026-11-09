@@ -21,8 +21,10 @@ type Flags struct {
 }
 
 type Effective struct {
-	Gates           []domain.Gate
-	PushMode        domain.PushMode
+	Gates    []domain.Gate
+	PushMode domain.PushMode
+	// MergeCommit: merge mode may create a merge commit (default false).
+	MergeCommit     bool
 	Sandbox         domain.Sandbox
 	NetworkMode     domain.NetworkMode
 	Harness         string
@@ -36,12 +38,23 @@ func Resolve(g config.Global, t domain.Ticket, s domain.Service, f Flags) Effect
 	return Effective{
 		Gates:           firstGates(f.Gates, s.Policy.Gates, t.Policy.Gates, d.Policy.Gates),
 		PushMode:        first(f.PushMode, s.Policy.Push.Mode, t.Policy.Push.Mode, d.Policy.Push.Mode),
+		MergeCommit:     firstBool(s.Policy.Push.MergeCommit, t.Policy.Push.MergeCommit, d.Policy.Push.MergeCommit),
 		Sandbox:         first(f.Sandbox, s.Sandbox, t.Sandbox, d.Sandbox),
 		NetworkMode:     first(f.NetworkMode, t.Docker.NetworkMode, d.NetworkMode),
 		Harness:         first(f.Harness, s.Harness, t.Harness, d.Harness),
 		TerminalBackend: first(f.TerminalBackend, d.TerminalBackend),
 		Auth:            first(s.Auth, t.Auth, g.Auth.Default),
 	}
+}
+
+// firstBool returns the first level that says anything; false when none does.
+func firstBool(levels ...*bool) bool {
+	for _, v := range levels {
+		if v != nil {
+			return *v
+		}
+	}
+	return false
 }
 
 func first[T comparable](levels ...T) T {
