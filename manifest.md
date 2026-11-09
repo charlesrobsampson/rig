@@ -183,6 +183,7 @@ rig/
 │   ├── domain/     # shared types: Ticket, Service, Policy, enums, id validation
 │   ├── fsutil/     # atomic file writes and cross-process locks
 │   ├── lifecycle/  # start/stop of a ticket: provisions checkouts, records state, emits events
+│   ├── gates/      # which approvals a ticket needs before changing phase (pure rules)
 │   ├── git/        # checkout provisioning (clone/worktree), dirty checks, import, push/PR
 │   ├── harness/    # agent launchers
 │   ├── registry/   # reads tickets (ticket.yaml + state.json) for list/get
@@ -207,6 +208,7 @@ rig/
 * `rig new` create ticket (manual or `--from jira:PROJ-412`)
 * `rig start <id> [--sandbox host|container]` provision checkouts
 * `rig stop <id> [--force] [--keep-checkouts] [--yes]` import work, then remove checkouts (never loses work silently)
+* `rig gates <id>` show the approvals a ticket needs; `rig approve <id> <gate> [--service name]` grant one (humans only)
 * `rig list` tickets, phase, status, ports
 * `rig attach <id> [service]` jump into agent terminal
 * `rig approve <id> <gate>` pass a gate
