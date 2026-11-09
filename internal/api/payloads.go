@@ -95,6 +95,8 @@ type TicketStartResult struct {
 	Network *NetworkInfo `json:"network,omitempty"`
 	// Containers says, per service that runs in Docker, how its container went.
 	Containers []ServiceContainerInfo `json:"containers,omitempty"`
+	// Warnings are things the user should know about this start (an agent on the host).
+	Warnings []string `json:"warnings,omitempty"`
 	// Dependencies says how each sidecar (a database, a queue) went; Service holds its name.
 	Dependencies []ServiceContainerInfo `json:"dependencies,omitempty"`
 }
@@ -125,11 +127,13 @@ type NetworkInfo struct {
 // Note when none was needed or allowed (already running, or a sandbox that cannot run
 // agents yet) and with Error when starting it failed.
 type AgentInfo struct {
-	Service  string `json:"service"`
-	PaneID   string `json:"pane_id,omitempty"`
-	Launched bool   `json:"launched"`
-	Note     string `json:"note,omitempty"`
-	Error    string `json:"error,omitempty"`
+	Service string `json:"service"`
+	PaneID  string `json:"pane_id,omitempty"`
+	// Container is the agent's container, when it runs in one.
+	Container string `json:"container,omitempty"`
+	Launched  bool   `json:"launched"`
+	Note      string `json:"note,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 // AgentAttachParams names the agent to look at. Service may be empty when the ticket

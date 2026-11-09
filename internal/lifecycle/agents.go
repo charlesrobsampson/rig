@@ -18,20 +18,21 @@ import (
 // pane in state.json. A service whose agent cannot start is reported in the result;
 // the checkouts stay, and starting again retries (it is idempotent).
 //
-// Only host-sandbox services get an agent for now: an agent for a container-sandbox
-// service must run in a container (Docker support), and running it on the host instead
-// would quietly drop the isolation that sandbox promises.
-func (m *Manager) launchAgents(ctx context.Context, l loaded, checkouts []api.CheckoutInfo, sandbox domain.Sandbox) []api.AgentInfo {
+// A container-sandbox service's agent runs in its own container (launchContainerAgent);
+// without Docker it is not started on the host instead, since that would quietly drop
+// the isolation the sandbox promises. A host-sandbox service's agent runs on the host,
+// which start warns about.
+func (m *Manager) launchAgents(ctx context.Context, l loaded, checkouts []api.CheckoutInfo, sandbox domain.Sandbox, net *api.NetworkInfo) (agents []api.AgentInfo, warnings []string) {
 	if m.opts.Backend == nil {
-		return nil
+		return nil, nil
 	}
 	var out []api.AgentInfo
 	ready := false
 	for i, svc := range l.ticket.Services {
 		info := api.AgentInfo{Service: svc.Name}
 		eff := policy.Resolve(m.opts.Global, l.ticket, svc, policy.Flags{Sandbox: sandbox})
-		if eff.Sandbox != domain.SandboxHost {
-			info.Note = "no agent started: a container-sandbox agent needs Docker support; start with --sandbox host to run it on the host"
+		if eff.Sandbox != domain.SandboxHost && (m.opts.Docker == nil || net == nil) {
+			info.Note = "no agent started: a container-sandbox agent needs Docker; start with --sandbox host to run it on the host"
 			out = append(out, info)
 			continue
 		}
@@ -57,60 +58,99 @@ func (m *Manager) launchAgents(ctx context.Context, l loaded, checkouts []api.Ch
 			}
 			ready = true
 		}
-		id, err := m.launchAgent(ctx, l, svc, eff, checkouts[i].Path)
+		var al agentLaunch
+		var err error
+		if eff.Sandbox == domain.SandboxHost {
+			al, err = m.prepareHostAgent(l, svc, eff, checkouts[i].Path)
+			if err == nil {
+				warnings = append(warnings, fmt.Sprintf("service %s: its agent runs directly on this machine (sandbox: host), with your user's access to everything you can reach; use the default container sandbox to isolate it", svc.Name))
+			}
+		} else {
+			al, err = m.prepareContainerAgent(ctx, l, svc, eff, checkouts[i], net)
+		}
+		if err != nil {
+			info.Error = err.Error()
+			out = append(out, info)
+			continue
+		}
+		id, err := m.spawnAgent(ctx, l, svc, al)
 		if err != nil {
 			info.Error = err.Error()
 		} else {
-			info.PaneID, info.Launched = string(id), true
+			info.PaneID, info.Launched, info.Container = string(id), true, al.containerName
 		}
 		out = append(out, info)
 	}
-	return out
+	return out, warnings
 }
 
-func (m *Manager) launchAgent(ctx context.Context, l loaded, svc domain.Service, eff policy.Effective, dir string) (terminal.PaneID, error) {
+// agentLaunch is what the terminal backend is asked to run, and where the agent lives.
+type agentLaunch struct {
+	command []string
+	env     map[string]string
+	dir     string // the pane's working directory on the host
+	// containerName and containerID are set when the agent runs in a container.
+	containerName, containerID string
+}
+
+// agentRequest is the harness request both kinds of launch start from: the secrets and
+// auth profile resolved, nothing about where the agent runs.
+func (m *Manager) agentRequest(l loaded, svc domain.Service, eff policy.Effective) (harness.Harness, harness.Request, error) {
 	h, err := harness.Get(eff.Harness)
 	if err != nil {
-		return "", err
+		return nil, harness.Request{}, err
 	}
-	req := harness.Request{
-		Ticket: l.ticket, Service: svc.Name, Phase: l.state.Phase, TicketDir: l.dir,
-		Dir: dir, Network: eff.NetworkMode, HookCommand: shellQuote(m.rigBinary()) + " agent-event",
-	}
+	req := harness.Request{Ticket: l.ticket, Service: svc.Name, Phase: l.state.Phase, TicketDir: l.dir, Network: eff.NetworkMode}
 	names := append([]string(nil), l.ticket.Secrets...)
 	if eff.Auth != "" {
 		profile, ok := m.opts.Global.Auth.Profiles[eff.Auth]
 		if !ok {
-			return "", fmt.Errorf("auth profile %q is not defined", eff.Auth)
+			return nil, req, fmt.Errorf("auth profile %q is not defined", eff.Auth)
+		}
+		if profile.Type == domain.AuthHostLogin && eff.Sandbox == domain.SandboxContainer {
+			return nil, req, fmt.Errorf("auth profile %q uses the machine's own login, which a container cannot have; use a token, API key or cloud profile, or sandbox: host", eff.Auth)
 		}
 		req.Profile = &profile
 		names = append(names, profile.Secrets...)
 	}
 	if len(names) > 0 {
 		if m.opts.Secrets == nil {
-			return "", fmt.Errorf("secrets %s cannot be resolved yet", strings.Join(names, ", "))
+			return nil, req, fmt.Errorf("secrets %s cannot be resolved yet", strings.Join(names, ", "))
 		}
 		if req.Secrets, err = m.opts.Secrets(names); err != nil {
-			return "", fmt.Errorf("resolve secrets: %w", err)
+			return nil, req, fmt.Errorf("resolve secrets: %w", err)
 		}
 	}
+	return h, req, nil
+}
+
+func (m *Manager) prepareHostAgent(l loaded, svc domain.Service, eff policy.Effective, dir string) (agentLaunch, error) {
+	h, req, err := m.agentRequest(l, svc, eff)
+	if err != nil {
+		return agentLaunch{}, err
+	}
+	req.Dir, req.HookCommand = dir, shellQuote(m.rigBinary())+" agent-event"
 	launch, err := h.Command(req)
 	if err != nil {
-		return "", err
+		return agentLaunch{}, err
 	}
 	for k, v := range m.opts.AgentEnv {
 		if _, taken := launch.Env[k]; !taken {
 			launch.Env[k] = v
 		}
 	}
+	return agentLaunch{command: launch.Command, env: launch.Env, dir: launch.Dir}, nil
+}
 
-	id, err := m.opts.Backend.Spawn(ctx, terminal.SpawnSpec{Ticket: l.id, Service: svc.Name, Dir: launch.Dir, Command: launch.Command, Env: launch.Env})
+// spawnAgent opens the pane and records it in state.json.
+func (m *Manager) spawnAgent(ctx context.Context, l loaded, svc domain.Service, al agentLaunch) (terminal.PaneID, error) {
+	id, err := m.opts.Backend.Spawn(ctx, terminal.SpawnSpec{Ticket: l.id, Service: svc.Name, Dir: al.dir, Command: al.command, Env: al.env})
 	if err != nil {
 		return "", fmt.Errorf("start the agent: %w", err)
 	}
 	err = m.opts.States.Update(l.statePath, func(s *state.State) error {
 		ss := s.Services[svc.Name]
-		ss.Agent = state.Agent{Backend: m.opts.BackendName, PaneID: string(id), State: domain.AgentUnknown}
+		ss.Agent = state.Agent{Backend: m.opts.BackendName, PaneID: string(id), State: domain.AgentUnknown, ContainerID: al.containerID}
 		s.Services[svc.Name] = ss
 		return nil
 	})
@@ -136,7 +176,7 @@ func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''
 // that may still be running).
 func (m *Manager) closeAgents(ctx context.Context, id string, l loaded, force bool) error {
 	if m.opts.Backend == nil {
-		return nil
+		return m.removeAgentContainers(ctx, id, l.ticket, force)
 	}
 	var closed []string
 	for _, svc := range l.ticket.Services {
@@ -153,6 +193,9 @@ func (m *Manager) closeAgents(ctx context.Context, id string, l loaded, force bo
 		default:
 			return &api.Error{Code: api.CodeUnavailable, Message: fmt.Sprintf("cannot close the agent of service %s: %v (stop with force to carry on anyway)", svc.Name, err)}
 		}
+	}
+	if err := m.removeAgentContainers(ctx, id, l.ticket, force); err != nil {
+		return err
 	}
 	if len(closed) == 0 {
 		return nil

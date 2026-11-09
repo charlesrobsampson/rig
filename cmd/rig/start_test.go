@@ -181,7 +181,7 @@ func TestStartRunsServiceContainersAndShowsTheirURLs(t *testing.T) {
 	if !strings.Contains(listing, "svc1:running") || !strings.Contains(listing, "41") {
 		t.Errorf("list should show the running service and its port:\n%s", listing)
 	}
-	list, _ := dk.ListContainers(context.Background(), map[string]string{"rig.ticket": "demo"})
+	list, _ := dk.ListContainers(context.Background(), map[string]string{"rig.ticket": "demo", "rig.role": "service"})
 	if len(list) != 1 || list[0].Name != "rig-demo-svc1" {
 		t.Errorf("containers = %+v", list)
 	}
