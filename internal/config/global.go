@@ -66,6 +66,13 @@ type AuthProfile struct {
 
 type Docker struct {
 	ExtraCACerts []string `json:"extra_ca_certs,omitempty"`
+	// PortRange is where host ports for service containers are allocated.
+	PortRange PortRange `json:"port_range"`
+}
+
+type PortRange struct {
+	Min int `json:"min"`
+	Max int `json:"max"`
 }
 
 type Egress struct {
@@ -112,6 +119,7 @@ func defaultGlobal(userHome string) Global {
 		Limits: Limits{MaxActiveTickets: 8},
 		Paths:  Paths{Home: filepath.Join(userHome, ".rig")},
 		Egress: Egress{DefaultAllow: []string{"api.anthropic.com"}, DefaultPorts: []int{443}},
+		Docker: Docker{PortRange: PortRange{Min: 41000, Max: 41999}},
 	}
 }
 
@@ -242,6 +250,9 @@ func validateGlobal(g Global) []string {
 		if port < 1 || port > 65535 {
 			add("egress.default_ports[%d]: %d must be between 1 and 65535", i, port)
 		}
+	}
+	if r := g.Docker.PortRange; r.Min < 1024 || r.Max > 65535 || r.Min > r.Max {
+		add("docker.port_range: %d-%d must be within 1024-65535 with min <= max", r.Min, r.Max)
 	}
 	return append(problems, validateAuth(g.Auth)...)
 }
