@@ -488,7 +488,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 44 · Container-aware stop
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/44-stop-containers` · Depends: 22, 38, 40, 42
 - Read: `manifest.md` §7
 - Build: extend `rig stop` to stop agents, services, dependencies, proxy, then the network, free ports, then checkouts (import and dirty check first, before anything is destroyed).
