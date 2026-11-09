@@ -1,6 +1,7 @@
 package git_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,8 +86,8 @@ func TestProvisionWorktreeRefusesABranchCheckedOutElsewhere(t *testing.T) {
 	t.Run("in the main working tree", func(t *testing.T) {
 		repo := testkit.NewRepo(t)
 		_, err := git.Provision(ctx, worktreeSpec(repo, newPath(t), "main", "main"))
-		if err == nil || !strings.Contains(err.Error(), "already checked out") || !strings.Contains(err.Error(), repo.Dir) {
-			t.Errorf("error = %v, want one saying where the branch is checked out", err)
+		if err == nil || !strings.Contains(err.Error(), "already checked out") || !strings.Contains(err.Error(), repo.Dir) || !errors.Is(err, git.ErrBranchInUse) {
+			t.Errorf("error = %v, want ErrBranchInUse saying where the branch is checked out", err)
 		}
 	})
 
@@ -111,8 +112,8 @@ func TestProvisionWorktreePathRules(t *testing.T) {
 		os.MkdirAll(path, 0o755)
 		os.WriteFile(filepath.Join(path, "keep.txt"), []byte("mine"), 0o644)
 		_, err := git.Provision(ctx, worktreeSpec(repo, path, "feat/a", "main"))
-		if err == nil || !strings.Contains(err.Error(), "not empty") {
-			t.Errorf("error = %v", err)
+		if err == nil || !strings.Contains(err.Error(), "not empty") || !errors.Is(err, git.ErrPathInUse) {
+			t.Errorf("error = %v, want ErrPathInUse", err)
 		}
 		if got, _ := os.ReadFile(filepath.Join(path, "keep.txt")); string(got) != "mine" {
 			t.Error("existing files were touched")

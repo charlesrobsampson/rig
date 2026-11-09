@@ -2,12 +2,34 @@ package git
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/charlesrobsampson/rig/internal/domain"
 )
+
+var (
+	// ErrBranchInUse matches (errors.Is) the error for a branch that is already checked
+	// out in another worktree.
+	ErrBranchInUse = errors.New("branch in use")
+	// ErrPathInUse matches the error for a checkout directory that exists and is not empty.
+	ErrPathInUse = errors.New("checkout path in use")
+)
+
+// matchedError keeps its own message but also matches a sentinel with errors.Is.
+type matchedError struct {
+	msg      string
+	sentinel error
+}
+
+func (e matchedError) Error() string        { return e.msg }
+func (e matchedError) Is(target error) bool { return target == e.sentinel }
+
+func matched(sentinel error, format string, args ...any) error {
+	return matchedError{msg: fmt.Sprintf(format, args...), sentinel: sentinel}
+}
 
 // Checkout is a service's working copy of its repository: a worktree on the host,
 // or an isolated clone for container agents (docs/formats.md §7).
@@ -79,14 +101,14 @@ func checkPathFree(path string) error {
 		return err
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("%s already exists and is not a directory", path)
+		return matched(ErrPathInUse, "%s already exists and is not a directory", path)
 	}
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return err
 	}
 	if len(entries) > 0 {
-		return fmt.Errorf("%s already exists and is not empty", path)
+		return matched(ErrPathInUse, "%s already exists and is not empty", path)
 	}
 	return nil
 }
