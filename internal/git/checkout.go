@@ -15,6 +15,16 @@ type Checkout interface {
 	Kind() domain.CheckoutKind
 	Path() string
 	Branch() string
+
+	// IsDirty reports the work that deleting the checkout would lose.
+	IsDirty(ctx context.Context) (Dirtiness, error)
+	// Import makes the branch's commits available in the main repository: a fetch for a
+	// clone (refusing to rewrite the main repo's branch unless force), nothing for a
+	// worktree, whose branch already lives there.
+	Import(ctx context.Context, force bool) error
+	// Remove deletes the checkout, keeping the branch. Without force it refuses with a
+	// *DirtyError while any work in it would be lost. Removing a missing checkout is a no-op.
+	Remove(ctx context.Context, force bool) error
 }
 
 type Spec struct {

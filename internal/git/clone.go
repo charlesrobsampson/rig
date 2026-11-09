@@ -3,9 +3,11 @@ package git
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/charlesrobsampson/rig/internal/domain"
@@ -26,6 +28,100 @@ type clone struct {
 func (c clone) Kind() domain.CheckoutKind { return domain.CheckoutClone }
 func (c clone) Path() string              { return c.path }
 func (c clone) Branch() string            { return c.branch }
+
+// IsDirty looks inside an agent-writable directory, so every command is hardened.
+func (c clone) IsDirty(ctx context.Context) (Dirtiness, error) {
+	modified, untracked, err := uncommitted(ctx, Hardened(), c.path)
+	if err != nil {
+		return Dirtiness{}, err
+	}
+	unimported, err := c.unimported(ctx)
+	if err != nil {
+		return Dirtiness{}, err
+	}
+	return Dirtiness{Modified: modified, Untracked: untracked, Unimported: unimported}, nil
+}
+
+// unimported counts the branch's commits the main repository lacks: those not in its
+// copy of the branch, or, if it has none, not on any of its branches. The main repo's
+// objects are visible to the clone through alternates, so the clone can compare.
+func (c clone) unimported(ctx context.Context) (int, error) {
+	tip, err := c.branchTip(ctx)
+	if err != nil {
+		return 0, err
+	}
+	have, err := Trusted().Run(ctx, c.repo, "for-each-ref", "--format=%(objectname)", "refs/heads/"+c.branch)
+	if err != nil {
+		return 0, err
+	}
+	if have == "" {
+		if have, err = Trusted().Run(ctx, c.repo, "for-each-ref", "--format=%(objectname)", "refs/heads"); err != nil {
+			return 0, err
+		}
+	}
+	args := []string{"rev-list", "--count", tip}
+	if have != "" {
+		args = append(args, "--not")
+		args = append(args, strings.Fields(have)...)
+	}
+	out, err := Hardened().Run(ctx, c.path, args...)
+	if err != nil {
+		return 0, err
+	}
+	n, err := strconv.Atoi(out)
+	if err != nil {
+		return 0, fmt.Errorf("count unimported commits: %w", err)
+	}
+	return n, nil
+}
+
+func (c clone) branchTip(ctx context.Context) (string, error) {
+	tip, err := Hardened().Run(ctx, c.path, "rev-parse", "--verify", "--quiet", "refs/heads/"+c.branch)
+	if err != nil {
+		return "", fmt.Errorf("branch %s no longer exists in %s", c.branch, c.path)
+	}
+	return tip, nil
+}
+
+// Import fetches the branch into the main repository. The fetch runs in the trusted
+// main repo and verifies the objects it receives, since the clone is agent-written.
+func (c clone) Import(ctx context.Context, force bool) error {
+	if _, err := c.branchTip(ctx); err != nil {
+		return err
+	}
+	if holder, err := branchHolder(ctx, c.repo, c.branch); err != nil {
+		return err
+	} else if holder != "" {
+		return fmt.Errorf("branch %s is checked out at %s in the main repository; switch it to another branch before importing", c.branch, holder)
+	}
+	ref := "refs/heads/" + c.branch
+	refspec := ref + ":" + ref
+	if force {
+		refspec = "+" + refspec
+	}
+	_, err := Trusted().Run(ctx, c.repo, "-c", "transfer.fsckObjects=true", "fetch", "--no-tags", c.path, refspec)
+	var gitErr *Error
+	if errors.As(err, &gitErr) && strings.Contains(gitErr.Stderr, "non-fast-forward") {
+		return fmt.Errorf("the main repository's %s has commits the checkout does not (non-fast-forward); import with force to overwrite it", c.branch)
+	}
+	return err
+}
+
+func (c clone) Remove(ctx context.Context, force bool) error {
+	if _, err := os.Stat(c.path); os.IsNotExist(err) {
+		return nil
+	}
+	if !force {
+		d, err := c.IsDirty(ctx)
+		if err != nil {
+			return err
+		}
+		if d.Any() {
+			return &DirtyError{Path: c.path, Dirtiness: d}
+		}
+	}
+	return os.RemoveAll(c.path)
+}
 
 // ObjectsMounts lists the real host paths of the main repository's object store and
 // of any stores it borrows from, in the order to mount them. They are derived from
