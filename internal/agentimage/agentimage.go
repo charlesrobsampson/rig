@@ -105,7 +105,11 @@ func (b *Builder) Ensure(ctx context.Context, base string) (tag string, built bo
 		Labels: map[string]string{docker.LabelRole: docker.RoleAgent, "rig.agent-image": "1"},
 	})
 	if err != nil {
-		return "", false, fmt.Errorf("build the agent image on %s: %w", base, err)
+		hint := ""
+		if len(b.certs) == 0 {
+			hint = "\nrig hint: if this network inspects TLS (a corporate proxy), set docker.extra_ca_certs in the rig config to the proxy's root certificate so the image can download packages"
+		}
+		return "", false, fmt.Errorf("build the agent image on %s: %w%s", base, err, hint)
 	}
 	return tag, true, nil
 }

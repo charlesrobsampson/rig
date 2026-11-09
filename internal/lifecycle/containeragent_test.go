@@ -201,9 +201,12 @@ func TestAHostLoginProfileCannotWorkInAContainer(t *testing.T) {
 	path := f.create("demo", repo)
 	raw, _ := os.ReadFile(filepath.Join(path, "ticket.yaml"))
 	os.WriteFile(filepath.Join(path, "ticket.yaml"), append(raw, []byte("auth: mine\n")...), 0o600)
-	a := f.mustStart("demo", domain.SandboxContainer).Agents[0]
-	if a.Launched || !strings.Contains(a.Error, "machine's own login") {
-		t.Errorf("agent = %+v", a)
+	_, err := f.start("demo", domain.SandboxContainer)
+	if apiCode(t, err) != api.CodeInvalid || !strings.Contains(err.Error(), "machine's own login") {
+		t.Errorf("error = %v, want invalid before anything is created", err)
+	}
+	if exists(filepath.Join(f.dir, "demo", "svc1")) {
+		t.Error("a checkout was created")
 	}
 	if _, err := dk.InspectContainer(ctx, "rig-demo-svc1-agent"); err == nil {
 		t.Error("an agent container was created")

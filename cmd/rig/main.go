@@ -10,6 +10,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/client"
 	"github.com/charlesrobsampson/rig/internal/clock"
 	"github.com/charlesrobsampson/rig/internal/docker"
+	"github.com/charlesrobsampson/rig/internal/secrets"
 	"github.com/charlesrobsampson/rig/internal/terminal"
 )
 
@@ -24,6 +25,8 @@ type deps struct {
 	backend terminal.Backend
 	// docker runs networks and containers; nil means the docker command.
 	docker docker.Docker
+	// keychain replaces the macOS `security` tool for secret lookups (tests).
+	keychain secrets.SecurityRunner
 	// exec replaces this process with a command (rig attach); nil means syscall.Exec.
 	exec func(argv []string) error
 }

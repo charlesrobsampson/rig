@@ -14,6 +14,7 @@ import (
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/docker"
+	"github.com/charlesrobsampson/rig/internal/secrets"
 	"github.com/charlesrobsampson/rig/internal/terminal"
 )
 
@@ -34,12 +35,13 @@ func rigEnv(t *testing.T) string {
 // inProcessDaemon is a spawner that runs `rig daemon run` in a goroutine instead of a
 // detached process, and a way to wait for it to exit.
 type inProcessDaemon struct {
-	backend terminal.Backend // nil means the configured one
-	docker  docker.Docker    // nil means the docker command
-	mu      sync.Mutex
-	starts  int
-	done    []chan int
-	cancel  context.CancelFunc
+	backend  terminal.Backend // nil means the configured one
+	docker   docker.Docker    // nil means the docker command
+	keychain secrets.SecurityRunner
+	mu       sync.Mutex
+	starts   int
+	done     []chan int
+	cancel   context.CancelFunc
 }
 
 func (d *inProcessDaemon) spawn(context.Context) error {
@@ -51,7 +53,7 @@ func (d *inProcessDaemon) spawn(context.Context) error {
 	done := make(chan int, 1)
 	d.done = append(d.done, done)
 	go func() {
-		done <- run(ctx, []string{"daemon", "run"}, &bytes.Buffer{}, &bytes.Buffer{}, deps{backend: d.backend, docker: d.docker})
+		done <- run(ctx, []string{"daemon", "run"}, &bytes.Buffer{}, &bytes.Buffer{}, deps{backend: d.backend, docker: d.docker, keychain: d.keychain})
 	}()
 	return nil
 }

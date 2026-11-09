@@ -1,8 +1,15 @@
 # The agent image: the service's own toolchain image plus what an agent needs
 # (docs/spikes/04-agent-container.md §1). Built by rig; the base comes in as BASE.
-ARG BASE
+ARG BASE=debian:bookworm-slim
 FROM ${BASE}
 USER root
+# Extra certificates go in before anything is downloaded: behind a TLS-inspecting proxy
+# even a package index fails without them. (Debian's apt uses http and the bundle below
+# does not exist yet there; update-ca-certificates after the install covers it.)
+COPY certs/ /usr/local/share/ca-certificates/
+RUN for f in /usr/local/share/ca-certificates/*.crt; do \
+      [ -e "$f" ] && [ -f /etc/ssl/certs/ca-certificates.crt ] && cat "$f" >> /etc/ssl/certs/ca-certificates.crt; \
+    done; true
 RUN set -e; \
     if command -v apt-get >/dev/null 2>&1; then \
       apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl procps ripgrep bash \
@@ -12,7 +19,6 @@ RUN set -e; \
     else \
       echo "rig: cannot add git and curl to this base image: it has neither apt-get nor apk" >&2; exit 1; \
     fi
-COPY certs/ /usr/local/share/ca-certificates/
 RUN update-ca-certificates
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
     NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \

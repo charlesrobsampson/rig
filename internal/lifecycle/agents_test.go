@@ -182,15 +182,18 @@ func TestAgentSecrets(t *testing.T) {
 			t.Error("the secret value leaked into state or the result")
 		}
 	})
-	t.Run("a resolver failure is reported", func(t *testing.T) {
+	t.Run("a resolver failure refuses the start before anything is created", func(t *testing.T) {
 		f, _ := agentFixture(t, func(o *lifecycle.Options) {
 			withProfile(o)
 			o.Secrets = func([]string) (map[string]string, error) { return nil, errors.New("keychain locked") }
 		})
 		setAuth(t, f, f.create("demo", testkit.NewRepo(t)))
-		a := agentByService(f.mustStart("demo", domain.SandboxHost))["svc1"]
-		if a.Launched || !strings.Contains(a.Error, "keychain locked") {
-			t.Errorf("agent = %+v", a)
+		_, err := f.start("demo", domain.SandboxHost)
+		if apiCode(t, err) != api.CodeInvalid || !strings.Contains(err.Error(), "keychain locked") {
+			t.Errorf("error = %v", err)
+		}
+		if exists(filepath.Join(f.dir, "demo", "svc1")) {
+			t.Error("a checkout was created before the secrets were checked")
 		}
 	})
 }

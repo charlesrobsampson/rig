@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -31,9 +32,13 @@ func newEnvFull(t *testing.T) (home string, d deps, repo *testkit.Repo, term *te
 	t.Helper()
 	home = rigEnv(t)
 	term, dk = testkit.NewFakeTerminal(), testkit.NewFakeDocker()
-	daemon := &inProcessDaemon{backend: term, docker: dk}
+	// an empty keychain: tests never read the real one
+	empty := func(context.Context, ...string) (string, string, int, error) {
+		return "", "item could not be found", 44, nil
+	}
+	daemon := &inProcessDaemon{backend: term, docker: dk, keychain: empty}
 	t.Cleanup(func() { daemon.shutdown(t) })
-	return home, deps{spawner: daemon.spawn, backend: term, docker: dk}, testkit.NewRepo(t), term, dk
+	return home, deps{spawner: daemon.spawn, backend: term, docker: dk, keychain: empty}, testkit.NewRepo(t), term, dk
 }
 
 func TestNewCreatesATicketThatListShows(t *testing.T) {

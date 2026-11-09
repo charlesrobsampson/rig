@@ -132,6 +132,10 @@ func (m *Manager) Start(ctx context.Context, p api.TicketStartParams) (api.Ticke
 		return api.TicketStartResult{Summary: res.Summary, Launches: launches}, nil
 	}
 
+	if err := m.checkSecrets(l, p.Sandbox); err != nil {
+		return api.TicketStartResult{}, err
+	}
+
 	var infos []api.CheckoutInfo
 	var created []git.Checkout
 	rollback := func() {
