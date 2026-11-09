@@ -216,7 +216,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 19 · TicketSource interface and manual source
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/19-ticket-source` · Depends: 07
 - Read: `manifest.md` §5, §6 (interfaces)
 - Build: `internal/ticket` `Source` interface (`Fetch(ref) -> TicketSeed{id,title,description,url}`) + `manual` impl (no remote) + registry by `source.type`. Fake source in `testkit`.
