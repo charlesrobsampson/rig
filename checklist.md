@@ -502,7 +502,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 45 · `rig review`
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/45-review` · Depends: 18, 25
 - Read: `manifest.md` §3 (review), §7
 - Build: per-service diff against the base branch (clone checkouts through the hardened runner) piped through `delta` (fallback to plain `git diff` if absent, with a notice); `--stat` summary; moves the ticket into `review` if requested.
