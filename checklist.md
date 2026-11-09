@@ -532,7 +532,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 48 · `rig push` wiring and gates
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/48-rig-push` · Depends: 25, 47
 - Read: `manifest.md` §3 (push phase), §5
 - Build: `rig push <id>` requires phase `push` (gates satisfied), runs each service's configured mode, reports per-service results, moves to `done` only if every service succeeded; partial failure leaves state resumable.
