@@ -865,7 +865,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 70 · README, license, CI, release
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/70-release` · Depends: 69
 - Read: `manifest.md` §1
 - Build: README (install, quickstart, architecture, config examples, sandbox model and its limits), example `ticket.yaml` files, license, CI running `task check` and `task test:race` (plus the tagged suites where the runner supports them), and a `task release` target producing release builds. Contributors need only Go and `go-task`.
