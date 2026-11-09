@@ -95,6 +95,8 @@ type TicketStartResult struct {
 	Network *NetworkInfo `json:"network,omitempty"`
 	// Containers says, per service that runs in Docker, how its container went.
 	Containers []ServiceContainerInfo `json:"containers,omitempty"`
+	// Dependencies says how each sidecar (a database, a queue) went; Service holds its name.
+	Dependencies []ServiceContainerInfo `json:"dependencies,omitempty"`
 }
 
 // ServiceContainerInfo is the outcome of running one service's container. Running is

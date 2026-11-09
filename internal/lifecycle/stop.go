@@ -61,6 +61,9 @@ func (m *Manager) Stop(ctx context.Context, p api.TicketStopParams) (api.TicketS
 	if err := m.removeServiceContainers(ctx, p.ID, t, st); err != nil {
 		return api.TicketStopResult{}, err
 	}
+	if err := m.removeDependencyContainers(ctx, p.ID, t); err != nil {
+		return api.TicketStopResult{}, err
+	}
 	if err := m.removeNetworks(ctx, p.ID, st); err != nil {
 		return api.TicketStopResult{}, err
 	}
@@ -167,6 +170,9 @@ func (m *Manager) recordStopped(path string, targets []stopTarget, removed map[s
 		changed = nil
 		if m.opts.Docker != nil {
 			s.Network, s.EgressNetwork = state.Network{}, nil
+			for name := range s.Dependencies {
+				s.Dependencies[name] = state.DependencyState{Status: domain.ServiceStopped}
+			}
 		}
 		for _, tg := range targets {
 			ss := s.Services[tg.svc.Name]

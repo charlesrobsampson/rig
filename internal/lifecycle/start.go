@@ -185,6 +185,10 @@ func (m *Manager) Start(ctx context.Context, p api.TicketStartParams) (api.Ticke
 	if err != nil {
 		return api.TicketStartResult{}, err
 	}
+	deps, err := m.startDependencies(ctx, l, netInfo)
+	if err != nil {
+		return api.TicketStartResult{}, err
+	}
 	containers := m.startServices(ctx, l, infos, netInfo)
 	agents := m.launchAgents(ctx, l, infos, p.Sandbox)
 
@@ -192,7 +196,7 @@ func (m *Manager) Start(ctx context.Context, p api.TicketStartParams) (api.Ticke
 	if err != nil {
 		return api.TicketStartResult{}, err
 	}
-	return api.TicketStartResult{Summary: res.Summary, Checkouts: infos, Agents: agents, Network: netInfo, Containers: containers}, nil
+	return api.TicketStartResult{Summary: res.Summary, Checkouts: infos, Agents: agents, Network: netInfo, Containers: containers, Dependencies: deps}, nil
 }
 
 func kindFor(s domain.Sandbox) domain.CheckoutKind {
