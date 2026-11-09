@@ -71,6 +71,9 @@ type Docker interface {
 	// that ends with the tail of the build output.
 	BuildImage(ctx context.Context, spec BuildSpec) error
 	ImageExists(ctx context.Context, ref string) (bool, error)
+	// ImageID returns the content id of a local image (its digest), so a cache can tell
+	// when a mutable tag such as golang:1.24 has moved. ErrNotFound if it is not local.
+	ImageID(ctx context.Context, ref string) (string, error)
 
 	// CreateContainer makes a stopped container; StartContainer runs it. Containers
 	// are referred to by name or id.

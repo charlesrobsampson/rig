@@ -422,3 +422,22 @@ func TestLabelsHelper(t *testing.T) {
 		t.Errorf("Labels without a service = %v", got)
 	}
 }
+
+func TestImageID(t *testing.T) {
+	c, s := newClient(map[string]dockercli.Result{"image inspect": {Stdout: "sha256:abc123\n"}})
+	id, err := c.ImageID(ctx, "golang:1.24")
+	if err != nil || id != "sha256:abc123" {
+		t.Errorf("ImageID = %q, %v", id, err)
+	}
+	if got := strings.Join(s.last().Args, " "); got != "image inspect --format {{.Id}} golang:1.24" {
+		t.Errorf("args = %s", got)
+	}
+	missing, _ := newClient(map[string]dockercli.Result{"image inspect": fail("Error response from daemon: No such image: x")})
+	if _, err := missing.ImageID(ctx, "x"); !errors.Is(err, docker.ErrNotFound) {
+		t.Errorf("a missing image = %v, want ErrNotFound", err)
+	}
+	empty, _ := newClient(map[string]dockercli.Result{"image inspect": {Stdout: "\n"}})
+	if _, err := empty.ImageID(ctx, "x"); !errors.Is(err, docker.ErrNotFound) {
+		t.Errorf("an empty answer = %v, want ErrNotFound", err)
+	}
+}

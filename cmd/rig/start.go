@@ -67,6 +67,9 @@ working directory, environment) each service would get. Secret values are never 
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "\nnetwork %s (%s)\n", n.Name, mode)
 			}
+			for _, w := range res.Warnings {
+				fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: %s\n", w)
+			}
 			printDependencies(cmd.OutOrStdout(), res.Dependencies)
 			failedServices := printContainers(cmd.OutOrStdout(), res.Containers)
 			if err := printAgents(cmd.OutOrStdout(), res.Agents); err != nil {

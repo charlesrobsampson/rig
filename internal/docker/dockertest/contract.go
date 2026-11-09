@@ -516,6 +516,20 @@ func Run(t *testing.T, newSubject func(t *testing.T) Subject) {
 		if ok, err := e.Docker.ImageExists(ctx, "rig-no-such-image:never"); err != nil || ok {
 			t.Errorf("ImageExists(missing) = %v, %v", ok, err)
 		}
+		id, err := e.Docker.ImageID(ctx, spec.Tag)
+		if err != nil || id == "" {
+			t.Errorf("ImageID(%s) = %q, %v", spec.Tag, id, err)
+		}
+		if _, err := e.Docker.ImageID(ctx, "rig-no-such-image:never"); !errors.Is(err, docker.ErrNotFound) {
+			t.Errorf("ImageID(missing) = %v, want ErrNotFound", err)
+		}
+		os.WriteFile(filepath.Join(ctxDir, "hello.txt"), []byte("changed\n"), 0o600)
+		if err := e.Docker.BuildImage(ctx, spec); err != nil {
+			t.Fatalf("rebuild: %v", err)
+		}
+		if again, err := e.Docker.ImageID(ctx, spec.Tag); err != nil || again == id {
+			t.Errorf("ImageID after the tag was rebuilt with different content = %q (%v), want a new id than %q", again, err, id)
+		}
 		os.WriteFile(filepath.Join(ctxDir, "Dockerfile.other"), []byte("FROM "+e.Image+"\n"), 0o600)
 		if err := e.Docker.BuildImage(ctx, docker.BuildSpec{Tag: "rig-test-build:other", ContextDir: ctxDir, Dockerfile: "Dockerfile.other"}); err != nil {
 			t.Errorf("build with a named Dockerfile: %v", err)

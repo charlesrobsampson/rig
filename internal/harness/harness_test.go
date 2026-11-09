@@ -275,3 +275,14 @@ func TestWithoutATicketDirectoryNoExtraDirectoryIsGranted(t *testing.T) {
 		}
 	}
 }
+
+func TestAnAgentThatSeesTheTicketFilesElsewhereGetsThatPath(t *testing.T) {
+	dir := ticketDir(t, artifacts)
+	l := launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhasePlan, TicketDir: dir, AgentTicketDir: "/rig/ticket", Dir: "/work"})
+	if l.Command[3] != "--add-dir" || l.Command[4] != "/rig/ticket" {
+		t.Errorf("command = %q, want --add-dir /rig/ticket", l.Command[:5])
+	}
+	if !strings.Contains(promptOf(l), "Use a locale header.") {
+		t.Error("the prompt is still built from the files rig reads on the host")
+	}
+}

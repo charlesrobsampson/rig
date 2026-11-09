@@ -103,8 +103,8 @@ func (c ClaudeCode) Command(r Request) (Launch, error) {
 	// The ticket directory holds the files the agent works from and writes to (plan.md,
 	// tasks.md, contract.md, manual-tests.md); without this every edit there would ask.
 	command := []string{"claude", "--settings", settingsJSON}
-	if r.TicketDir != "" {
-		command = append(command, "--add-dir", r.TicketDir)
+	if addDir := firstNonEmpty(r.AgentTicketDir, r.TicketDir); addDir != "" {
+		command = append(command, "--add-dir", addDir)
 	}
 	return Launch{Command: append(command, prompt), Env: env, Dir: r.Dir}, nil
 }
@@ -210,4 +210,11 @@ var phaseRules = map[domain.Phase][]string{
 	domain.PhaseTest:      {"Run the full test suite and fix failures; keep manual-tests.md accurate.", "Request the review phase once tests pass."},
 	domain.PhaseReview:    {"Address review feedback only; keep changes small and focused."},
 	domain.PhasePush:      {"Do not push; pushing is done by rig on the host after approval."},
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }

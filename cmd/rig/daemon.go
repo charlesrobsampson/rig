@@ -137,7 +137,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		Dir: g.TicketsDir(), States: states, Global: g, Bus: bus, Clock: clk,
 		Backend: backend, BackendName: g.Defaults.TerminalBackend, RigBinary: rigBinary, AgentEnv: agentEnv, Docker: dk,
 	}))
-	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Logger: logger})
+	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Logger: logger, Interval: time.Second})
 	daemon.RegisterAgentHandlers(srv, sup)
 	daemon.RegisterMessageHandler(srv, inject.New(inject.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Readiness: sup, Clock: clk}))
 

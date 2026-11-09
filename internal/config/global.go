@@ -68,6 +68,10 @@ type Docker struct {
 	ExtraCACerts []string `json:"extra_ca_certs,omitempty"`
 	// PortRange is where host ports for service containers are allocated.
 	PortRange PortRange `json:"port_range"`
+	// AgentBase is the image an agent runs on when its service has no Dockerfile.
+	AgentBase string `json:"agent_base"`
+	// ClaudeVersion is what the agent image's installer is asked for ("latest" by default).
+	ClaudeVersion string `json:"claude_version"`
 }
 
 type PortRange struct {
@@ -119,7 +123,7 @@ func defaultGlobal(userHome string) Global {
 		Limits: Limits{MaxActiveTickets: 8},
 		Paths:  Paths{Home: filepath.Join(userHome, ".rig")},
 		Egress: Egress{DefaultAllow: []string{"api.anthropic.com"}, DefaultPorts: []int{443}},
-		Docker: Docker{PortRange: PortRange{Min: 41000, Max: 41999}},
+		Docker: Docker{PortRange: PortRange{Min: 41000, Max: 41999}, AgentBase: "debian:bookworm-slim", ClaudeVersion: "latest"},
 	}
 }
 
@@ -253,6 +257,12 @@ func validateGlobal(g Global) []string {
 	}
 	if r := g.Docker.PortRange; r.Min < 1024 || r.Max > 65535 || r.Min > r.Max {
 		add("docker.port_range: %d-%d must be within 1024-65535 with min <= max", r.Min, r.Max)
+	}
+	if g.Docker.AgentBase == "" {
+		add("docker.agent_base: an image name is required")
+	}
+	if g.Docker.ClaudeVersion == "" {
+		add("docker.claude_version: required (use \"latest\" for the newest)")
 	}
 	return append(problems, validateAuth(g.Auth)...)
 }

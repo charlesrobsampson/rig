@@ -33,6 +33,7 @@ The exact shapes that every part of rig shares. `manifest.md` says *what* and *w
 ├── tasks.md           # agent; GitHub checkboxes `- [ ]` / `- [x]`, progress = counted boxes
 ├── manual-tests.md    # agent-written; see §10
 ├── contract.md        # multi-service tickets only; see §9
+├── .rig-events/<svc>/ # events.log: state words appended by a container agent's hooks (§7); read by the daemon
 ├── messages.jsonl     # rig-written log of messages typed into agents (`rig msg`): {at, service, from, text, delivered, reason?}
 └── <service path>/    # checkout (default `./<service name>`): isolated shared clone in container mode, git worktree in host mode
 ```
@@ -46,7 +47,7 @@ Shape per manifest §5, plus:
 - `secrets`: names only. Values that look like secrets in `env` (high-entropy or known token prefixes) are rejected.
 - Known gate names: `plan_approval`, `review_approval`, `manual_test_signoff`.
 - `auth`: name of an auth profile from the global config (`auth.profiles`); ticket-level, overridable per service (`services[].auth`). Profile types: `host_login` (host mode only), `oauth_token`, `api_key`, `auth_token`, `bedrock`, `vertex`, `foundry`. A profile lists secret *names* (and non-secret env such as region); values never appear in any rig file or API payload. `sandbox: container` with a `host_login` profile is a validation error.
-- Global config also has `auth.default` (profile name) `docker.extra_ca_certs` (list of PEM file paths) and `docker.port_range` (`{min, max}`, default 41000-41999, within 1024-65535: where host ports for service containers are allocated).
+- Global config also has `auth.default` (profile name) `docker.extra_ca_certs` (list of PEM file paths) and `docker.port_range` (`{min, max}`, default 41000-41999, within 1024-65535: where host ports for service containers are allocated), `docker.agent_base` (default `debian:bookworm-slim`: the image an agent runs on when its service has no Dockerfile; otherwise the service's own image) and `docker.claude_version` (default `latest`: what the agent image's Claude Code installer is asked for).
 - `egress.allow`: extra hostnames reachable through the egress proxy when `docker.network_mode: internal` (ticket-wide, and per service as `services[].egress.allow`; the ticket's proxy enforces the union). Global config: `egress.default_allow` (default `["api.anthropic.com"]`) and `egress.default_ports` (default `[443]`). Hostnames are exact or `*.suffix`.
 - Unknown keys are errors naming the key and line.
 
@@ -130,7 +131,7 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 | `hello`, `status` | handshake; daemon version, pid, uptime |
 | `config.get` | effective global config |
 | `ticket.list`, `ticket.get`, `ticket.rescan` | read tickets |
-| `ticket.new`, `ticket.start`, `ticket.stop` | create / provision / teardown (`start` params: `sandbox`, `dry_run`; the result also carries `agents[]` of `{service, pane_id, launched, note, error}` (one agent per host-sandbox service); a dry run provisions nothing and returns `launches[]` of `{service, harness, dir, command, env}` with secret values as `<secret NAME>`; `stop` params: `force`, `keep_checkouts`) |
+| `ticket.new`, `ticket.start`, `ticket.stop` | create / provision / teardown (`start` params: `sandbox`, `dry_run`; the result also carries `network`, `containers[]`, `dependencies[]`, `warnings[]`; the result also carries `agents[]` of `{service, pane_id, launched, note, error}` (one agent per host-sandbox service); a dry run provisions nothing and returns `launches[]` of `{service, harness, dir, command, env}` with secret values as `<secret NAME>`; `stop` params: `force`, `keep_checkouts`) |
 | `gate.list`, `gate.approve` | pending gates / approve |
 | `phase.set`, `transition.request` | human move / agent request |
 | `agent.attach`, `agent.message` | returns attach command / injects text (`agent.message` params `{ticket, service, text}`, result `{service, sent}`; errors `blocked` when the agent waits on a permission prompt (nothing typed), `not_running`, `unavailable` if the agent is not ready in time; `agent.attach` params `{ticket, service?}` (service optional when the ticket has one), result `{service, command[]}`; errors `not_found`, `not_running` when no agent is running) |

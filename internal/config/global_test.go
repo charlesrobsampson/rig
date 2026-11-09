@@ -128,6 +128,8 @@ func TestLoadGlobalRejectsBadConfigFiles(t *testing.T) {
 		{"port range below 1024", `{"docker":{"port_range":{"min":80,"max":2000}}}`, []string{"docker.port_range", "80-2000"}},
 		{"port range above 65535", `{"docker":{"port_range":{"min":41000,"max":70000}}}`, []string{"docker.port_range", "70000"}},
 		{"port range backwards", `{"docker":{"port_range":{"min":42000,"max":41000}}}`, []string{"docker.port_range", "42000-41000"}},
+		{"empty agent base", `{"docker":{"agent_base":""}}`, []string{"docker.agent_base"}},
+		{"empty claude version", `{"docker":{"claude_version":""}}`, []string{"docker.claude_version"}},
 		{"bad egress host", `{"egress":{"default_allow":["bad host!"]}}`, []string{"egress.default_allow", "bad host!"}},
 		{"bad egress port", `{"egress":{"default_ports":[70000]}}`, []string{"egress.default_ports", "70000"}},
 		{"several problems reported together", `{"limits":{"max_active_tickets":0},"defaults":{"harness":""}}`, []string{"max_active_tickets", "harness"}},

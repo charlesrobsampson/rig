@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,6 +43,8 @@ type Supervisor struct {
 
 	mu    sync.Mutex
 	hooks map[key]hookReport
+	// offsets is how far into each container agent's events file has been read.
+	offsets map[key]int64
 }
 
 type key struct{ ticket, service string }
@@ -68,7 +71,7 @@ func New(o Options) *Supervisor {
 	if o.MaxBackoff == 0 {
 		o.MaxBackoff = 30 * time.Second
 	}
-	return &Supervisor{opts: o, hooks: map[key]hookReport{}}
+	return &Supervisor{opts: o, hooks: map[key]hookReport{}, offsets: map[key]int64{}}
 }
 
 func invalid(format string, args ...any) *api.Error {
@@ -223,6 +226,9 @@ func (s *Supervisor) Poll(ctx context.Context) error {
 	if len(work) == 0 {
 		return nil
 	}
+	for _, w := range work {
+		s.readEvents(ctx, w.ticket, w.service)
+	}
 
 	panes, err := s.opts.Backend.List(ctx)
 	if err != nil {
@@ -272,5 +278,48 @@ func (s *Supervisor) Run(ctx context.Context) {
 			s.opts.Logger.Info("supervisor reached the terminal backend again")
 		}
 		failing, delay = false, s.opts.Interval
+	}
+}
+
+// EventsFile is where a container agent's hooks append their reports, one state per
+// line (the agent cannot reach the daemon, so it writes to a mounted directory).
+func EventsFile(ticketsDir, ticket, service string) string {
+	return filepath.Join(ticketsDir, ticket, ".rig-events", service, "events.log")
+}
+
+// readEvents applies the new lines of a service's events file as hook reports. The
+// first time a file is seen only its last line counts: older lines are history that a
+// restarted daemon must not replay as a string of state changes.
+func (s *Supervisor) readEvents(ctx context.Context, ticket, service string) {
+	path := EventsFile(s.opts.Dir, ticket, service)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	k := key{ticket, service}
+	s.mu.Lock()
+	offset, seen := s.offsets[k]
+	s.mu.Unlock()
+	if seen && int64(len(data)) < offset {
+		offset = 0 // the file was truncated: a new agent run
+	}
+
+	end := strings.LastIndexByte(string(data), '\n') + 1 // only complete lines
+	if end == 0 || int64(end) <= offset && seen {
+		return
+	}
+	chunk := strings.Split(strings.TrimSuffix(string(data[offset:end]), "\n"), "\n")
+	if !seen {
+		chunk = chunk[len(chunk)-1:]
+	}
+	s.mu.Lock()
+	s.offsets[k] = int64(end)
+	s.mu.Unlock()
+	for _, line := range chunk {
+		if line = strings.TrimSpace(line); line != "" {
+			if err := s.Report(ctx, api.AgentEventParams{Ticket: ticket, Service: service, State: line}); err != nil {
+				s.opts.Logger.Debug("ignored an agent event", "ticket", ticket, "service", service, "line", line, "err", err)
+			}
+		}
 	}
 }

@@ -38,12 +38,31 @@ func TestStartLaunchesAgentsAndListShowsTheirState(t *testing.T) {
 	}
 }
 
-func TestStartExplainsWhyAContainerServiceGotNoAgent(t *testing.T) {
-	_, d, repo, term := newEnvWithTerminal(t)
+func TestStartRunsAContainerServicesAgentInItsOwnContainer(t *testing.T) {
+	_, d, repo, term, dk := newEnvFull(t)
 	newTicket(t, d, "demo", repo)
-	stdout, _, code := rig(t, d, "start", "demo")
-	if code != 0 || !strings.Contains(stdout, "agent svc1: no agent started") || len(term.Spawned()) != 0 {
-		t.Errorf("code %d, stdout:\n%s", code, stdout)
+	stdout, stderr, code := rig(t, d, "start", "demo")
+	if code != 0 || !strings.Contains(stdout, "agent svc1: started") {
+		t.Fatalf("code %d, stdout:\n%s\nstderr %q", code, stdout, stderr)
+	}
+	if c, err := dk.InspectContainer(ctx, "rig-demo-svc1-agent"); err != nil || c.Labels["rig.role"] != "agent" {
+		t.Errorf("agent container = %+v, %v", c, err)
+	}
+	spawned := term.Spawned()
+	if len(spawned) != 1 || strings.Join(spawned[0].Command[:3], " ") != "docker exec -it" || !strings.Contains(strings.Join(spawned[0].Command, " "), "rig-demo-svc1-agent claude") {
+		t.Errorf("pane command = %q, want a docker exec into the agent container", spawned)
+	}
+	if strings.Contains(stdout+stderr, "WARNING") {
+		t.Errorf("a sandboxed agent must not print the host warning:\n%s%s", stdout, stderr)
+	}
+}
+
+func TestStartWarnsLoudlyWhenAnAgentRunsOnTheHost(t *testing.T) {
+	_, d, repo, _ := newEnvWithTerminal(t)
+	newTicket(t, d, "demo", repo)
+	stdout, stderr, code := rig(t, d, "start", "demo", "--sandbox", "host")
+	if code != 0 || !strings.Contains(stderr, "WARNING") || !strings.Contains(stderr, "svc1") || !strings.Contains(stderr, "directly on this machine") {
+		t.Errorf("code %d, stderr %q, stdout %q", code, stderr, stdout)
 	}
 }
 

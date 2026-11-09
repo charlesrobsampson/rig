@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charlesrobsampson/rig/internal/agentimage"
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/clock"
 	"github.com/charlesrobsampson/rig/internal/config"
@@ -61,9 +62,10 @@ type Options struct {
 }
 
 type Manager struct {
-	opts  Options
-	reg   *registry.Registry
-	ports *ports.Allocator
+	opts        Options
+	reg         *registry.Registry
+	ports       *ports.Allocator
+	agentImages *agentimage.Builder
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex
@@ -79,6 +81,7 @@ func New(o Options) *Manager {
 		if min == 0 && max == 0 { // a Global built without the defaults
 			min, max = 41000, 41999
 		}
+		m.agentImages = agentimage.New(o.Docker, o.Global.Docker.ClaudeVersion, o.Global.Docker.ExtraCACerts)
 		m.ports = ports.New(ports.Options{Dir: o.Dir, States: o.States, Min: min, Max: max, Probe: m.portUsable})
 	}
 	return m
@@ -190,13 +193,13 @@ func (m *Manager) Start(ctx context.Context, p api.TicketStartParams) (api.Ticke
 		return api.TicketStartResult{}, err
 	}
 	containers := m.startServices(ctx, l, infos, netInfo)
-	agents := m.launchAgents(ctx, l, infos, p.Sandbox)
+	agents, warnings := m.launchAgents(ctx, l, infos, p.Sandbox, netInfo)
 
 	res, err := m.reg.Get(p.ID)
 	if err != nil {
 		return api.TicketStartResult{}, err
 	}
-	return api.TicketStartResult{Summary: res.Summary, Checkouts: infos, Agents: agents, Network: netInfo, Containers: containers, Dependencies: deps}, nil
+	return api.TicketStartResult{Summary: res.Summary, Checkouts: infos, Agents: agents, Network: netInfo, Containers: containers, Dependencies: deps, Warnings: warnings}, nil
 }
 
 func kindFor(s domain.Sandbox) domain.CheckoutKind {
