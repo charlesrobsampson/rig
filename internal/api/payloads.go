@@ -326,3 +326,33 @@ type FileChange struct {
 	Binary    bool   `json:"binary,omitempty"`
 	Untracked bool   `json:"untracked,omitempty"`
 }
+
+// PushRunParams runs a ticket's push step. Service limits it to one service.
+type PushRunParams struct {
+	ID      string `json:"id"`
+	Service string `json:"service,omitempty"`
+}
+
+// PushRunResult says how each service went. Done is true when every service of the
+// ticket has been pushed and the ticket moved to the done phase.
+type PushRunResult struct {
+	Summary  TicketSummary       `json:"summary"`
+	Services []PushServiceResult `json:"services"`
+	Done     bool                `json:"done"`
+}
+
+// PushServiceResult is one service's push. Skipped means it had already been pushed by
+// an earlier run and was left alone; Error means this attempt failed (a later run
+// retries it).
+type PushServiceResult struct {
+	Service string            `json:"service"`
+	Mode    domain.PushMode   `json:"mode"`
+	Status  domain.PushStatus `json:"status"`
+	Skipped bool              `json:"skipped,omitempty"`
+	Pushed  bool              `json:"pushed"`
+	Ref     string            `json:"ref,omitempty"`
+	Sha     string            `json:"sha,omitempty"`
+	PRURL   string            `json:"pr_url,omitempty"`
+	Note    string            `json:"note,omitempty"`
+	Error   string            `json:"error,omitempty"`
+}

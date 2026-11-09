@@ -69,4 +69,7 @@ type Policy struct {
 
 type PushPolicy struct {
 	Mode PushMode `json:"mode,omitempty" yaml:"mode,omitempty"`
+	// MergeCommit lets merge mode create a merge commit when the base branch has moved on
+	// at the remote; without it only a fast-forward is pushed. nil inherits.
+	MergeCommit *bool `json:"merge_commit,omitempty" yaml:"merge_commit,omitempty"`
 }

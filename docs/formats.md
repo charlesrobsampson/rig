@@ -44,6 +44,7 @@ Shape per manifest §5, plus:
 - `services[].base`: base branch for the checkout and diffs. Default: the repo's default branch (`origin/HEAD`, else `main`, else `master`).
 - `services[].path`: default `./<name>`.
 - `services[].policy.gates`: absent = inherit; `[]` = no gates.
+- `policy.push.mode` (`none | push-branch | merge | pr`, per service, ticket or global) and `policy.push.merge_commit` (bool, same levels, an explicit `false` overrides a `true` above it; default false): merge mode only fast-forwards the base unless it is true, in which case a merge commit is pushed when the base moved on.
 - `secrets`: names only. Values that look like secrets in `env` (high-entropy or known token prefixes) are rejected.
 - Known gate names: `plan_approval`, `review_approval`, `manual_test_signoff`.
 - `auth`: name of an auth profile from the global config (`auth.profiles`); ticket-level, overridable per service (`services[].auth`). Profile types: `host_login` (host mode only), `oauth_token`, `api_key`, `auth_token`, `bedrock`, `vertex`, `foundry`. A profile lists secret *names* (and non-secret env such as region); values never appear in any rig file or API payload. `sandbox: container` with a `host_login` profile is a validation error.
@@ -135,10 +136,11 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 | `gate.list`, `gate.approve` | pending gates / approve |
 | `phase.set`, `transition.request` | human move / agent request |
 | `agent.attach`, `agent.message` | returns attach command / injects text (`agent.message` params `{ticket, service, text}`, result `{service, sent}`; errors `blocked` when the agent waits on a permission prompt (nothing typed), `not_running`, `unavailable` if the agent is not ready in time; `agent.attach` params `{ticket, service?}` (service optional when the ticket has one), result `{service, command[]}`; errors `not_found`, `not_running` when no agent is running) |
+| `push.run` | `{id, service?}`: runs the push step of a ticket in the push phase; result `{summary, services[{service, mode, status, skipped?, pushed, ref?, sha?, pr_url?, note?, error?}], done}` (a failed service is in the result with `error`, not an API error; `done` when every service is pushed and the ticket moved to `done`) |
 | `agent.event` | agent hook reports a state (`ready\|working\|blocked\|idle\|exited`) for a ticket/service |
 | `contract.list`, `contract.accept`, `contract.reject` | contract proposals |
 | `review.diff` | per-service diff and stat |
-| `push.run` | run push policy |
+| `push.run` | runs the push step of a ticket in the push phase. Params `{id, service?}`; result `{summary, services[{service, mode, status, skipped?, pushed, ref?, sha?, pr_url?, note?, error?}], done}`. A service that fails is in the result with `error` (not an API error); services already pushed are skipped on a rerun; `done` is true when every service is pushed and the ticket moved to `done` |
 | `tests.render` | rendered manual tests |
 | `logs.stream` | container logs |
 | `events.subscribe` | event stream |

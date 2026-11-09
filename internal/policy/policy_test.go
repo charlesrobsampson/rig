@@ -213,3 +213,28 @@ func TestResolveReturnsCopiesOfGateLists(t *testing.T) {
 		t.Error("mutating the result changed the global config")
 	}
 }
+
+func TestMergeCommitFollowsServiceThenTicketThenGlobalWithAnExplicitFalseWinning(t *testing.T) {
+	yes, no := true, false
+	tests := []struct {
+		name              string
+		global, ticket, s *bool
+		want              bool
+	}{
+		{"unset everywhere", nil, nil, nil, false},
+		{"global only", &yes, nil, nil, true},
+		{"the ticket overrides the global", &yes, &no, nil, false},
+		{"the service overrides the ticket", nil, &no, &yes, true},
+		{"an explicit false at the service beats a true above it", &yes, &yes, &no, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := config.Global{Defaults: config.Defaults{Policy: domain.Policy{Push: domain.PushPolicy{MergeCommit: tt.global}}}}
+			tk := domain.Ticket{Policy: domain.Policy{Push: domain.PushPolicy{MergeCommit: tt.ticket}}}
+			svc := domain.Service{Policy: domain.Policy{Push: domain.PushPolicy{MergeCommit: tt.s}}}
+			if got := policy.Resolve(g, tk, svc, policy.Flags{}).MergeCommit; got != tt.want {
+				t.Errorf("MergeCommit = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

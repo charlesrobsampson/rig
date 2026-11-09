@@ -137,7 +137,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	}
 	daemon.RegisterLifecycleHandlers(srv, lifecycle.New(lifecycle.Options{
 		Dir: g.TicketsDir(), States: states, Global: g, Bus: bus, Clock: clk,
-		Backend: backend, BackendName: g.Defaults.TerminalBackend, RigBinary: rigBinary, AgentEnv: agentEnv, Docker: dk, Secrets: secretValues(g, a.deps.keychain),
+		Backend: backend, BackendName: g.Defaults.TerminalBackend, RigBinary: rigBinary, AgentEnv: agentEnv, Docker: dk, Secrets: secretValues(g, a.deps.keychain), GH: a.deps.gh,
 	}))
 	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Logger: logger, Interval: time.Second})
 	daemon.RegisterAgentHandlers(srv, sup)

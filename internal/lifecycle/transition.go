@@ -35,13 +35,18 @@ func (m *Manager) transition(id, by string, to domain.Phase, reason, service str
 		return api.TransitionResult{}, err
 	}
 	defer unlock()
+	return m.moveLocked(l, id, by, to, reason, service)
+}
+
+// moveLocked is the move itself, for a caller that already holds the ticket's lock.
+func (m *Manager) moveLocked(l loaded, id, by string, to domain.Phase, reason, service string) (api.TransitionResult, error) {
 	if service != "" && !hasService(l.ticket, service) {
 		return api.TransitionResult{}, invalid("ticket %q has no service %q", id, service)
 	}
 
 	reason = strings.TrimSpace(reason)
 	var made state.Transition
-	err = m.opts.States.Update(l.statePath, func(s *state.State) error {
+	err := m.opts.States.Update(l.statePath, func(s *state.State) error {
 		// Decided against the state as it is now, inside the update, so the check and the
 		// write cannot be separated by another move.
 		if e := m.decide(id, l.ticket, *s, to, reason); e != nil {
