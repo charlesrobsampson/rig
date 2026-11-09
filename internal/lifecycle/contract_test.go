@@ -165,3 +165,41 @@ func TestAcknowledgingClearsTheViolation(t *testing.T) {
 		t.Errorf("violation = %q", v)
 	}
 }
+
+func TestProposingAppendsAnOpenProposalAndLeavesTheAgreedSectionAlone(t *testing.T) {
+	f, dir, _ := contractFixture(t)
+	before, _ := os.ReadFile(filepath.Join(dir, "contract.md"))
+	res, err := f.lc.ContractPropose(ctx, api.ContractProposeParams{Ticket: "demo", Service: "svc1", What: "add a locale", Why: "users"})
+	if err != nil || res.Proposal != "P-svc1-2" {
+		t.Fatalf("propose = %+v, %v", res, err)
+	}
+	after, _ := os.ReadFile(filepath.Join(dir, "contract.md"))
+	if contract.Parse(string(after)).AgreedHash() != contract.Parse(string(before)).AgreedHash() {
+		t.Error("the agreed section changed")
+	}
+	list, _ := f.lc.ContractList(ctx, api.ContractListParams{Ticket: "demo"})
+	last := list.Proposals[len(list.Proposals)-1]
+	if len(list.Proposals) != 3 || last.ID != "P-svc1-2" || last.Status != "open" || last.What != "add a locale" || last.Why != "users" || len(list.Problems) != 0 {
+		t.Errorf("list = %+v", list)
+	}
+}
+
+func TestProposingErrors(t *testing.T) {
+	f, dir, _ := contractFixture(t)
+	for name, p := range map[string]api.ContractProposeParams{
+		"an unknown service": {Ticket: "demo", Service: "nope", What: "w", Why: "y"},
+		"no reason":          {Ticket: "demo", Service: "svc1", What: "w"},
+		"structure in text":  {Ticket: "demo", Service: "svc1", What: "w\n## Agreed", Why: "y"},
+	} {
+		if _, err := f.lc.ContractPropose(ctx, p); apiCode(t, err) != api.CodeInvalid {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if _, err := f.lc.ContractPropose(ctx, api.ContractProposeParams{Ticket: "ghost", Service: "svc1", What: "w", Why: "y"}); apiCode(t, err) != api.CodeNotFound {
+		t.Errorf("unknown ticket: %v", err)
+	}
+	os.Remove(filepath.Join(dir, "contract.md"))
+	if _, err := f.lc.ContractPropose(ctx, api.ContractProposeParams{Ticket: "demo", Service: "svc1", What: "w", Why: "y"}); apiCode(t, err) != api.CodeNotFound {
+		t.Errorf("no contract: %v", err)
+	}
+}

@@ -3,6 +3,7 @@ package contract
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -116,4 +117,54 @@ func trimTrailingBlank(lines []string) []string {
 		lines = lines[:len(lines)-1]
 	}
 	return lines
+}
+
+var serviceNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+
+// ErrNoProposalSection: the contract has nowhere to put a proposal.
+var ErrNoProposalSection = errors.New(`the contract has no "## Proposed changes" section`)
+
+// Propose returns the contract text with a new open proposal from service appended at
+// the end of "## Proposed changes", and the id it was given. It never touches "## Agreed".
+// what and why are single paragraphs or several lines; why may be empty only if the
+// caller has a reason to allow it (the parser requires both, so Propose does too).
+func Propose(md, service, what, why string) (id, out string, err error) {
+	what, why = strings.TrimSpace(what), strings.TrimSpace(why)
+	if !serviceNameRe.MatchString(service) {
+		return "", "", fmt.Errorf("%q is not a service name (lowercase letters, digits and dashes)", service)
+	}
+	if what == "" || why == "" {
+		return "", "", errors.New("a proposal needs both what to change and why")
+	}
+	for _, text := range []string{what, why} {
+		for _, line := range strings.Split(text, "\n") {
+			l := strings.TrimSpace(line)
+			if strings.HasPrefix(l, "**What:**") || strings.HasPrefix(l, "**Why:**") || strings.HasPrefix(l, "**Rejected:**") || strings.HasPrefix(l, "### ") || strings.HasPrefix(l, "## ") {
+				return "", "", fmt.Errorf("a proposal's text cannot contain a line starting %q: it would be read as part of the file's structure", strings.Fields(l)[0])
+			}
+		}
+	}
+	d := Parse(md)
+	if d.proposedEnd < 0 {
+		return "", "", ErrNoProposalSection
+	}
+	id = NextProposalID(md, service)
+	block := []string{fmt.Sprintf("### %s · from %s · open", id, service)}
+	block = append(block, "**What:** "+strings.ReplaceAll(what, "\r\n", "\n"))
+	block = append(block, "**Why:** "+strings.ReplaceAll(why, "\r\n", "\n"))
+
+	lines := append([]string(nil), d.lines...)
+	at := d.proposedEnd
+	for at > 0 && strings.TrimSpace(lines[at-1]) == "" { // right after the section's last text
+		at--
+	}
+	// a blank line before the new proposal; the blank lines that followed the last one
+	// stay after it, so the next section keeps its spacing
+	insert := append([]string{""}, strings.Split(strings.Join(block, "\n"), "\n")...)
+	lines = insertAt(lines, at, insert)
+	out = strings.Join(lines, "\n")
+	if !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	return id, out, nil
 }

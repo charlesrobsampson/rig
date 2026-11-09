@@ -494,3 +494,18 @@ type SummaryInfo struct {
 	// previous one.
 	Error string `json:"error,omitempty"`
 }
+
+// ContractProposeParams appends a proposed change to a ticket's contract on behalf of a
+// service (what its agent would write by hand). It never touches the agreed section; a
+// human decides.
+type ContractProposeParams struct {
+	Ticket  string `json:"ticket"`
+	Service string `json:"service"` // the proposing service
+	What    string `json:"what"`
+	Why     string `json:"why"`
+}
+
+// ContractProposeResult names the new proposal.
+type ContractProposeResult struct {
+	Proposal string `json:"proposal"`
+}

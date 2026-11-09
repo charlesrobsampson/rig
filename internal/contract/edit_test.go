@@ -170,3 +170,77 @@ func TestTheAgreedHashIsStableAcrossAcceptedAndRejectedButNotAcrossAnAccept(t *t
 		t.Error("an accept changes the agreed section, so the hash must change")
 	}
 }
+
+func TestProposeAppendsAnOpenProposalThatParsesBack(t *testing.T) {
+	id, out, err := contract.Propose(base, "backend", "add `tz` to the response", "clients show local times")
+	if err != nil || id != "P-backend-2" {
+		t.Fatalf("id %q, err %v", id, err)
+	}
+	d := contract.Parse(out)
+	if len(d.Problems) != 0 || len(d.Proposals) != 3 {
+		t.Fatalf("problems %+v, proposals %d\n%s", d.Problems, len(d.Proposals), out)
+	}
+	p, _ := d.Proposal(id)
+	if p.Status != contract.Open || p.From != "backend" || p.What != "add `tz` to the response" || p.Why != "clients show local times" {
+		t.Errorf("proposal = %+v", p)
+	}
+	// it sits after the existing proposals and before the changelog, and the agreed text is untouched
+	if strings.Index(out, "P-frontend-1") > strings.Index(out, "P-backend-2") || strings.Index(out, "P-backend-2") > strings.Index(out, "## Changelog") {
+		t.Errorf("wrong place:\n%s", out)
+	}
+	if d.AgreedHash() != contract.Parse(base).AgreedHash() {
+		t.Error("proposing changed the agreed section")
+	}
+	if strings.Contains(out, "\n\n\n") {
+		t.Errorf("sloppy blank lines:\n%q", out)
+	}
+}
+
+func TestProposeNumbersPerServiceAndHandlesMultilineText(t *testing.T) {
+	id1, out, _ := contract.Propose(base, "web", "line one\nline two\n\n```json\n{\"a\": 1}\n```", "because\nand more")
+	id2, out, _ := contract.Propose(out, "web", "second", "why")
+	idOther, _, _ := contract.Propose(out, "worker", "x", "y")
+	if id1 != "P-web-1" || id2 != "P-web-2" || idOther != "P-worker-1" {
+		t.Errorf("ids = %s %s %s", id1, id2, idOther)
+	}
+	d := contract.Parse(out)
+	p, _ := d.Proposal("P-web-1")
+	if len(d.Problems) != 0 || !strings.Contains(p.What, "line two") || !strings.Contains(p.What, `{"a": 1}`) || !strings.Contains(p.Why, "and more") {
+		t.Errorf("problems %+v, proposal %+v", d.Problems, p)
+	}
+}
+
+func TestProposeIntoTheTemplateAndMinimalFiles(t *testing.T) {
+	tmpl := contract.Template("demo")
+	id, out, err := contract.Propose(tmpl, "api", "w", "y")
+	if err != nil || id != "P-api-1" {
+		t.Fatalf("template: %q %v", id, err)
+	}
+	d := contract.Parse(out)
+	if len(d.Problems) != 0 || len(d.OpenProposals()) != 1 || !d.AgreedEmpty() || !strings.Contains(out, "<!--") {
+		t.Errorf("after proposing into the template: %+v\n%s", d, out)
+	}
+	if _, _, err := contract.Propose("# C\n\n## Agreed\nx\n", "api", "w", "y"); !errors.Is(err, contract.ErrNoProposalSection) {
+		t.Errorf("no section = %v", err)
+	}
+}
+
+func TestProposeRefusesWhatWouldBreakTheFile(t *testing.T) {
+	tests := []struct {
+		name, service, what, why string
+	}{
+		{"an empty what", "api", "  ", "y"},
+		{"an empty why", "api", "w", ""},
+		{"a bad service", "API Service", "w", "y"},
+		{"an empty service", "", "w", "y"},
+		{"a heading in the text", "api", "ok\n## Agreed\nsneaky", "y"},
+		{"a proposal heading in the text", "api", "ok\n### P-api-9 · from api · open", "y"},
+		{"a field marker in the text", "api", "ok\n**Why:** fake", "y"},
+		{"a rejected marker in the text", "api", "w", "y\n**Rejected:** no"},
+	}
+	for _, tt := range tests {
+		if _, out, err := contract.Propose(base, tt.service, tt.what, tt.why); err == nil || out != "" {
+			t.Errorf("%s was accepted: %v", tt.name, err)
+		}
+	}
+}
