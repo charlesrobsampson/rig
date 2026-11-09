@@ -35,6 +35,8 @@ const (
 	MethodReviewDiff        = "review.diff"
 	MethodPushRun           = "push.run"
 	MethodTestsRender       = "tests.render"
+	MethodTestsStep         = "tests.step"
+	MethodTestsSignoff      = "tests.signoff"
 	MethodLogsStream        = "logs.stream"
 	MethodEventsSubscribe   = "events.subscribe"
 	MethodReconcileRun      = "reconcile.run"
@@ -47,7 +49,7 @@ var methods = map[string]bool{
 	MethodTicketStop: true, MethodGateList: true, MethodGateApprove: true, MethodPhaseSet: true,
 	MethodTransitionRequest: true, MethodAgentAttach: true, MethodAgentMessage: true,
 	MethodAgentEvent: true, MethodContractList: true, MethodContractAccept: true,
-	MethodContractReject: true, MethodContractAck: true, MethodReviewDiff: true, MethodPushRun: true, MethodTestsRender: true,
+	MethodContractReject: true, MethodContractAck: true, MethodReviewDiff: true, MethodPushRun: true, MethodTestsRender: true, MethodTestsStep: true, MethodTestsSignoff: true,
 	MethodLogsStream: true, MethodEventsSubscribe: true, MethodReconcileRun: true, MethodDaemonStop: true,
 }
 

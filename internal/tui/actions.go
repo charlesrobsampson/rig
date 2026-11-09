@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/domain"
@@ -24,6 +26,10 @@ type Actions interface {
 	Message(ctx context.Context, ticket, service, text string) error
 	Proposals(ctx context.Context, ticket string) ([]api.ContractProposal, error)
 	Resolve(ctx context.Context, ticket, proposal string, accept bool, reason string) error
+	// SetStep ticks a manual-test step on or off; SignOff signs the manual tests off
+	// (override: even with steps not done).
+	SetStep(ctx context.Context, ticket, step string, done bool) error
+	SignOff(ctx context.Context, ticket string, override bool) error
 	// AttachCommand is what shows a service's agent pane.
 	AttachCommand(ctx context.Context, ticket, service string) ([]string, error)
 }
@@ -47,12 +53,14 @@ type (
 	doneMsg struct {
 		text string
 		err  error
-		// force, set with a blocked stop, offers to repeat the stop discarding work.
-		force *forceStop
+		// offer, set when the daemon refused for a reason the user may overrule,
+		// asks whether to repeat the action with the override.
+		offer *offer
 	}
-	forceStop struct {
-		ticket  string
-		details []string
+	// offer is a question and the action to run if the user says yes.
+	offer struct {
+		question string
+		run      func(ctx context.Context, src Source) doneMsg
 	}
 	// proposalsMsg is the open proposals of a ticket's contract, for accept or reject.
 	proposalsMsg struct {
@@ -97,7 +105,7 @@ func (m Model) ok(format string, args ...any) Model {
 // action handles the action keys; handled is false for any other key.
 func (m Model) action(k string) (next Model, cmd tea.Cmd, handled bool) {
 	switch k {
-	case "a", "v", "p", "x", "t", "m", "c", "C":
+	case "a", "v", "p", "x", "t", "m", "c", "C", "S":
 	default:
 		return m, nil, false
 	}
@@ -125,6 +133,8 @@ func (m Model) action(k string) (next Model, cmd tea.Cmd, handled bool) {
 		next, cmd = m.resolve(t, true)
 	case "C":
 		next, cmd = m.resolve(t, false)
+	case "S":
+		next, cmd = m.signOff(t)
 	}
 	return next, cmd, true
 }
@@ -206,23 +216,52 @@ func pushSummary(ticket string, res api.PushRunResult) string {
 
 func (m Model) stopTicket(t api.TicketSummary) (Model, tea.Cmd) {
 	return m.confirm(fmt.Sprintf("Stop %s? Work is imported first and branches are kept; checkouts are removed.", t.ID), func(m Model, _ string) (Model, tea.Cmd) {
-		return m, m.stopCmd(t.ID, false)
+		return m, m.run(func(ctx context.Context, src Source) doneMsg { return stopAction(ctx, src, t.ID, false) })
 	}), nil
 }
 
-func (m Model) stopCmd(ticket string, force bool) tea.Cmd {
-	return m.run(func(ctx context.Context, src Source) doneMsg {
-		_, err := src.Stop(ctx, ticket, force)
-		var apiErr *api.Error
-		switch {
-		case err == nil:
-			return doneMsg{text: ticket + " stopped"}
-		case !force && errors.As(err, &apiErr) && apiErr.Code == api.CodeBlocked:
-			// work that deleting would lose: say what, and offer to discard it
-			return doneMsg{err: err, force: &forceStop{ticket: ticket, details: apiErr.Details}}
+// stopAction stops a ticket. A first attempt the daemon refuses because work would be
+// lost comes back with an offer to repeat it forced, discarding that work.
+func stopAction(ctx context.Context, src Source, ticket string, force bool) doneMsg {
+	_, err := src.Stop(ctx, ticket, force)
+	var apiErr *api.Error
+	switch {
+	case err == nil:
+		return doneMsg{text: ticket + " stopped"}
+	case !force && errors.As(err, &apiErr) && apiErr.Code == api.CodeBlocked:
+		detail := strings.Join(apiErr.Details, "; ")
+		if detail == "" {
+			detail = apiErr.Message
 		}
-		return doneMsg{err: err}
-	})
+		return doneMsg{err: err, offer: &offer{
+			question: fmt.Sprintf("%s cannot stop without losing work (%s). Force it and discard that work?", ticket, detail),
+			run:      func(ctx context.Context, src Source) doneMsg { return stopAction(ctx, src, ticket, true) },
+		}}
+	}
+	return doneMsg{err: err}
+}
+
+func (m Model) signOff(t api.TicketSummary) (Model, tea.Cmd) {
+	return m.confirm(fmt.Sprintf("Sign off the manual tests of %s?", t.ID), func(m Model, _ string) (Model, tea.Cmd) {
+		return m, m.run(func(ctx context.Context, src Source) doneMsg { return signOffAction(ctx, src, t.ID, false) })
+	}), nil
+}
+
+// signOffAction signs the manual tests off. Steps still not done come back as an offer
+// to sign off anyway.
+func signOffAction(ctx context.Context, src Source, ticket string, override bool) doneMsg {
+	err := src.SignOff(ctx, ticket, override)
+	var apiErr *api.Error
+	switch {
+	case err == nil:
+		return doneMsg{text: "manual tests of " + ticket + " signed off"}
+	case !override && errors.As(err, &apiErr) && apiErr.Code == api.CodeBlocked:
+		return doneMsg{err: err, offer: &offer{
+			question: fmt.Sprintf("%s (%s). Sign off anyway?", apiErr.Message, strings.Join(apiErr.Details, "; ")),
+			run:      func(ctx context.Context, src Source) doneMsg { return signOffAction(ctx, src, ticket, true) },
+		}}
+	}
+	return doneMsg{err: err}
 }
 
 // service picks which service an action is for: the only one, or the one the user
@@ -360,15 +399,8 @@ func firstLine(s string) string {
 // offers to discard it.
 func (m Model) onDone(msg doneMsg) (Model, tea.Cmd) {
 	if msg.err != nil {
-		if msg.force != nil {
-			f := msg.force
-			detail := strings.Join(f.details, "; ")
-			if detail == "" {
-				detail = msg.err.Error()
-			}
-			return m.confirm(fmt.Sprintf("%s cannot stop without losing work (%s). Force it and discard that work?", f.ticket, detail), func(m Model, _ string) (Model, tea.Cmd) {
-				return m, m.stopCmd(f.ticket, true)
-			}), nil
+		if o := msg.offer; o != nil {
+			return m.confirm(o.question, func(m Model, _ string) (Model, tea.Cmd) { return m, m.run(o.run) }), nil
 		}
 		return m.fail("%s", errText(msg.err)), nil
 	}
@@ -449,4 +481,71 @@ func (m Model) modalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		md.input = append(md.input, msg.Runes...)
 	}
 	return m, nil
+}
+
+// manualKey handles the keys of the manual-tests tab: j/k pick a step, space ticks it,
+// y copies its code blocks.
+func (m Model) manualKey(msg tea.KeyMsg) (Model, tea.Cmd, bool) {
+	d := m.det
+	steps := d.page().manual.Steps
+	switch msg.String() {
+	case "down", "j":
+		d.step = min(d.step+1, max(len(steps)-1, 0))
+	case "up", "k":
+		d.step = max(d.step-1, 0)
+	case "pgdown", "ctrl+d":
+		d.step = min(d.step+5, max(len(steps)-1, 0))
+	case "pgup", "ctrl+u":
+		d.step = max(d.step-5, 0)
+	case "home", "g":
+		d.step = 0
+	case "end", "G":
+		d.step = max(len(steps)-1, 0)
+	case " ", "enter":
+		if len(steps) == 0 {
+			return m.fail("there are no steps to tick"), nil, true
+		}
+		s := steps[min(d.step, len(steps)-1)]
+		src, ticket := m.opts.Source, d.ticket
+		return m, m.run(func(ctx context.Context, _ Source) doneMsg {
+			if err := src.SetStep(ctx, ticket, s.ID, !s.Done); err != nil {
+				return doneMsg{err: err}
+			}
+			state := "ticked"
+			if s.Done {
+				state = "unticked"
+			}
+			return doneMsg{text: fmt.Sprintf("step %s %s", s.ID, state)}
+		}), true
+	case "y":
+		if len(steps) == 0 {
+			return m.fail("there are no steps to copy from"), nil, true
+		}
+		s := steps[min(d.step, len(steps)-1)]
+		blocks := CodeBlocks(s.Body)
+		if len(blocks) == 0 {
+			return m.fail("step %s has no code block to copy", s.ID), nil, true
+		}
+		copyFn := m.opts.Copy
+		if copyFn == nil {
+			copyFn = copyOSC52
+		}
+		if err := copyFn(strings.Join(blocks, "\n\n")); err != nil {
+			return m.fail("cannot copy: %v", err), nil, true
+		}
+		noun := "code block"
+		if len(blocks) > 1 {
+			noun += "s"
+		}
+		return m.ok("copied %d %s of step %s", len(blocks), noun, s.ID), nil, true
+	default:
+		return m, nil, false
+	}
+	return m, nil, true
+}
+
+// copyOSC52 asks the terminal to put text on the clipboard.
+func copyOSC52(text string) error {
+	_, err := os.Stdout.WriteString(ansi.SetSystemClipboard(text))
+	return err
 }

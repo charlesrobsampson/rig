@@ -100,6 +100,20 @@ func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 		}
 		return m.RenderTests(ctx, p)
 	})
+	s.Handle(api.MethodTestsStep, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.TestsStepParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "tests.step needs params like {\"ticket\": \"ticket-1\", \"step\": \"login\", \"done\": true}"}
+		}
+		return m.TestsStep(ctx, p)
+	})
+	s.Handle(api.MethodTestsSignoff, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.TestsSignoffParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "tests.signoff needs params like {\"ticket\": \"ticket-1\"}"}
+		}
+		return m.TestsSignoff(ctx, p)
+	})
 	s.Handle(api.MethodPushRun, func(ctx context.Context, params json.RawMessage) (any, error) {
 		var p api.PushRunParams
 		if err := json.Unmarshal(params, &p); err != nil {

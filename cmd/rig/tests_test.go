@@ -109,3 +109,61 @@ func TestTestsListsEveryProblemInTheFile(t *testing.T) {
 		}
 	}
 }
+
+func TestTestsTicksStepsAndSignsOffThroughTheCLI(t *testing.T) {
+	home, d, repo := newEnv(t)
+	newTicket(t, d, "demo", repo)
+	os.WriteFile(filepath.Join(home, "tickets", "demo", "manual-tests.md"), []byte("### login: log in\ncurl x\n\n### logout: log out\ncurl y\n"), 0o600)
+	// into the test phase (only the plan and review gates are required by default)
+	for _, args := range [][]string{{"approve", "demo", "plan_approval"}, {"phase", "demo", "implement"}, {"phase", "demo", "test"}} {
+		if _, stderr, code := rig(t, d, args...); code != 0 {
+			t.Fatalf("%v: %q", args, stderr)
+		}
+	}
+
+	stdout, stderr, code := rig(t, d, "tests", "demo", "--done", "login")
+	if code != 0 || !strings.Contains(stdout, "step login marked done") {
+		t.Fatalf("done: code %d, %q %q", code, stdout, stderr)
+	}
+	if out, _, _ := rig(t, d, "tests", "demo"); !strings.Contains(out, "[x] login") || !strings.Contains(out, "[ ] logout") {
+		t.Errorf("render after ticking:\n%s", out)
+	}
+
+	_, stderr, code = rig(t, d, "tests", "demo", "--sign-off")
+	if code != 3 || !strings.Contains(stderr, "step not done: logout") {
+		t.Errorf("sign-off with an open step: code %d, %q", code, stderr)
+	}
+	rig(t, d, "tests", "demo", "--done", "logout")
+	stdout, stderr, code = rig(t, d, "tests", "demo", "--sign-off")
+	if code != 0 || !strings.Contains(stdout, "manual tests signed off") {
+		t.Fatalf("sign-off: code %d, %q %q", code, stdout, stderr)
+	}
+	if out, _, _ := rig(t, d, "tests", "demo"); !strings.Contains(out, "signed off") {
+		t.Errorf("render after sign-off:\n%s", out)
+	}
+	stdout, _, _ = rig(t, d, "tests", "demo", "--undone", "logout")
+	if !strings.Contains(stdout, "step logout marked not done") || !strings.Contains(stdout, "no longer holds") {
+		t.Errorf("undone:\n%s", stdout)
+	}
+	if out, _, _ := rig(t, d, "tests", "demo"); strings.Contains(out, "signed off") {
+		t.Errorf("the sign-off survived unticking:\n%s", out)
+	}
+	stdout, _, code = rig(t, d, "tests", "demo", "--sign-off", "--override")
+	if code != 0 || !strings.Contains(stdout, "overridden, steps not done: logout") {
+		t.Errorf("override: code %d, %q", code, stdout)
+	}
+
+	for _, tt := range []struct {
+		name string
+		args []string
+		code int
+	}{
+		{"two actions", []string{"tests", "demo", "--done", "login", "--sign-off"}, 2},
+		{"override alone", []string{"tests", "demo", "--override"}, 2},
+		{"an unknown step", []string{"tests", "demo", "--done", "nope"}, 5},
+	} {
+		if _, _, code := rig(t, d, tt.args...); code != tt.code {
+			t.Errorf("%s: code %d, want %d", tt.name, code, tt.code)
+		}
+	}
+}

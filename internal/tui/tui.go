@@ -29,6 +29,9 @@ type Source interface {
 	// there is nothing to diff yet); Logs is the recent output of its containers.
 	Diff(ctx context.Context, ticket string) (string, error)
 	Logs(ctx context.Context, ticket string) (string, error)
+	// Manual is the ticket's manual tests, rendered with live addresses (ErrMissing
+	// when the agent has not written them yet).
+	Manual(ctx context.Context, ticket string) (api.TestsRenderResult, error)
 	Actions
 }
 
@@ -44,6 +47,9 @@ type Options struct {
 	// Exec runs a program with the TUI suspended (attaching to an agent); nil means
 	// tea.ExecProcess. done turns its exit into the message the model waits for.
 	Exec func(argv []string, done func(error) tea.Msg) tea.Cmd
+	// Copy puts text on the system clipboard (nil means an OSC 52 escape sequence,
+	// which most modern terminals honour, including over ssh).
+	Copy func(text string) error
 }
 
 // Messages. They are exported only to the package's own tests.
@@ -61,6 +67,7 @@ type (
 		gen    int
 		tab    Tab
 		text   string
+		manual api.TestsRenderResult
 		err    error
 	}
 	// refreshMsg says it is time to look at the open tab again.
@@ -142,7 +149,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.det == nil || m.det.ticket != msg.ticket || m.det.gen != msg.gen {
 			return m, nil // for a ticket that is no longer open
 		}
-		p := page{loaded: true, text: msg.text}
+		p := page{loaded: true, text: msg.text, manual: msg.manual}
 		switch {
 		case errors.Is(msg.err, ErrMissing):
 			p = page{loaded: true, missing: true}
@@ -260,6 +267,8 @@ func (m Model) loadTab(t Tab) tea.Cmd {
 			msg.text, msg.err = src.Diff(ctx, id)
 		case TabLogs:
 			msg.text, msg.err = src.Logs(ctx, id)
+		case TabManual:
+			msg.manual, msg.err = src.Manual(ctx, id)
 		default:
 			msg.text, msg.err = src.File(ctx, id, tabFile[t])
 		}
@@ -270,6 +279,11 @@ func (m Model) loadTab(t Tab) tea.Cmd {
 func (m Model) detailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	d := m.det
 	page := m.pageSize()
+	if d.tab == TabManual {
+		if next, cmd, handled := m.manualKey(msg); handled {
+			return next, cmd
+		}
+	}
 	switch msg.String() {
 	case "q":
 		m.quitting = true
@@ -283,7 +297,7 @@ func (m Model) detailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.goTo(d.tab + 1)
 	case "shift+tab":
 		return m.goTo(d.tab - 1)
-	case "1", "2", "3", "4", "5":
+	case "1", "2", "3", "4", "5", "6":
 		return m.goTo(Tab(msg.String()[0] - '1'))
 	case "down", "j":
 		d.scrollBy(1)
@@ -328,7 +342,9 @@ var Keys = []struct{ Key, Help string }{
 	{"g/G", "first / last ticket"},
 	{"enter", "open the selected ticket"},
 	{"esc", "back from a ticket"},
-	{"tab/1-5", "next tab / jump to a tab (plan, tasks, contract, diff, logs)"},
+	{"tab/1-6", "next tab / jump to a tab (plan, tasks, contract, diff, logs, manual)"},
+	{"space", "(manual tab) tick or untick the selected step; y copies its code blocks"},
+	{"S", "sign off the manual tests (asks first; offers to override when steps are not done)"},
 	{"pgup/pgdn", "scroll a page; g/G top/bottom"},
 	{"a", "approve the gate the ticket is waiting on (asks first)"},
 	{"v", "move the ticket to review (asks first)"},
