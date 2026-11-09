@@ -36,9 +36,10 @@ func newEnvFull(t *testing.T) (home string, d deps, repo *testkit.Repo, term *te
 	empty := func(context.Context, ...string) (string, string, int, error) {
 		return "", "item could not be found", 44, nil
 	}
-	daemon := &inProcessDaemon{backend: term, docker: dk, keychain: empty}
+	gh := testkit.NewFakeGH()
+	daemon := &inProcessDaemon{backend: term, docker: dk, keychain: empty, gh: gh}
 	t.Cleanup(func() { daemon.shutdown(t) })
-	return home, deps{spawner: daemon.spawn, backend: term, docker: dk, keychain: empty}, testkit.NewRepo(t), term, dk
+	return home, deps{spawner: daemon.spawn, backend: term, docker: dk, keychain: empty, gh: gh}, testkit.NewRepo(t), term, dk
 }
 
 func TestNewCreatesATicketThatListShows(t *testing.T) {

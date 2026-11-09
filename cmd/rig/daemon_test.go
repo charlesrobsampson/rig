@@ -14,6 +14,7 @@ import (
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/docker"
+	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/secrets"
 	"github.com/charlesrobsampson/rig/internal/terminal"
 )
@@ -38,6 +39,7 @@ type inProcessDaemon struct {
 	backend  terminal.Backend // nil means the configured one
 	docker   docker.Docker    // nil means the docker command
 	keychain secrets.SecurityRunner
+	gh       git.GH
 	mu       sync.Mutex
 	starts   int
 	done     []chan int
@@ -53,7 +55,7 @@ func (d *inProcessDaemon) spawn(context.Context) error {
 	done := make(chan int, 1)
 	d.done = append(d.done, done)
 	go func() {
-		done <- run(ctx, []string{"daemon", "run"}, &bytes.Buffer{}, &bytes.Buffer{}, deps{backend: d.backend, docker: d.docker, keychain: d.keychain})
+		done <- run(ctx, []string{"daemon", "run"}, &bytes.Buffer{}, &bytes.Buffer{}, deps{backend: d.backend, docker: d.docker, keychain: d.keychain, gh: d.gh})
 	}()
 	return nil
 }
