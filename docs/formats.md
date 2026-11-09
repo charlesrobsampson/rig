@@ -217,6 +217,7 @@ errors: 400 invalid_user
 - Rejected proposals carry a `**Rejected:** <reason>` line.
 - Agents append proposals only. Rig edits `## Agreed` and `## Changelog` on accept.
 - Malformed proposals are reported, never silently dropped, and never hide valid ones. A proposal is malformed when its heading does not match, its id names a different service than its `from`, its id repeats, it lacks `**What:**` or `**Why:**`, or it is rejected without a `**Rejected:**` reason. The other proposals are still read. HTML comments (the template's guidance) are ignored everywhere, `###` lines inside code fences are text, and a field's value continues over following lines until the next marker.
+- The fenced `endpoint` and `schema` blocks of `## Agreed` have a defined format, read by `rig contract check|export` (docs/contract-tests.md): an endpoint block is `METHOD /path` then `summary:`, `status:`, `request:`, `response:` and `errors:` fields; a schema block is a name then a JSON shape; shapes are JSON examples whose strings name types, `key?` is optional. Malformed blocks are reported with line numbers; blocks in proposals are ignored until accepted.
 - `rig new` writes the template (guidance comments only, nothing agreed) for a ticket with two or more services; single-service tickets have no `contract.md`. "Nothing agreed" means the `## Agreed` section is empty apart from comments.
 
 ## 12. `manual-tests.md`
