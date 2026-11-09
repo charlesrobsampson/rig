@@ -1,6 +1,7 @@
 package lifecycle_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -144,11 +145,11 @@ func TestStopRemovesTheNetworkAndForgetsIt(t *testing.T) {
 	}
 }
 
-func TestStopWithAContainerStillAttachedKeepsEverything(t *testing.T) {
+func TestStopWithAForeignContainerStillAttachedReportsItAndKeepsTheCheckout(t *testing.T) {
 	f, dk, clock := dockerFixture(t, domain.NetworkBridge)
 	f.create("demo", testkit.NewRepo(t))
 	res := f.mustStart("demo", domain.SandboxContainer)
-	c, _ := dk.CreateContainer(ctx, docker.ContainerSpec{Name: "rig-demo-api", Image: "img", Network: "rig-demo"})
+	c, _ := dk.CreateContainer(ctx, docker.ContainerSpec{Name: "rig-demo-api", Image: "img", Network: "rig-demo"}) // not rig's: no labels
 	dk.StartContainer(ctx, c.ID)
 
 	done := make(chan error, 1)
@@ -158,11 +159,12 @@ func TestStopWithAContainerStillAttachedKeepsEverything(t *testing.T) {
 		clock.Advance(time.Second) // the wait for the container to detach runs on the fake clock
 		select {
 		case err := <-done:
-			if apiCode(t, err) != api.CodeConflict || !strings.Contains(err.Error(), "rig-demo-api") {
-				t.Errorf("error = %v, want a conflict naming the container", err)
+			var apiErr *api.Error
+			if !errors.As(err, &apiErr) || apiCode(t, err) != api.CodeConflict || !strings.Contains(strings.Join(apiErr.Details, "\n"), "rig-demo-api") {
+				t.Errorf("error = %v (%+v), want a conflict whose details name the container", err, apiErr)
 			}
 			if !exists(res.Checkouts[0].Path) || len(networkNames(t, dk)) != 1 {
-				t.Error("a refused stop removed something")
+				t.Error("a stop that could not finish removed the checkout or the network")
 			}
 			return
 		case <-deadline:

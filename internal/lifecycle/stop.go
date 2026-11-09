@@ -18,16 +18,20 @@ type stopTarget struct {
 	imported bool
 }
 
-// Stop tears down a ticket's checkouts, never losing work silently. It first imports
-// every clone's branch into the main repository (harmless, and repeatable), then, unless
-// KeepCheckouts is set, removes the checkouts. If any service still holds work that
-// deleting would lose (uncommitted changes, or commits that could not be imported) the
-// whole stop is refused with a per-service report, and nothing is removed, unless Force
-// says to discard it. Force never overwrites a main-repository branch: work that cannot
-// be imported is dropped, not forced in.
+// Stop tears a ticket down in a fixed order, never losing work silently:
 //
-// This is where later teardown steps go ahead of the checkout removal: agents first,
-// then service containers and the ticket network.
+//  1. look first: import every clone's branch into the main repository and check what
+//     deleting the checkouts would lose; if work is at risk (and not forced) refuse here,
+//     before anything has been touched;
+//  2. agents (panes and containers), service containers and their ports, dependencies,
+//     the egress proxy, any other container labelled for the ticket, then its networks;
+//  3. import again (the agents have stopped, so this is their final work) and check again;
+//  4. the checkouts.
+//
+// If a step fails the others are still tried, state.json records what is gone, and the
+// error lists what failed and what remains; the checkouts are kept, since a container
+// that could not be stopped may still be using them. Running stop again retries. A
+// ticket that is already stopped is a no-op.
 func (m *Manager) Stop(ctx context.Context, p api.TicketStopParams) (api.TicketStopResult, error) {
 	l, unlock, err := m.begin(p.ID)
 	if err != nil {
@@ -38,6 +42,13 @@ func (m *Manager) Stop(ctx context.Context, p api.TicketStopParams) (api.TicketS
 
 	targets, unrecognized := m.stopTargets(ctx, t, st)
 	if len(targets) == 0 && len(unrecognized) == 0 {
+		if m.alreadyStopped(ctx, p.ID, t, st) {
+			res, err := m.reg.Get(p.ID)
+			if err != nil {
+				return api.TicketStopResult{}, err
+			}
+			return api.TicketStopResult{Summary: res.Summary}, nil
+		}
 		return api.TicketStopResult{}, &api.Error{Code: api.CodeConflict, Message: fmt.Sprintf("ticket %q has nothing to stop (no checkouts)", p.ID)}
 	}
 	if len(unrecognized) > 0 {
@@ -45,34 +56,33 @@ func (m *Manager) Stop(ctx context.Context, p api.TicketStopParams) (api.TicketS
 		return api.TicketStopResult{}, &api.Error{Code: api.CodeBlocked, Message: fmt.Sprintf("ticket %q has directories rig will not delete", p.ID), Details: unrecognized}
 	}
 
-	// Agents stop first: a running agent keeps changing the checkout being imported.
-	if err := m.closeAgents(ctx, p.ID, l, p.Force); err != nil {
-		return api.TicketStopResult{}, err
-	}
-	atRisk := m.importAndInspect(ctx, targets)
-	if len(atRisk) > 0 && !p.Force && !p.KeepCheckouts {
+	// Look before touching anything: a refused stop must leave agents and containers running.
+	if atRisk := m.importAndInspect(ctx, targets); len(atRisk) > 0 && !p.Force && !p.KeepCheckouts {
 		return api.TicketStopResult{}, &api.Error{
 			Code:    api.CodeBlocked,
-			Message: fmt.Sprintf("ticket %q still holds work; resolve it, or stop with force to discard it", p.ID),
+			Message: fmt.Sprintf("ticket %q still holds work; commit it (or ask its agent to), or stop with force to discard it. Nothing was stopped", p.ID),
 			Details: atRisk,
 		}
 	}
 
-	if err := m.removeServiceContainers(ctx, p.ID, t, st); err != nil {
-		return api.TicketStopResult{}, err
+	removed, failures := m.teardown(ctx, p.ID, l, p.Force)
+	m.syncTornDown(ctx, l)
+	if len(failures) > 0 {
+		return api.TicketStopResult{}, m.partialStop(ctx, p.ID, failures)
 	}
-	if err := m.removeDependencyContainers(ctx, p.ID, t); err != nil {
-		return api.TicketStopResult{}, err
+
+	// The agents have stopped: import their final work, and check once more.
+	if atRisk := m.importAndInspect(ctx, targets); len(atRisk) > 0 && !p.Force && !p.KeepCheckouts {
+		return api.TicketStopResult{}, &api.Error{
+			Code:    api.CodeBlocked,
+			Message: fmt.Sprintf("ticket %q's containers are stopped, but its checkouts still hold work; resolve it, or stop with force to discard it", p.ID),
+			Details: atRisk,
+		}
 	}
-	if err := m.removeProxy(ctx, p.ID); err != nil {
-		return api.TicketStopResult{}, err
-	}
-	if err := m.removeNetworks(ctx, p.ID, st); err != nil {
-		return api.TicketStopResult{}, err
-	}
-	result := api.TicketStopResult{}
-	var failures []string
-	removed := map[string]bool{}
+
+	result := api.TicketStopResult{Resources: removed}
+	var checkoutFailures []string
+	removedCheckout := map[string]bool{}
 	for _, tg := range targets {
 		info := api.StopInfo{Service: tg.svc.Name, Imported: tg.imported}
 		switch {
@@ -81,17 +91,17 @@ func (m *Manager) Stop(ctx context.Context, p api.TicketStopParams) (api.TicketS
 			info.Removed = true
 		default:
 			if err := tg.co.Remove(ctx, p.Force); err != nil {
-				failures = append(failures, fmt.Sprintf("%s: %v", tg.svc.Name, err))
+				checkoutFailures = append(checkoutFailures, fmt.Sprintf("%s: %v", tg.svc.Name, err))
 				result.Services = append(result.Services, info)
 				continue
 			}
 			info.Removed = true
 		}
-		removed[tg.svc.Name] = info.Removed
+		removedCheckout[tg.svc.Name] = info.Removed
 		result.Services = append(result.Services, info)
 	}
 
-	changed, err := m.recordStopped(statePath, targets, removed)
+	changed, err := m.recordStopped(statePath, targets, removedCheckout)
 	if err != nil {
 		return api.TicketStopResult{}, err
 	}
@@ -101,8 +111,8 @@ func (m *Manager) Stop(ctx context.Context, p api.TicketStopParams) (api.TicketS
 	if len(changed) > 0 {
 		m.publish(api.EventTicketStopped, p.ID, "", api.EmptyData{})
 	}
-	if len(failures) > 0 {
-		return api.TicketStopResult{}, &api.Error{Code: api.CodeInternal, Message: "some checkouts could not be removed", Details: failures}
+	if len(checkoutFailures) > 0 {
+		return api.TicketStopResult{}, &api.Error{Code: api.CodeInternal, Message: "some checkouts could not be removed", Details: checkoutFailures}
 	}
 
 	res, err := m.reg.Get(p.ID)
