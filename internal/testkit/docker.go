@@ -38,6 +38,7 @@ type FakeDocker struct {
 	healthImages map[string]bool
 	builds       map[string]int
 	lastBuild    docker.BuildSpec
+	buildHook    func(docker.BuildSpec) error
 	buildLog     []docker.BuildSpec
 }
 
@@ -139,6 +140,14 @@ func (f *FakeDocker) Resolve(from, name string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("%w: %s does not resolve from %s", docker.ErrNotFound, name, from)
+}
+
+// OnBuild runs fn inside every BuildImage call (the build context still exists then),
+// and a non-nil result fails the build.
+func (f *FakeDocker) OnBuild(fn func(spec docker.BuildSpec) error) {
+	f.mu.Lock()
+	f.buildHook = fn
+	f.mu.Unlock()
 }
 
 // Builds lists every BuildImage call, in order.
@@ -349,6 +358,11 @@ func (f *FakeDocker) BuildImage(ctx context.Context, spec docker.BuildSpec) erro
 	}
 	if info, err := os.Stat(filepath.Join(spec.ContextDir, dockerfile)); err != nil || info.IsDir() {
 		return fmt.Errorf("%w: no Dockerfile at %s", docker.ErrInvalid, filepath.Join(spec.ContextDir, dockerfile))
+	}
+	if f.buildHook != nil {
+		if err := f.buildHook(spec); err != nil {
+			return err
+		}
 	}
 	f.images[spec.Tag] = true
 	f.builds[spec.Tag]++
