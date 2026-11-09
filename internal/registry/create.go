@@ -161,6 +161,9 @@ func (c *Creator) write(dir string, t domain.Ticket, seed ticket.Seed, yamlDoc [
 	}
 
 	initial := state.State{TicketID: t.ID, Services: map[string]state.ServiceState{}}
+	if len(t.Services) >= 2 {
+		initial.Contract.AgreedHash = contract.Parse(contract.Template(t.ID)).AgreedHash()
+	}
 	for _, s := range t.Services {
 		initial.Services[s.Name] = state.ServiceState{Branch: s.Branch, Base: s.Base}
 	}

@@ -25,7 +25,10 @@ type TicketSummary struct {
 	Phase           domain.Phase     `json:"phase,omitempty"`
 	Services        []ServiceSummary `json:"services"`
 	ContractPending bool             `json:"contract_pending"`
-	Error           string           `json:"error,omitempty"`
+	// ContractViolation is set while the agreed section has been edited directly and
+	// nobody has resolved it.
+	ContractViolation bool   `json:"contract_violation,omitempty"`
+	Error             string `json:"error,omitempty"`
 }
 
 type ServiceSummary struct {

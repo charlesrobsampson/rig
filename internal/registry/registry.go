@@ -92,6 +92,7 @@ func (r *Registry) load(id string) api.TicketGetResult {
 		res.State = &st
 		res.Summary.Phase = st.Phase
 		res.Summary.ContractPending = st.Contract.Pending
+		res.Summary.ContractViolation = st.Contract.Violation != ""
 	}
 
 	if res.Ticket != nil {
