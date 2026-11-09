@@ -60,6 +60,13 @@ working directory, environment) each service would get. Secret values are never 
 			if err := tw.Flush(); err != nil {
 				return err
 			}
+			if n := res.Network; n != nil {
+				mode := "bridge"
+				if n.Internal {
+					mode = "internal, egress " + n.Egress
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "\nnetwork %s (%s)\n", n.Name, mode)
+			}
 			return printAgents(cmd.OutOrStdout(), res.Agents)
 		},
 	}

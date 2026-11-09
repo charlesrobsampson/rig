@@ -77,6 +77,7 @@ Shape per manifest §5, plus:
   },
   "dependencies": {"db": {"container_id": "", "status": "pending"}},
   "network": {"name": "", "id": ""},
+  "egress_network": {"name": "", "id": ""},
   "contract": {"pending": false},
   "manual_tests": {"steps": {}, "signed_off": false},
   "created_at": "2026-11-05T14:00:00Z",
@@ -88,6 +89,7 @@ Shape per manifest §5, plus:
 - `services[].status`: `pending | provisioned | running | stopped | error`.
 - `agent.state` / `AgentState`: `working | blocked | idle | unknown | exited`.
 - `push.status`: `pending | done | failed`.
+- `egress_network` is present only in `network_mode: internal` (the proxy's outward network); absent otherwise.
 - Writes are atomic (temp file + rename) and serialized per ticket.
 
 ## 6. Lifecycle rules

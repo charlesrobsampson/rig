@@ -18,6 +18,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/clock"
 	"github.com/charlesrobsampson/rig/internal/config"
 	"github.com/charlesrobsampson/rig/internal/daemon"
+	"github.com/charlesrobsampson/rig/internal/docker/dockercli"
 	"github.com/charlesrobsampson/rig/internal/events"
 	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/inject"
@@ -123,6 +124,10 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 	}
+	dk := a.deps.docker
+	if dk == nil {
+		dk = dockercli.New(dockercli.Options{})
+	}
 	rigBinary, _ := os.Executable()
 	agentEnv := map[string]string{"RIG_HOME": g.Paths.Home}
 	if a.configPath != "" {
@@ -130,7 +135,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	}
 	daemon.RegisterLifecycleHandlers(srv, lifecycle.New(lifecycle.Options{
 		Dir: g.TicketsDir(), States: states, Global: g, Bus: bus, Clock: clk,
-		Backend: backend, BackendName: g.Defaults.TerminalBackend, RigBinary: rigBinary, AgentEnv: agentEnv,
+		Backend: backend, BackendName: g.Defaults.TerminalBackend, RigBinary: rigBinary, AgentEnv: agentEnv, Docker: dk,
 	}))
 	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Logger: logger})
 	daemon.RegisterAgentHandlers(srv, sup)

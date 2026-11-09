@@ -20,10 +20,12 @@ type State struct {
 	Services      map[string]ServiceState    `json:"services"`
 	Dependencies  map[string]DependencyState `json:"dependencies"`
 	Network       Network                    `json:"network"`
-	Contract      Contract                   `json:"contract"`
-	ManualTests   ManualTests                `json:"manual_tests"`
-	CreatedAt     time.Time                  `json:"created_at"`
-	UpdatedAt     time.Time                  `json:"updated_at"`
+	// EgressNetwork is the proxy's outward network, present only in internal mode.
+	EgressNetwork *Network    `json:"egress_network,omitempty"`
+	Contract      Contract    `json:"contract"`
+	ManualTests   ManualTests `json:"manual_tests"`
+	CreatedAt     time.Time   `json:"created_at"`
+	UpdatedAt     time.Time   `json:"updated_at"`
 
 	unknown map[string]json.RawMessage
 }

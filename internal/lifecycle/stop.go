@@ -58,6 +58,9 @@ func (m *Manager) Stop(ctx context.Context, p api.TicketStopParams) (api.TicketS
 		}
 	}
 
+	if err := m.removeNetworks(ctx, p.ID, st); err != nil {
+		return api.TicketStopResult{}, err
+	}
 	result := api.TicketStopResult{}
 	var failures []string
 	removed := map[string]bool{}
@@ -159,6 +162,9 @@ func (m *Manager) recordStopped(path string, targets []stopTarget, removed map[s
 	var changed []string
 	err := m.opts.States.Update(path, func(s *state.State) error {
 		changed = nil
+		if m.opts.Docker != nil {
+			s.Network, s.EgressNetwork = state.Network{}, nil
+		}
 		for _, tg := range targets {
 			ss := s.Services[tg.svc.Name]
 			if removed[tg.svc.Name] {

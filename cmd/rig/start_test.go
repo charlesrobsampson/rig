@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -139,5 +140,27 @@ func TestStartDryRunJSONHasTheFullCommand(t *testing.T) {
 	cmd := got.Launches[0].Command
 	if len(cmd) != 6 || cmd[0] != "claude" || !strings.Contains(cmd[2], "agent-event") || cmd[3] != "--add-dir" || !strings.Contains(cmd[5], `service "svc1"`) {
 		t.Errorf("command = %q", cmd)
+	}
+}
+
+func TestStartShowsTheTicketNetwork(t *testing.T) {
+	_, d, repo, _, dk := newEnvFull(t)
+	newTicket(t, d, "demo", repo)
+	stdout, stderr, code := rig(t, d, "start", "demo")
+	if code != 0 || !strings.Contains(stdout, "network rig-demo (bridge)") {
+		t.Fatalf("code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	if n, err := dk.InspectNetwork(context.Background(), "rig-demo"); err != nil || n.Labels["rig.ticket"] != "demo" {
+		t.Errorf("network = %+v, %v", n, err)
+	}
+	json, _, _ := rig(t, d, "start", "demo", "--json")
+	if !strings.Contains(json, `"network"`) || !strings.Contains(json, `"rig-demo"`) {
+		t.Errorf("--json lacks the network: %s", json)
+	}
+	if _, stderr, code := rig(t, d, "stop", "demo"); code != 0 {
+		t.Fatalf("stop: %q", stderr)
+	}
+	if list, _ := dk.ListNetworks(context.Background(), nil); len(list) != 0 {
+		t.Errorf("networks after stop: %v", list)
 	}
 }
