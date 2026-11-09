@@ -191,7 +191,7 @@ rig/
 │   ├── state/      # state.json reader/writer + phase machine
 │   ├── store/      # runtime cache store (JSON, SQLite later)
 │   ├── summary/    # LLM summaries
-│   ├── terminal/   # TerminalBackend interface + herdr and tmux impls
+│   ├── terminal/   # TerminalBackend interface + herdr and tmux impls; terminaltest/ is the shared contract suite
 │   ├── testkit/    # fakes (clock, docker, terminal, gh, ticket source) and fake agent
 │   ├── ticket/     # TicketSource interface + impls
 │   └── tui/        # Bubble Tea app, views, components
