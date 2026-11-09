@@ -191,3 +191,12 @@ type TransitionResult struct {
 	Reason  string        `json:"reason"`
 	At      time.Time     `json:"at"`
 }
+
+// AgentEventParams is what an agent's hook reports: the agent of ticket/service is now
+// in State (ready, working, blocked, idle or exited). "ready" means the agent's
+// interface is up and can take typed input; it counts as idle.
+type AgentEventParams struct {
+	Ticket  string `json:"ticket"`
+	Service string `json:"service"`
+	State   string `json:"state"`
+}
