@@ -640,7 +640,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 56 · Dashboard view
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/56-tui-dashboard` · Depends: 55
 - Read: `manifest.md` §1 (goal: what needs me)
 - Build: fleet table (ticket, phase, per-service agent state lights, ports, pending gates, "contract change pending"); "needs me" rows sorted to the top (blocked agent, awaiting gate, pending contract change, errors); navigation bounds.
