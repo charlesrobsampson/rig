@@ -260,7 +260,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 23 · Phase machine
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/23-phase-machine` · Depends: 07, 11
 - Read: `manifest.md` §3, `docs/formats.md` §5–6
 - Build: in `internal/state`, the transition rules from formats §6 (one step forward, backward to any earlier phase, `done` terminal), pure `CanTransition(from, to)`, persistence of phase via the state writer from task 11.
