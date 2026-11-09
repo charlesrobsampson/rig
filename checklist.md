@@ -655,7 +655,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 57 · Detail view
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/57-tui-detail` · Depends: 56, 45
 - Read: `manifest.md` §2, §7
 - Build: per-ticket tabs: plan.md, tasks.md (checkbox progress), contract.md, diff (via `delta` output rendered), logs; scrollable; refresh on file change events.
