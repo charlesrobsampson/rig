@@ -73,6 +73,13 @@ func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 		return m.Start(ctx, p)
 	})
 	registerStop(s, m)
+	s.HandleStream(api.MethodLogsStream, func(ctx context.Context, params json.RawMessage, send func(any) error) error {
+		var p api.LogsParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return &api.Error{Code: api.CodeInvalid, Message: "logs.stream needs params like {\"ticket\": \"ticket-1\", \"follow\": true}"}
+		}
+		return m.StreamLogs(ctx, p, send)
+	})
 	s.Handle(api.MethodAgentAttach, func(ctx context.Context, params json.RawMessage) (any, error) {
 		var p api.AgentAttachParams
 		if err := json.Unmarshal(params, &p); err != nil {

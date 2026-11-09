@@ -273,3 +273,20 @@ type AgentMessageResult struct {
 	Service string `json:"service"`
 	Sent    string `json:"sent"`
 }
+
+// LogsParams asks for container logs of a ticket. Service names a service, a
+// dependency, or "proxy"; empty means all of them. Tail limits each container to its
+// last N lines (0 = all); Follow keeps streaming new lines until the client leaves.
+type LogsParams struct {
+	Ticket  string `json:"ticket"`
+	Service string `json:"service,omitempty"`
+	Tail    int    `json:"tail,omitempty"`
+	Follow  bool   `json:"follow,omitempty"`
+}
+
+// LogLine is one line of one container's output; Service is its name as in ticket.yaml
+// ("web", "db", or "proxy").
+type LogLine struct {
+	Service string `json:"service"`
+	Line    string `json:"line"`
+}
