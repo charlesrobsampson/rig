@@ -246,7 +246,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 22 · `rig stop` (checkouts)
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/22-stop-checkouts` · Depends: 18, 21
 - Read: `manifest.md` §7, `docs/formats.md` §7
 - Build: `rig stop <id> [--force] [--keep-checkouts]` first **imports** each clone's branch into the main repo, then removes checkouts, refusing on dirty (or on a failed import) with a per-service report unless `--force`; branches always kept; state updated. Stop is the extension point for later teardown (agents, containers).
