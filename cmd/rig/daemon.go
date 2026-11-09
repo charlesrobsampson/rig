@@ -24,6 +24,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/inject"
 	"github.com/charlesrobsampson/rig/internal/lifecycle"
 	"github.com/charlesrobsampson/rig/internal/registry"
+	"github.com/charlesrobsampson/rig/internal/secrets"
 	"github.com/charlesrobsampson/rig/internal/state"
 	"github.com/charlesrobsampson/rig/internal/supervisor"
 	"github.com/charlesrobsampson/rig/internal/terminal/backends"
@@ -135,7 +136,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	}
 	daemon.RegisterLifecycleHandlers(srv, lifecycle.New(lifecycle.Options{
 		Dir: g.TicketsDir(), States: states, Global: g, Bus: bus, Clock: clk,
-		Backend: backend, BackendName: g.Defaults.TerminalBackend, RigBinary: rigBinary, AgentEnv: agentEnv, Docker: dk,
+		Backend: backend, BackendName: g.Defaults.TerminalBackend, RigBinary: rigBinary, AgentEnv: agentEnv, Docker: dk, Secrets: secretValues(g, a.deps.keychain),
 	}))
 	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Logger: logger, Interval: time.Second})
 	daemon.RegisterAgentHandlers(srv, sup)
@@ -197,4 +198,15 @@ func (a *app) stopDaemon(cmd *cobra.Command, _ []string) error {
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), "daemon stopped")
 	return nil
+}
+
+// secretValues is how the daemon finds the values of the secrets tickets name: the
+// Keychain first, then the configured .env file.
+func secretValues(g config.Global, run secrets.SecurityRunner) func(names []string) (map[string]string, error) {
+	keychain := secrets.NewKeychain(g.Secrets.KeychainService)
+	if run != nil {
+		keychain.Run, keychain.Disabled = run, false
+	}
+	resolver := secrets.New(keychain, &secrets.EnvFile{Path: g.Secrets.EnvFile})
+	return func(names []string) (map[string]string, error) { return resolver.Resolve(context.Background(), names) }
 }
