@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"github.com/charlesrobsampson/rig/internal/api"
@@ -10,6 +11,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/events"
 	"github.com/charlesrobsampson/rig/internal/lifecycle"
 	"github.com/charlesrobsampson/rig/internal/registry"
+	"github.com/charlesrobsampson/rig/internal/secrets"
 	"github.com/charlesrobsampson/rig/internal/store"
 	"github.com/charlesrobsampson/rig/internal/summary"
 	"github.com/charlesrobsampson/rig/internal/ticket"
@@ -109,5 +111,22 @@ func ticketSources(g config.Global, secret func(names []string) (map[string]stri
 			return values[jiraTokenName], nil
 		},
 	})
+	reg.Register("github", ticket.GitHub{
+		APIURL: g.GitHub.APIURL,
+		HTTP:   doer,
+		Token: func() (string, bool, error) {
+			values, err := secret([]string{githubTokenName})
+			if errors.Is(err, secrets.ErrNotFound) {
+				return "", false, nil // public repositories need no credential
+			}
+			if err != nil {
+				return "", false, err
+			}
+			return values[githubTokenName], true, nil
+		},
+	})
 	return reg
 }
+
+// githubTokenName is the optional secret holding a GitHub token.
+const githubTokenName = "GITHUB_TOKEN"

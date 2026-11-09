@@ -27,6 +27,15 @@ type Global struct {
 	Docker     Docker     `json:"docker"`
 	Egress     Egress     `json:"egress"`
 	Jira       Jira       `json:"jira"`
+	GitHub     GitHub     `json:"github"`
+}
+
+// GitHub says where to read issues from for `rig new --from github:owner/repo#123`. The
+// credential is the optional GITHUB_TOKEN secret: public repositories work without one.
+type GitHub struct {
+	// APIURL is the API root, https://api.github.com when empty; for GitHub Enterprise,
+	// https://github.example.com/api/v3.
+	APIURL string `json:"api_url,omitempty"`
 }
 
 // Jira says where to read issues from for `rig new --from jira:KEY`. The credential is
@@ -256,6 +265,11 @@ func validateGlobal(g Global) []string {
 	if u := g.Jira.BaseURL; u != "" {
 		if parsed, err := url.Parse(u); err != nil || parsed.Host == "" || (parsed.Scheme != "https" && !(parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1"))) {
 			add("jira.base_url: %q must be an https URL like https://acme.atlassian.net", u)
+		}
+	}
+	if u := g.GitHub.APIURL; u != "" {
+		if parsed, err := url.Parse(u); err != nil || parsed.Host == "" || (parsed.Scheme != "https" && !(parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1"))) {
+			add("github.api_url: %q must be an https URL like https://api.github.com", u)
 		}
 	}
 	if g.Summarizer.Provider == "ollama" && strings.TrimSpace(g.Summarizer.Model) == "" {
