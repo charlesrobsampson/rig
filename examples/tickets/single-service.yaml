@@ -1,0 +1,10 @@
+# One service, everything default: the agent runs in a container with an isolated clone
+# of the repository, the plan and review gates apply, and the finished branch is pushed
+# for you to open a PR from.
+id: add-locale-header
+title: Return a Content-Language header
+services:
+  - name: api
+    repo: /home/me/code/api
+    branch: feat/locale-header
+    test: go test ./...

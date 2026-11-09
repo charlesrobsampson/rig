@@ -864,13 +864,20 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Not done / for you: the manual check (run a demo ticket end to end on a real Linux box with real Docker and agents) was not possible here; also untried: rootless Docker and Podman, and Herdr on Linux.
 
 ### 70 · README, license, CI, release
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/70-release` · Depends: 69
 - Read: `manifest.md` §1
 - Build: README (install, quickstart, architecture, config examples, sandbox model and its limits), example `ticket.yaml` files, license, CI running `task check` and `task test:race` (plus the tagged suites where the runner supports them), and a `task release` target producing release builds. Contributors need only Go and `go-task`.
 - Tests: none. CI must pass.
 - Manual check: a clean machine follows the README to a running two-service demo ticket.
+- Notes:
+  - `README.md`: what rig is, requirements, install, a quickstart that walks a ticket from `rig new` to `rig stop` (including how the credentials get in, which the example config's `claude` auth profile reads), the TUI, how a ticket and its phases/gates work, architecture, the sandbox model with an explicit list of what it does **not** protect against, configuration, an index of the docs, and development. Command names and flags in it were checked against `rig --help`.
+  - Examples: `examples/tickets/{single-service,two-services,greenfield}.yaml` and `examples/config.json`; `examples/examples_test.go` parses them with the real loaders so they cannot rot (the config test also checks its values load as written).
+  - CI (`.github/workflows/ci.yml`, needs only Go and go-task): `task check` on ubuntu and macos, `task test:race`, `task test:docker` (the runner has Docker), `task test:integration` (tmux installed; Herdr's tests skip without it) and `task release` with the archives uploaded. Not run on GitHub from here: I verified each command locally (fresh clone of this branch: `task check` green) and parsed the workflow YAML.
+  - `task release` now builds archives for darwin and linux, arm64 and amd64, with `-trimpath`, the version stamped in, the egress proxy embedded, README (and LICENSE when one exists) inside, and `dist/SHA256SUMS`. Checked locally: the macOS arm64 binary reports its version, and the Linux arm64 binary runs in a Debian container.
+  - License: **not chosen**. Picking one is the owner's decision, so no LICENSE file was added; the README says so, and `task release` includes one automatically as soon as a `LICENSE` file exists. This is the one open item of this task.
+  - Manual check (a clean machine follows the README to a running two-service demo ticket) is for you.
 
 ---
 

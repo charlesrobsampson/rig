@@ -1,0 +1,43 @@
+{
+  "defaults": {
+    "harness": "claude-code",
+    "sandbox": "container",
+    "terminal_backend": "tmux",
+    "ticket_source": "manual",
+    "branch_prefix": "rig/",
+    "policy": {
+      "gates": [
+        "plan_approval",
+        "review_approval"
+      ],
+      "push": {
+        "mode": "pr"
+      }
+    }
+  },
+  "limits": {
+    "max_active_tickets": 4
+  },
+  "summarizer": {
+    "provider": "none"
+  },
+  "jira": {
+    "base_url": "https://example.atlassian.net",
+    "email": "me@example.com"
+  },
+  "secrets": {
+    "keychain_service": "rig",
+    "env_file": "~/.config/rig/secrets.env"
+  },
+  "auth": {
+    "default": "claude",
+    "profiles": {
+      "claude": {
+        "type": "oauth_token",
+        "secrets": [
+          "CLAUDE_CODE_OAUTH_TOKEN"
+        ]
+      }
+    }
+  }
+}

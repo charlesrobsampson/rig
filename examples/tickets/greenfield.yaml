@@ -1,0 +1,13 @@
+# A throwaway experiment: no gates, merged straight into main, and the network limited to
+# an allowlist (internal mode). Gates and push behaviour are policy, never hard-coded.
+id: try-sqlite-store
+title: Try replacing the file store with SQLite
+docker: { network_mode: internal }
+services:
+  - name: app
+    repo: /home/me/code/app
+    branch: spike/sqlite-store
+    test: go test ./...
+    policy:
+      gates: []
+      push: { mode: merge }
