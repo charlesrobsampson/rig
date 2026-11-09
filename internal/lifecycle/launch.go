@@ -24,6 +24,7 @@ func (m *Manager) previewLaunches(t domain.Ticket, st state.State, ticketDir str
 		req := harness.Request{
 			Ticket: t, Service: svc.Name, Phase: st.Phase, TicketDir: ticketDir,
 			Dir: filepath.Join(ticketDir, svc.Path), Network: eff.NetworkMode,
+			CostCommand: "rig agent-event cost",
 		}
 		placeholders := map[string]string{}
 		for _, name := range t.Secrets {

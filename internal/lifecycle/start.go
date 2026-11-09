@@ -80,13 +80,18 @@ type Manager struct {
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex
+
+	// capMu guards starting: the tickets whose start has been let through the limit but
+	// is not yet recorded in state.json, so two starts at once cannot both take the last slot.
+	capMu    sync.Mutex
+	starting map[string]bool
 }
 
 func New(o Options) *Manager {
 	if o.Clock == nil {
 		o.Clock = clock.Real()
 	}
-	m := &Manager{opts: o, reg: registry.New(o.Dir, o.States), locks: map[string]*sync.Mutex{}}
+	m := &Manager{opts: o, reg: registry.New(o.Dir, o.States), locks: map[string]*sync.Mutex{}, starting: map[string]bool{}}
 	if o.Docker != nil {
 		min, max := o.Global.Docker.PortRange.Min, o.Global.Docker.PortRange.Max
 		if min == 0 && max == 0 { // a Global built without the defaults
@@ -160,6 +165,12 @@ func (m *Manager) Start(ctx context.Context, p api.TicketStartParams) (api.Ticke
 		}
 		return api.TicketStartResult{Summary: res.Summary, Launches: launches}, nil
 	}
+
+	release, err := m.reserveSlot(p.ID, st)
+	if err != nil {
+		return api.TicketStartResult{}, err
+	}
+	defer release()
 
 	if err := m.checkSecrets(l, p.Sandbox); err != nil {
 		return api.TicketStartResult{}, err

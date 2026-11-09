@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +82,9 @@ func invalid(format string, args ...any) *api.Error {
 
 // Report handles agent.event: it records what the agent says and applies it at once.
 func (s *Supervisor) Report(ctx context.Context, p api.AgentEventParams) error {
+	if p.State == "cost" {
+		return s.reportCost(p)
+	}
 	var st domain.AgentState
 	ready := false
 	switch p.State {
@@ -123,6 +128,47 @@ func (s *Supervisor) Report(ctx context.Context, p api.AgentEventParams) error {
 		}
 	}
 	return s.apply(statePath, p.Ticket, p.Service, pane)
+}
+
+// maxCostUSD bounds a reported cost: anything above is a broken report, not a bill.
+const maxCostUSD = 1_000_000
+
+// reportCost records what the harness says the agent has spent. It touches nothing but
+// the cost: it is not a sign of life, so it does not move the agent's state.
+func (s *Supervisor) reportCost(p api.AgentEventParams) error {
+	if p.CostUSD == nil || math.IsNaN(*p.CostUSD) || math.IsInf(*p.CostUSD, 0) || *p.CostUSD < 0 || *p.CostUSD > maxCostUSD {
+		return invalid("a cost report needs cost_usd between 0 and %d", maxCostUSD)
+	}
+	if err := domain.ValidateTicketID(p.Ticket); err != nil {
+		return invalid("%v", err)
+	}
+	statePath := filepath.Join(s.opts.Dir, p.Ticket, "state.json")
+	if _, err := os.Stat(statePath); err != nil {
+		return &api.Error{Code: api.CodeNotFound, Message: fmt.Sprintf("ticket %q not found", p.Ticket)}
+	}
+	usd := *p.CostUSD
+	changed := false
+	err := s.opts.States.Update(statePath, func(st *state.State) error {
+		changed = false
+		ss, ok := st.Services[p.Service]
+		if !ok {
+			return &api.Error{Code: api.CodeNotFound, Message: fmt.Sprintf("ticket %q has no service %q", p.Ticket, p.Service)}
+		}
+		changed = ss.Agent.Cost == nil || math.Round(ss.Agent.Cost.USD*100) != math.Round(usd*100)
+		if ss.Agent.Cost != nil && ss.Agent.Cost.USD == usd {
+			return errNoChange // the harness repeats itself; nothing to write
+		}
+		ss.Agent.Cost = &state.Cost{USD: usd, At: s.opts.Clock.Now().UTC()}
+		st.Services[p.Service] = ss
+		return nil
+	})
+	if err != nil && err != errNoChange {
+		return err
+	}
+	if changed && s.opts.Bus != nil {
+		return s.opts.Bus.Publish(api.EventAgentCost, p.Ticket, p.Service, api.AgentCostData{USD: usd})
+	}
+	return nil
 }
 
 // Ready says whether the service's agent has reported that its interface is up, so
@@ -310,16 +356,53 @@ func (s *Supervisor) readEvents(ctx context.Context, ticket, service string) {
 	}
 	chunk := strings.Split(strings.TrimSuffix(string(data[offset:end]), "\n"), "\n")
 	if !seen {
-		chunk = chunk[len(chunk)-1:]
+		chunk = lastOfEachKind(chunk)
 	}
 	s.mu.Lock()
 	s.offsets[k] = int64(end)
 	s.mu.Unlock()
 	for _, line := range chunk {
 		if line = strings.TrimSpace(line); line != "" {
-			if err := s.Report(ctx, api.AgentEventParams{Ticket: ticket, Service: service, State: line}); err != nil {
+			p := api.AgentEventParams{Ticket: ticket, Service: service, State: line}
+			if usd, ok := parseCostLine(line); ok {
+				p.State, p.CostUSD = "cost", &usd
+			}
+			if err := s.Report(ctx, p); err != nil {
 				s.opts.Logger.Debug("ignored an agent event", "ticket", ticket, "service", service, "line", line, "err", err)
 			}
 		}
 	}
+}
+
+// parseCostLine reads a "cost 0.42" line of a container agent's events file.
+func parseCostLine(line string) (float64, bool) {
+	rest, ok := strings.CutPrefix(line, "cost ")
+	if !ok {
+		return 0, false
+	}
+	usd, err := strconv.ParseFloat(strings.TrimSpace(rest), 64)
+	return usd, err == nil
+}
+
+// lastOfEachKind keeps the last state line and the last cost line of history that a
+// restarted daemon sees for the first time: the current state and the current cost, not
+// a replay of every change.
+func lastOfEachKind(lines []string) []string {
+	lastState, lastCost := "", ""
+	for _, l := range lines {
+		l = strings.TrimSpace(l)
+		if _, ok := parseCostLine(l); ok {
+			lastCost = l
+		} else if l != "" {
+			lastState = l
+		}
+	}
+	var out []string
+	if lastState != "" {
+		out = append(out, lastState)
+	}
+	if lastCost != "" {
+		out = append(out, lastCost)
+	}
+	return out
 }

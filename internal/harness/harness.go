@@ -30,6 +30,9 @@ type Request struct {
 	Secrets map[string]string
 	// HookCommand is what the agent's hooks run to report state (default "rig agent-event").
 	HookCommand string
+	// CostCommand is what the harness's status line runs to report the agent's running
+	// cost. Empty means cost is not reported (the readout stays absent, never zero).
+	CostCommand string
 }
 
 // Launch is what a terminal backend needs to start the agent.

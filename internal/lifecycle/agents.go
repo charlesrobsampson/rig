@@ -130,6 +130,7 @@ func (m *Manager) prepareHostAgent(l loaded, svc domain.Service, eff policy.Effe
 		return agentLaunch{}, err
 	}
 	req.Dir, req.HookCommand = dir, shellQuote(m.rigBinary())+" agent-event"
+	req.CostCommand = shellQuote(m.rigBinary()) + " agent-event cost"
 	launch, err := h.Command(req)
 	if err != nil {
 		return agentLaunch{}, err

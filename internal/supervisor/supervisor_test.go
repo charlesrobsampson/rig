@@ -3,6 +3,7 @@ package supervisor_test
 import (
 	"context"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -517,5 +518,139 @@ func TestAMissingEventsFileIsFine(t *testing.T) {
 	f.poll()
 	if got := f.agentState("demo", "api"); got != domain.AgentUnknown {
 		t.Errorf("state = %s", got)
+	}
+}
+
+func (f *fixture) cost(ticket, service string) *state.Cost {
+	f.t.Helper()
+	st, err := f.states.Load(filepath.Join(f.dir, ticket, "state.json"))
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return st.Services[service].Agent.Cost
+}
+
+func (f *fixture) reportCost(ticket, service string, usd float64) error {
+	return f.sup.Report(ctx, api.AgentEventParams{Ticket: ticket, Service: service, State: "cost", CostUSD: &usd})
+}
+
+// costEvents drains the agent.cost events published so far.
+func (f *fixture) costEvents() []float64 {
+	f.t.Helper()
+	var out []float64
+	for {
+		select {
+		case ev := <-f.sub.Events():
+			if ev.Type == api.EventAgentCost {
+				var d api.AgentCostData
+				jsonUnmarshal(ev.Data, &d)
+				out = append(out, d.USD)
+			}
+		default:
+			return out
+		}
+	}
+}
+
+func TestACostIsAbsentUntilTheHarnessReportsOne(t *testing.T) {
+	f := newFixture(t)
+	f.launch("demo", "api")
+	f.mustReport("demo", "api", "working")
+	if c := f.cost("demo", "api"); c != nil {
+		t.Errorf("cost = %+v before any report; it must be absent, not zero", c)
+	}
+	if err := f.reportCost("demo", "api", 0.4321); err != nil {
+		t.Fatal(err)
+	}
+	c := f.cost("demo", "api")
+	if c == nil || c.USD != 0.4321 || !c.At.Equal(epoch) {
+		t.Errorf("cost = %+v", c)
+	}
+}
+
+func TestACostReportDoesNotMoveTheAgentsState(t *testing.T) {
+	f := newFixture(t)
+	f.launch("demo", "api")
+	f.mustReport("demo", "api", "blocked")
+	f.changes()
+	f.reportCost("demo", "api", 1.5)
+	if got := f.agentState("demo", "api"); got != domain.AgentBlocked {
+		t.Errorf("state = %s; a cost report must not count as the agent being active", got)
+	}
+	if ch := f.changes(); len(ch) != 0 {
+		t.Errorf("a cost report published a state change: %+v", ch)
+	}
+}
+
+func TestCostEventsFireOnlyWhenTheCentsChange(t *testing.T) {
+	f := newFixture(t)
+	f.launch("demo", "api")
+	f.costEvents()
+	for _, usd := range []float64{0.001, 0.004, 0.004, 0.0049, 0.011, 0.011, 0.5} {
+		if err := f.reportCost("demo", "api", usd); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := f.costEvents()
+	if len(got) != 3 || got[0] != 0.001 || got[1] != 0.011 || got[2] != 0.5 {
+		t.Errorf("events = %v, want only the reports that moved the displayed cents", got)
+	}
+	if c := f.cost("demo", "api"); c.USD != 0.5 {
+		t.Errorf("stored = %+v; every change is recorded even when it is not announced", c)
+	}
+}
+
+func TestBadCostReportsAreRefusedAndChangeNothing(t *testing.T) {
+	f := newFixture(t)
+	f.launch("demo", "api")
+	nan, inf, neg, huge := math.NaN(), math.Inf(1), -1.0, 2e6
+	for name, usd := range map[string]*float64{"missing": nil, "NaN": &nan, "infinite": &inf, "negative": &neg, "absurd": &huge} {
+		err := f.sup.Report(ctx, api.AgentEventParams{Ticket: "demo", Service: "api", State: "cost", CostUSD: usd})
+		var apiErr *api.Error
+		if !errors.As(err, &apiErr) || apiErr.Code != api.CodeInvalid {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+	if c := f.cost("demo", "api"); c != nil {
+		t.Errorf("a refused report recorded %+v", c)
+	}
+	one := 1.0
+	for name, p := range map[string]api.AgentEventParams{
+		"an unknown ticket":  {Ticket: "ghost", Service: "api", State: "cost", CostUSD: &one},
+		"an unknown service": {Ticket: "demo", Service: "nope", State: "cost", CostUSD: &one},
+		"a bad ticket id":    {Ticket: "../x", Service: "api", State: "cost", CostUSD: &one},
+	} {
+		if err := f.sup.Report(ctx, p); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+}
+
+func TestContainerAgentsReportCostThroughTheirEventsFile(t *testing.T) {
+	f := newFixture(t)
+	f.launch("demo", "api")
+	file := f.eventsFile("demo", "api")
+	// history a restarted daemon sees for the first time: only the current state and cost count
+	appendTo(t, file, "ready\ncost 0.10\nworking\ncost 0.25\nidle\ncost 0.30\n")
+	f.poll()
+	if got := f.agentState("demo", "api"); got != domain.AgentIdle {
+		t.Errorf("state = %s", got)
+	}
+	if c := f.cost("demo", "api"); c == nil || c.USD != 0.30 {
+		t.Errorf("cost = %+v, want the last report", c)
+	}
+	if ev := f.costEvents(); len(ev) != 1 {
+		t.Errorf("first sight replayed cost history: %v", ev)
+	}
+	appendTo(t, file, "cost 1.75\nworking\ncost 1.80\n")
+	f.poll()
+	if c := f.cost("demo", "api"); c.USD != 1.80 {
+		t.Errorf("cost = %+v", c)
+	}
+	// garbage next to cost lines is ignored
+	appendTo(t, file, "cost banana\ncost\ncost -5\ncost 1e999\n")
+	f.poll()
+	if c := f.cost("demo", "api"); c.USD != 1.80 {
+		t.Errorf("a malformed cost line changed the cost: %+v", c)
 	}
 }

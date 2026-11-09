@@ -821,13 +821,18 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Manual check (kill the daemon mid-ticket, restart, see nothing lost) is for you: `rig start` a ticket with a real agent, `kill` the daemon, run any `rig` command to restart it, and `rig reconcile`.
 
 ### 67 · Limits and cost readout
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/67-limits` · Depends: 15, 29
 - Read: `manifest.md` §7 (limits)
 - Build: enforce `max_active_tickets` on `rig start` with a clear message; optional per-agent token/cost readout when the harness exposes it, shown in `rig list --json` and the dashboard.
 - Tests: start refused at the cap; stopping frees a slot; cost field absent (not zero) when unsupported; cap configurable.
 - Manual check: set the cap to 1 and try starting a second ticket.
+- Notes:
+  - Limit: `limits.max_active_tickets` (already in the config, default 8, validated >= 1) is enforced in `lifecycle.Start` (`limits.go`). "Active" = `state.State.Active()`: anything provisioned or running (a checkout, container, pane, network) and not done. A start that would exceed the cap is `blocked` (CLI exit 3) naming the count, the limit, the config key, `rig stop`, and listing the active tickets in details; nothing is provisioned. Restarting an already active ticket is never refused (even if the limit was lowered under running tickets), dry runs are not counted, a start that fails does not keep its slot, and starting tickets are reserved under a mutex so two concurrent starts cannot both take the last slot (tested with six at once and a limit of 1). Stopping frees the slot. A limit of 0 in a hand-built config means no limit.
+  - Cost: Claude Code's status line input carries `cost.total_cost_usd` (confirmed in the installed claude 2.1.321 binary), so rig configures a `statusLine` command in the `--settings` it passes: host agents run `rig agent-event cost` (reads the JSON on stdin, reports it, prints `$1.23` as the status line); container agents have no rig binary, so their status line pulls the number out with `sed` and appends `cost <usd>` to the events file the supervisor already reads (the exact shell command is tested against real `sh` with compact/pretty/missing/hostile JSON, and was run once in an Alpine container to check busybox's sed). The supervisor stores it in `agent.cost` {usd, at} without touching the agent state; a cost is absent (not zero) until a harness reports one, and harnesses that do not report cost (`CostCommand` empty) never produce one. Replaying a container agent's events history after a daemon restart applies the last state and the last cost, not the whole history. `agent.cost` events fire only when the displayed cents change.
+  - Shown in `rig list` (`api:running/working $1.23`), `rig list --json` (`cost_usd`, omitted when unknown) and the TUI dashboard (a COST column summing a ticket's agents, `-` when none report; live via `agent.cost` events). Token counts are not read: the status JSON's token fields are not documented and cost is what the task needs.
+  - Manual check (set the cap to 1 and try starting a second ticket) is for you; so is seeing a real cost: start a ticket with a real Claude Code agent and watch `rig list` (this depends on Claude Code calling the status line, which it does in interactive sessions).
 
 ### 68 · Contract test helper
 - [ ] Done

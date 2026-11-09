@@ -453,3 +453,20 @@ func TestThePumpStopsWhenItsContextEnds(t *testing.T) {
 		t.Fatal("the pump did not stop while waiting to retry")
 	}
 }
+
+func TestACostEventUpdatesTheRowWithoutAskingTheDaemon(t *testing.T) {
+	m, src := liveModel(t)
+	calls := src.calls
+	ev := event(t, api.EventAgentCost, "alpha", "api", api.AgentCostData{USD: 2.5})
+	m, cmd := send(m, eventsMsg{[]api.Event{ev}})
+	if cmd != nil || src.calls != calls {
+		t.Error("a cost event asked for more work")
+	}
+	if v := m.View(); !strings.Contains(v, "$2.50") {
+		t.Errorf("the cost did not show:\n%s", v)
+	}
+	// an unknown service falls back to a read
+	if _, cmd := send(m, eventsMsg{[]api.Event{event(t, api.EventAgentCost, "alpha", "nope", api.AgentCostData{USD: 1})}}); cmd == nil {
+		t.Error("a cost for an unseen service did not trigger a read")
+	}
+}

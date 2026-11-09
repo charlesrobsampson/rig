@@ -201,3 +201,28 @@ func TestTheSelectedRowIsMarked(t *testing.T) {
 		t.Errorf("view:\n%s", v)
 	}
 }
+
+func TestTheCostColumnSumsReportedCostsAndShowsNothingForUnreported(t *testing.T) {
+	usd := func(v float64) *float64 { return &v }
+	tests := []struct {
+		name string
+		t    api.TicketSummary
+		want string
+	}{
+		{"no harness reports cost", api.TicketSummary{ID: "t", Services: []api.ServiceSummary{svc("api", domain.AgentWorking, 0)}}, "-"},
+		{"one service", api.TicketSummary{ID: "t", Services: []api.ServiceSummary{{Name: "api", CostUSD: usd(1.234)}}}, "$1.23"},
+		{"summed over services", api.TicketSummary{ID: "t", Services: []api.ServiceSummary{{Name: "api", CostUSD: usd(1.10)}, {Name: "web", CostUSD: usd(0.25)}}}, "$1.35"},
+		{"one reports, one does not", api.TicketSummary{ID: "t", Services: []api.ServiceSummary{{Name: "api", CostUSD: usd(2)}, {Name: "web"}}}, "$2.00"},
+		{"a reported zero is shown as zero", api.TicketSummary{ID: "t", Services: []api.ServiceSummary{{Name: "api", CostUSD: usd(0)}}}, "$0.00"},
+	}
+	for _, tt := range tests {
+		if got := costCell(tt.t); got != tt.want {
+			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
+		}
+	}
+	d := &dashboard{}
+	d.set([]api.TicketSummary{{ID: "t", Services: []api.ServiceSummary{{Name: "api", CostUSD: usd(0.5)}}}})
+	if v := d.view(100, 6); !strings.Contains(v, "COST") || !strings.Contains(v, "$0.50") {
+		t.Errorf("view:\n%s", v)
+	}
+}

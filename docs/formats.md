@@ -79,7 +79,7 @@ Shape per manifest §5, plus:
       "base": "main",
       "host_port": 0,
       "container_id": "",
-      "agent": {"backend": "herdr", "pane_id": "", "state": "unknown", "container_id": ""},
+      "agent": {"backend": "herdr", "pane_id": "", "state": "unknown", "container_id": "", "cost": {"usd": 0.42, "at": "2026-11-05T14:03:00Z"}},
       "push": {"status": "pending", "pr_url": "", "error": ""},
       "error": ""
     }
@@ -142,12 +142,12 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 | `config.get` | effective global config |
 | `ticket.file` | `{ticket, name}` -> `{name, content}`: one of the ticket's lifecycle files, `name` one of `plan.md`, `tasks.md`, `contract.md`, `manual-tests.md` (anything else, including paths and `state.json`, is `invalid`); `not_found` when the ticket or the file does not exist (contract.md exists only for multi-service tickets) |
 | `ticket.list`, `ticket.get`, `ticket.rescan` | read tickets; a summary carries `pending_gate` (the approval a human still owes to leave the ticket's current phase, omitted when none) beside `contract_pending` and `contract_violation`, `drift` (lines from the last reconcile pass, omitted when none), and `ai_summary` `{text?, backend, model?, remote, at?, files, added, deleted, error?}` when a summarizer is configured and has produced (or failed to produce) a summary; it is advisory, always accompanied by its diff stats, and `remote` is true when the content was sent off this machine |
-| `ticket.new`, `ticket.start`, `ticket.stop` | create / provision / teardown (`start` params: `sandbox`, `dry_run`; the result also carries `network`, `containers[]`, `dependencies[]`, `warnings[]`; the result also carries `agents[]` of `{service, pane_id, launched, note, error}` (one agent per host-sandbox service); a dry run provisions nothing and returns `launches[]` of `{service, harness, dir, command, env}` with secret values as `<secret NAME>`; `stop` params: `force`, `keep_checkouts`; its result lists `services[]` (checkout imported/removed) and `resources[]`, the Docker containers and networks removed; stopping an already stopped ticket succeeds with nothing in either; a stop that cannot finish fails with the cause's code and `details[]` naming what failed and what remains, and keeps the checkouts) |
+| `ticket.new`, `ticket.start`, `ticket.stop` | create / provision / teardown (`start` params: `sandbox`, `dry_run`; a start that would exceed `limits.max_active_tickets` active tickets (those with anything provisioned or running that are not done; restarting an active ticket is never refused, a dry run is not counted) is `blocked`, details `active: a, b`; the result also carries `network`, `containers[]`, `dependencies[]`, `warnings[]`; the result also carries `agents[]` of `{service, pane_id, launched, note, error}` (one agent per host-sandbox service); a dry run provisions nothing and returns `launches[]` of `{service, harness, dir, command, env}` with secret values as `<secret NAME>`; `stop` params: `force`, `keep_checkouts`; its result lists `services[]` (checkout imported/removed) and `resources[]`, the Docker containers and networks removed; stopping an already stopped ticket succeeds with nothing in either; a stop that cannot finish fails with the cause's code and `details[]` naming what failed and what remains, and keeps the checkouts) |
 | `gate.list`, `gate.approve` | pending gates / approve |
 | `phase.set`, `transition.request` | human move / agent request |
 | `agent.attach`, `agent.message` | returns attach command / injects text (`agent.message` params `{ticket, service, text}`, result `{service, sent}`; errors `blocked` when the agent waits on a permission prompt (nothing typed), `not_running`, `unavailable` if the agent is not ready in time; `agent.attach` params `{ticket, service?}` (service optional when the ticket has one), result `{service, command[]}`; errors `not_found`, `not_running` when no agent is running) |
 | `push.run` | `{id, service?}`: runs the push step of a ticket in the push phase; result `{summary, services[{service, mode, status, skipped?, pushed, ref?, sha?, pr_url?, note?, error?}], done}` (a failed service is in the result with `error`, not an API error; `done` when every service is pushed and the ticket moved to `done`) |
-| `agent.event` | agent hook reports a state (`ready\|working\|blocked\|idle\|exited`) for a ticket/service |
+| `agent.event` | agent hook reports a state (`ready\|working\|blocked\|idle\|exited`) for a ticket/service; or `{state: "cost", cost_usd}`, the harness's running cost for the agent session (0 to 1,000,000; anything else is `invalid`), which is recorded in `services.<name>.agent.cost` `{usd, at}` without touching the agent's state and is announced as `agent.cost` only when the displayed cents change |
 | `contract.list` | `{ticket}` -> `{ticket, proposals[{id, from, status, what, why, rejected?}], problems?[], violation?}`; `not_found` without a contract.md |
 | `contract.accept` | `{ticket, proposal}` -> `{proposal, outcome: "accepted"}`: human action. Merges the proposal into the agreed section (as a `####` entry), marks it accepted, appends a changelog line, publishes `contract.resolved` and types a notice into every agent. `not_found` for an unknown id, `conflict` when it is not open |
 | `contract.reject` | `{ticket, proposal, reason}` -> `{proposal, outcome: "rejected"}`: human action; `reason` required (`invalid` without). Records `**Rejected:** <reason>` under the proposal and in the changelog; the proposer is told the reason |
@@ -174,6 +174,7 @@ Envelope: `{"type":"phase.changed","ticket":"ticket-412","service":"","at":"..."
 | `service.status` | `{"status":"running"}` |
 | `phase.changed` | `{"from","to","by","reason"}` |
 | `gate.approved` | `{"gate","service"}` |
+| `agent.cost` | `{"usd"}`: an agent's running cost changed by at least a cent |
 | `agent.state` | `{"state","previous"}` |
 | `contract.pending` | `{"proposal":"P-backend-1"}` |
 | `contract.violation` | `{"detail"}` (agreed section edited directly) |

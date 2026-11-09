@@ -334,3 +334,25 @@ func TestTheManualTestsInstructionTeachesTheFormatAndEveryPlaceholder(t *testing
 		}
 	}
 }
+
+func TestTheStatusLineReportsCostOnlyWhenACostCommandIsGiven(t *testing.T) {
+	dir := ticketDir(t, artifacts)
+	without := launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhaseImplement, TicketDir: dir, Dir: "/w"})
+	var s struct {
+		StatusLine *struct{ Type, Command string } `json:"statusLine"`
+	}
+	json.Unmarshal([]byte(without.Command[2]), &s)
+	if s.StatusLine != nil {
+		t.Errorf("a status line was configured with no cost command: %+v", s.StatusLine)
+	}
+	with := launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhaseImplement, TicketDir: dir, Dir: "/w", CostCommand: "'/bin/rig' agent-event cost"})
+	if err := json.Unmarshal([]byte(with.Command[2]), &s); err != nil || s.StatusLine == nil || s.StatusLine.Type != "command" || s.StatusLine.Command != "'/bin/rig' agent-event cost" {
+		t.Errorf("status line = %+v, %v", s.StatusLine, err)
+	}
+	// the state hooks are still there
+	var hooks struct{ Hooks map[string]any }
+	json.Unmarshal([]byte(with.Command[2]), &hooks)
+	if len(hooks.Hooks) != 6 {
+		t.Errorf("hooks = %v", hooks.Hooks)
+	}
+}

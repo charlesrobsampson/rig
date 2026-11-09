@@ -156,6 +156,10 @@ func (r *Registry) load(id string) api.TicketGetResult {
 			summary := api.ServiceSummary{Name: svc.Name}
 			if ss, ok := st.Services[svc.Name]; res.State != nil && ok {
 				summary.Status, summary.AgentState, summary.HostPort = ss.Status, ss.Agent.State, ss.HostPort
+				if ss.Agent.Cost != nil {
+					usd := ss.Agent.Cost.USD
+					summary.CostUSD = &usd
+				}
 			}
 			res.Summary.Services = append(res.Summary.Services, summary)
 		}

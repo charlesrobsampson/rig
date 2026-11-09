@@ -133,6 +133,9 @@ func serviceCell(services []api.ServiceSummary) string {
 			status += "/" + string(s.AgentState)
 		}
 		parts[i] = s.Name + ":" + status
+		if s.CostUSD != nil {
+			parts[i] += fmt.Sprintf(" $%.2f", *s.CostUSD)
+		}
 	}
 	return strings.Join(parts, ", ")
 }

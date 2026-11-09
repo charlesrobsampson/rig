@@ -348,3 +348,52 @@ func TestSetPushRecordsOneServicesPushResult(t *testing.T) {
 		t.Error("an unknown service was accepted")
 	}
 }
+
+func TestInUseAndActive(t *testing.T) {
+	svc := func(mutate func(*state.ServiceState)) map[string]state.ServiceState {
+		s := state.ServiceState{}
+		mutate(&s)
+		return map[string]state.ServiceState{"api": s}
+	}
+	tests := []struct {
+		name   string
+		st     state.State
+		inUse  bool
+		active bool
+	}{
+		{"a new ticket", state.State{Phase: domain.PhasePlan, Services: svc(func(s *state.ServiceState) {})}, false, false},
+		{"pending services", state.State{Services: svc(func(s *state.ServiceState) { s.Status = domain.ServicePending })}, false, false},
+		{"stopped services", state.State{Services: svc(func(s *state.ServiceState) { s.Status = domain.ServiceStopped })}, false, false},
+		{"a provisioned checkout", state.State{Phase: domain.PhaseImplement, Services: svc(func(s *state.ServiceState) { s.Status = domain.ServiceProvisioned })}, true, true},
+		{"a running service", state.State{Services: svc(func(s *state.ServiceState) { s.Status = domain.ServiceRunning })}, true, true},
+		{"a service in error", state.State{Services: svc(func(s *state.ServiceState) { s.Status = domain.ServiceError })}, true, true},
+		{"only an agent pane", state.State{Services: svc(func(s *state.ServiceState) { s.Agent.PaneID = "p1" })}, true, true},
+		{"only an agent container", state.State{Services: svc(func(s *state.ServiceState) { s.Agent.ContainerID = "c1" })}, true, true},
+		{"only a service container", state.State{Services: svc(func(s *state.ServiceState) { s.ContainerID = "c1" })}, true, true},
+		{"only a network", state.State{Network: state.Network{Name: "rig-t"}}, true, true},
+		{"only an egress network", state.State{EgressNetwork: &state.Network{Name: "rig-t-egress"}}, true, true},
+		{"only a dependency", state.State{Dependencies: map[string]state.DependencyState{"db": {ContainerID: "c"}}}, true, true},
+		{"done but still holding things", state.State{Phase: domain.PhaseDone, Network: state.Network{Name: "rig-t"}}, true, false},
+	}
+	for _, tt := range tests {
+		if got := tt.st.InUse(); got != tt.inUse {
+			t.Errorf("%s: InUse = %v", tt.name, got)
+		}
+		if got := tt.st.Active(); got != tt.active {
+			t.Errorf("%s: Active = %v", tt.name, got)
+		}
+	}
+}
+
+func TestAnAgentsCostIsAbsentUntilReportedAndRoundTrips(t *testing.T) {
+	raw, _ := json.Marshal(state.Agent{State: domain.AgentIdle})
+	if strings.Contains(string(raw), "cost") {
+		t.Errorf("an agent with no reported cost serializes one: %s", raw)
+	}
+	at := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	raw, _ = json.Marshal(state.Agent{State: domain.AgentIdle, Cost: &state.Cost{USD: 0.4321, At: at}})
+	var back state.Agent
+	if err := json.Unmarshal(raw, &back); err != nil || back.Cost == nil || back.Cost.USD != 0.4321 || !back.Cost.At.Equal(at) {
+		t.Errorf("round trip = %+v, %v (%s)", back, err, raw)
+	}
+}
