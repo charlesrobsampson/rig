@@ -1,8 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
@@ -47,4 +53,75 @@ func (s daemonSource) Tickets(ctx context.Context) ([]api.TicketSummary, error) 
 		return nil, err
 	}
 	return res.Tickets, nil
+}
+
+// File reads one of the ticket's lifecycle files.
+func (s daemonSource) File(ctx context.Context, ticket, name string) (string, error) {
+	c, err := s.a.connect(ctx, true)
+	if err != nil {
+		return "", err
+	}
+	defer c.Close()
+	var res api.TicketFileResult
+	if err := c.Call(ctx, api.MethodTicketFile, api.TicketFileParams{Ticket: ticket, Name: name}, &res); err != nil {
+		return "", missingOr(err)
+	}
+	return res.Content, nil
+}
+
+// Diff is the same text `rig review` prints: each service's stat and patch, through
+// delta when it is installed.
+func (s daemonSource) Diff(ctx context.Context, ticket string) (string, error) {
+	c, err := s.a.connect(ctx, true)
+	if err != nil {
+		return "", err
+	}
+	defer c.Close()
+	var res api.ReviewDiffResult
+	if err := c.Call(ctx, api.MethodReviewDiff, api.ReviewDiffParams{Ticket: ticket}, &res); err != nil {
+		return "", missingOr(err)
+	}
+	var out bytes.Buffer
+	view := &cobra.Command{}
+	view.SetOut(&out)
+	view.SetErr(io.Discard)
+	if err := s.a.showDiffs(view, res, false, false); err != nil {
+		return "", err
+	}
+	return out.String(), nil
+}
+
+// Logs is the recent output of the ticket's containers (the last 200 lines each).
+func (s daemonSource) Logs(ctx context.Context, ticket string) (string, error) {
+	c, err := s.a.connect(ctx, true)
+	if err != nil {
+		return "", err
+	}
+	defer c.Close()
+	var out strings.Builder
+	err = c.Stream(ctx, api.MethodLogsStream, api.LogsParams{Ticket: ticket, Tail: 200}, func(raw json.RawMessage) error {
+		var l api.LogLine
+		if err := json.Unmarshal(raw, &l); err != nil {
+			return err
+		}
+		fmt.Fprintf(&out, "%s | %s\n", l.Service, l.Line)
+		return nil
+	})
+	if err != nil {
+		return "", missingOr(err)
+	}
+	if out.Len() == 0 {
+		return "", tui.ErrMissing
+	}
+	return out.String(), nil
+}
+
+// missingOr turns the daemon's not_found into the TUI's "does not exist" and leaves
+// every other error as it is.
+func missingOr(err error) error {
+	var apiErr *api.Error
+	if errors.As(err, &apiErr) && apiErr.Code == api.CodeNotFound {
+		return tui.ErrMissing
+	}
+	return err
 }

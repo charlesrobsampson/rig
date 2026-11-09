@@ -17,6 +17,7 @@ const (
 	MethodTicketList        = "ticket.list"
 	MethodTicketGet         = "ticket.get"
 	MethodTicketRescan      = "ticket.rescan"
+	MethodTicketFile        = "ticket.file"
 	MethodTicketNew         = "ticket.new"
 	MethodTicketStart       = "ticket.start"
 	MethodTicketStop        = "ticket.stop"
@@ -42,7 +43,7 @@ const (
 
 var methods = map[string]bool{
 	MethodHello: true, MethodStatus: true, MethodConfigGet: true, MethodTicketList: true,
-	MethodTicketGet: true, MethodTicketRescan: true, MethodTicketNew: true, MethodTicketStart: true,
+	MethodTicketGet: true, MethodTicketRescan: true, MethodTicketFile: true, MethodTicketNew: true, MethodTicketStart: true,
 	MethodTicketStop: true, MethodGateList: true, MethodGateApprove: true, MethodPhaseSet: true,
 	MethodTransitionRequest: true, MethodAgentAttach: true, MethodAgentMessage: true,
 	MethodAgentEvent: true, MethodContractList: true, MethodContractAccept: true,

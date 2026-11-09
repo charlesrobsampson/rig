@@ -17,6 +17,38 @@ type fakeSource struct {
 	tickets []api.TicketSummary
 	err     error
 	calls   int
+	// files, diff and logs are what the other reads return; a name missing from
+	// files is ErrMissing. fileErr, when set, fails every read.
+	files   map[string]string
+	diff    string
+	logs    string
+	fileErr error
+	reads   []string
+}
+
+func (f *fakeSource) File(_ context.Context, ticket, name string) (string, error) {
+	f.reads = append(f.reads, ticket+"/"+name)
+	if f.fileErr != nil {
+		return "", f.fileErr
+	}
+	text, ok := f.files[name]
+	if !ok {
+		return "", ErrMissing
+	}
+	return text, nil
+}
+
+func (f *fakeSource) Diff(_ context.Context, ticket string) (string, error) {
+	f.reads = append(f.reads, ticket+"/diff")
+	if f.diff == "" {
+		return "", ErrMissing
+	}
+	return f.diff, nil
+}
+
+func (f *fakeSource) Logs(_ context.Context, ticket string) (string, error) {
+	f.reads = append(f.reads, ticket+"/logs")
+	return f.logs, f.fileErr
 }
 
 func (f *fakeSource) Tickets(context.Context) ([]api.TicketSummary, error) {

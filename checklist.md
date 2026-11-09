@@ -654,13 +654,22 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Manual check (two demo tickets in different states) is for you.
 
 ### 57 · Detail view
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/57-tui-detail` · Depends: 56, 45
 - Read: `manifest.md` §2, §7
 - Build: per-ticket tabs: plan.md, tasks.md (checkbox progress), contract.md, diff (via `delta` output rendered), logs; scrollable; refresh on file change events.
 - Tests: tab switching; markdown/task progress counts; missing optional file handled; scroll bounds.
 - Manual check: open a ticket and move between tabs while an agent edits files.
+- Notes:
+  - New API method `ticket.file` {ticket, name} -> {name, content} (whitelist: plan.md, tasks.md, contract.md, manual-tests.md; `registry.File`), so the TUI stays a client of the daemon API instead of reading the tickets directory itself. formats.md updated.
+  - `internal/tui/detail.go`: `enter`/`l`/`→` opens the selected ticket, `esc`/`h`/`←` goes back. Tabs plan | tasks | contract | diff | logs (`tab`/`shift+tab`/`1-5`, wrapping); each loads once, keeps its own scroll position, `r` reloads. Scroll: `j/k`, `pgup/pgdn`, `ctrl+d/u`, `g/G`, always clamped to the content; long lines wrap, unicode-safe.
+  - tasks.md shows a progress bar and the tab label counts checkboxes (`tasks 2/4`; nested items count; text mid-line does not); the contract label shows how many proposals are open.
+  - Missing optional things say why instead of failing (no contract on a single-service ticket, no checkouts, no containers); real failures show the error and `r` retries.
+  - "Refresh on file change events": rig has no file-change event, so the open tab is re-read on a timer (`RefreshEvery`, default 2s) while a ticket is open; content and scroll update in place. Timers carry a generation so a closed or reopened view never gets stale loads or revived timers. Task 60 can add event-triggered refresh on top.
+  - Diff text is exactly `rig review`'s (stats + patch through delta when installed, plain otherwise). Logs: last 200 lines per container, non-follow.
+  - Mutation-checked: stale load/timer guard and scroll clamp.
+  - Manual check (open a ticket and move between tabs while an agent edits files) is for you.
 
 ### 58 · TUI actions
 - [ ] Done

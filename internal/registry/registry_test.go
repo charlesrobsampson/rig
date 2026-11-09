@@ -283,3 +283,34 @@ func TestSummariesCarryThePendingGateWhenTheRegistryKnowsHowToFindIt(t *testing.
 		t.Errorf("a ticket that cannot be read has no gate: %+v, asked about %v", got[1], seen)
 	}
 }
+
+func TestFileReadsOnlyTheTicketsLifecycleFiles(t *testing.T) {
+	f := newFixture(t)
+	dir := f.ticketDir("alpha")
+	f.writeYAML("alpha", yaml("alpha", "A", "api"))
+	os.WriteFile(filepath.Join(dir, "plan.md"), []byte("# Plan\n"), 0o600)
+	os.WriteFile(filepath.Join(dir, "secret.txt"), []byte("no"), 0o600)
+
+	if got, err := f.reg.File("alpha", "plan.md"); err != nil || got != "# Plan\n" {
+		t.Errorf("plan.md = %q, %v", got, err)
+	}
+	tests := []struct {
+		name, id, file string
+		want           error
+	}{
+		{"a file that does not exist yet", "alpha", "contract.md", registry.ErrNotFound},
+		{"an unknown ticket", "ghost", "plan.md", registry.ErrNotFound},
+		{"a file outside the list", "alpha", "secret.txt", registry.ErrBadFile},
+		{"state.json is not offered", "alpha", "state.json", registry.ErrBadFile},
+		{"a path", "alpha", "../alpha/plan.md", registry.ErrBadFile},
+		{"an empty name", "alpha", "", registry.ErrBadFile},
+	}
+	for _, tt := range tests {
+		if _, err := f.reg.File(tt.id, tt.file); !errors.Is(err, tt.want) {
+			t.Errorf("%s: err = %v, want %v", tt.name, err, tt.want)
+		}
+	}
+	if _, err := f.reg.File("../etc", "plan.md"); err == nil || errors.Is(err, registry.ErrNotFound) {
+		t.Errorf("a bad ticket id = %v, want a validation error", err)
+	}
+}

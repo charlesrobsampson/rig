@@ -98,6 +98,40 @@ func TestTicketGet(t *testing.T) {
 	}
 }
 
+func TestTicketFile(t *testing.T) {
+	h, dir := ticketsHarness(t)
+	writeTicket(t, dir, "ticket-a")
+	os.WriteFile(filepath.Join(dir, "ticket-a", "plan.md"), []byte("# Plan\n- [ ] x\n"), 0o600)
+	c := dial(t, h.opts.SocketPath)
+	c.hello(t)
+
+	var got api.TicketFileResult
+	resp := c.call(t, api.MethodTicketFile, api.TicketFileParams{Ticket: "ticket-a", Name: "plan.md"})
+	if err := json.Unmarshal(resp.Result, &got); err != nil || got.Name != "plan.md" || got.Content != "# Plan\n- [ ] x\n" {
+		t.Fatalf("file = %s, %v", resp.Result, err)
+	}
+	tests := []struct {
+		name   string
+		params any
+		code   api.ErrorCode
+	}{
+		{"a file that does not exist", api.TicketFileParams{Ticket: "ticket-a", Name: "contract.md"}, api.CodeNotFound},
+		{"an unknown ticket", api.TicketFileParams{Ticket: "ticket-zzz", Name: "plan.md"}, api.CodeNotFound},
+		{"state.json is not readable", api.TicketFileParams{Ticket: "ticket-a", Name: "state.json"}, api.CodeInvalid},
+		{"a path", api.TicketFileParams{Ticket: "ticket-a", Name: "../ticket-a/plan.md"}, api.CodeInvalid},
+		{"an id that would escape", api.TicketFileParams{Ticket: "../etc", Name: "plan.md"}, api.CodeInvalid},
+		{"no params", nil, api.CodeInvalid},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var apiErr *api.Error
+			if err := c.call(t, api.MethodTicketFile, tt.params).Err(); !errors.As(err, &apiErr) || apiErr.Code != tt.code {
+				t.Errorf("error = %v, want code %s", err, tt.code)
+			}
+		})
+	}
+}
+
 func createHarness(t *testing.T) (*harness, *events.Bus, string) {
 	t.Helper()
 	dir := filepath.Join(shortDir(t), "tickets")

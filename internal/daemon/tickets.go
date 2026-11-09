@@ -40,6 +40,26 @@ func RegisterTicketHandlers(s *Server, r *registry.Registry) {
 		}
 		return res, err
 	})
+
+	s.Handle(api.MethodTicketFile, func(_ context.Context, params json.RawMessage) (any, error) {
+		var p api.TicketFileParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "ticket.file needs params like {\"ticket\": \"ticket-1\", \"name\": \"plan.md\"}"}
+		}
+		content, err := r.File(p.Ticket, p.Name)
+		switch {
+		case errors.Is(err, registry.ErrNotFound):
+			return nil, &api.Error{Code: api.CodeNotFound, Message: err.Error()}
+		case errors.Is(err, registry.ErrBadFile):
+			return nil, &api.Error{Code: api.CodeInvalid, Message: err.Error()}
+		case err != nil:
+			if domain.ValidateTicketID(p.Ticket) != nil {
+				return nil, &api.Error{Code: api.CodeInvalid, Message: err.Error()}
+			}
+			return nil, err
+		}
+		return api.TicketFileResult{Name: p.Name, Content: content}, nil
+	})
 }
 
 // RegisterTicketCreateHandler serves ticket.new: create the ticket's files, then
