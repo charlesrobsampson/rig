@@ -142,6 +142,13 @@ func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 		}
 		return m.ContractReject(ctx, p)
 	})
+	s.Handle(api.MethodContractPropose, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.ContractProposeParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "contract.propose needs params like {\"ticket\": \"ticket-1\", \"service\": \"api\", \"what\": \"...\", \"why\": \"...\"}"}
+		}
+		return m.ContractPropose(ctx, p)
+	})
 	s.Handle(api.MethodContractAck, func(ctx context.Context, params json.RawMessage) (any, error) {
 		var p api.ContractAckParams
 		if err := json.Unmarshal(params, &p); err != nil {

@@ -123,3 +123,30 @@ func (m *Manager) ContractAck(_ context.Context, p api.ContractAckParams) error 
 		return nil
 	})
 }
+
+// ContractPropose appends an open proposal from a service to the ticket's contract.md.
+// The contract watcher then announces it and tells the other services, exactly as for a
+// proposal an agent wrote by hand.
+func (m *Manager) ContractPropose(_ context.Context, p api.ContractProposeParams) (api.ContractProposeResult, error) {
+	l, unlock, err := m.begin(p.Ticket)
+	if err != nil {
+		return api.ContractProposeResult{}, err
+	}
+	defer unlock()
+	if !hasService(l.ticket, p.Service) {
+		return api.ContractProposeResult{}, invalid("ticket %q has no service %q", p.Ticket, p.Service)
+	}
+	path := filepath.Join(l.dir, "contract.md")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return api.ContractProposeResult{}, &api.Error{Code: api.CodeNotFound, Message: fmt.Sprintf("ticket %q has no contract.md (only multi-service tickets have one)", p.Ticket)}
+	}
+	id, out, err := contract.Propose(string(raw), p.Service, p.What, p.Why)
+	if err != nil {
+		return api.ContractProposeResult{}, invalid("%v", err)
+	}
+	if err := fsutil.AtomicWrite(path, []byte(out)); err != nil {
+		return api.ContractProposeResult{}, &api.Error{Code: api.CodeInternal, Message: err.Error()}
+	}
+	return api.ContractProposeResult{Proposal: id}, nil
+}

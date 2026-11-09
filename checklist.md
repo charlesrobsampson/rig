@@ -784,13 +784,21 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Manual check (create a ticket from a real issue) is for you: `rig new --from github:owner/repo#123 --service api=<repo>` (add `GITHUB_TOKEN` to the Keychain for a private repo).
 
 ### 65 · MCP server
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/65-mcp` · Depends: 32, 53, 25
 - Read: `manifest.md` §6 (agent-as-orchestrator)
 - Build: `rig mcp` stdio MCP server wrapping the daemon API: list tickets, get status, read artifacts, send message, request transition, propose contract change. No approval tools: gates stay human-only. Docs for pointing a supervising agent at it.
 - Tests: tool list matches the documented set; each tool maps to the right API call; approval is not exposed; errors become tool errors, not crashes.
 - Manual check: a supervising Claude session lists tickets and nudges an agent.
+- Notes:
+  - `internal/mcp`: a small hand-written MCP server (JSON-RPC 2.0, newline-delimited, stdio; no SDK dependency): `initialize` (negotiates 2025-06-18 / 2025-03-26 / 2024-11-05), `ping`, `tools/list`, `tools/call`, `notifications/cancelled` (cancels the in-flight daemon call). Each request runs on its own goroutine, so a slow `rig_send_message` never blocks `ping`; batches, oversized lines, bad JSON, wrong versions and unknown methods get proper JSON-RPC errors and the session carries on; a panicking tool becomes a tool error.
+  - Tools (the documented set, `mcp.ToolNames`): `rig_list_tickets`, `rig_get_ticket` (summary + state + gates), `rig_read_artifact` (the four lifecycle files only), `rig_send_message`, `rig_request_transition`, `rig_propose_contract_change`. Arguments are decoded strictly (unknown or blank ones are errors and nothing reaches the daemon). Failures are `isError` results: `rig error (<code>): message` plus the reasons.
+  - Approval is not exposed: a test asserts the tool names contain nothing decision-like and that calling every tool only ever reaches a fixed allowlist of read/ask methods (never gate.approve, phase.set, contract.accept/reject/ack, tests.signoff, push.run, ticket.stop/start/new, daemon.stop). `rig_request_transition` goes through `transition.request`, so the gate rules apply; a real-daemon test shows a blocked request approves nothing.
+  - New API method `contract.propose` (formats.md) with `contract.Propose` (pure text edit: next id per service, appended after the last proposal, structure-breaking text refused, agreed hash proven unchanged) so the MCP server does not edit files itself.
+  - `rig mcp` (cmd/rig/mcp.go) makes one daemon connection per call, so it survives restarts and starts the daemon on demand; tested end to end against the in-process daemon (list, get, read, message typed into the fake pane, blocked transition, proposal visible to `rig contract list`).
+  - Docs: `docs/mcp.md` (how to add it to Claude Code or any stdio client, the tool reference, what it cannot do, a typical session).
+  - Manual check (a supervising Claude session lists tickets and nudges an agent) is for you: `claude mcp add rig -- rig mcp`, then ask that session to list your rig tickets and message an agent.
 
 ---
 
