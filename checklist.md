@@ -705,7 +705,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 60 · Live updates
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/60-tui-live` · Depends: 16, 56
 - Read: `manifest.md` §6
 - Build: TUI subscribes to the event stream and updates views without polling; reconnect with resubscribe and full refresh.
