@@ -344,7 +344,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 30 · Agent supervisor
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/30-supervisor` · Depends: 16, 26
 - Read: `manifest.md` §7 (terminal state)
 - Build: daemon component that merges agent state from `agent.event` reports (hooks), backend facts and heuristics (fresh hook state wins; dead pane = `exited`), updating per-service `AgentState` and publishing events on change; implements the `agent.event` API method and the `rig agent-event <state>` subcommand (reads `RIG_TICKET`/`RIG_SERVICE`, must exit 0 quickly even if the daemon is unreachable); polls the backend on the injected clock; survives backend errors with backoff.
