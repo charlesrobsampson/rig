@@ -321,3 +321,30 @@ func TestLeftoverTempFilesAreIgnored(t *testing.T) {
 		t.Errorf("Update broke after a crash left a temp file: %v", err)
 	}
 }
+
+func TestSetPushRecordsOneServicesPushResult(t *testing.T) {
+	m, _ := newManager()
+	path := filepath.Join(t.TempDir(), "state.json")
+	if err := m.Create(path, state.State{TicketID: "t", Services: map[string]state.ServiceState{"api": {}, "web": {}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.SetPush(path, "api", state.Push{Status: domain.PushDone, PRURL: "https://github.com/acme/repo/pull/7"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.Load(path)
+	if err != nil || got.Services["api"].Push.PRURL != "https://github.com/acme/repo/pull/7" || got.Services["api"].Push.Status != domain.PushDone {
+		t.Fatalf("api push = %+v, %v", got.Services["api"].Push, err)
+	}
+	if got.Services["web"].Push.PRURL != "" {
+		t.Errorf("another service's push changed: %+v", got.Services["web"].Push)
+	}
+	if err := m.SetPush(path, "api", state.Push{Status: domain.PushFailed, Error: "rejected"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := m.Load(path); got.Services["api"].Push.Status != domain.PushFailed || got.Services["api"].Push.Error != "rejected" || got.Services["api"].Push.PRURL != "" {
+		t.Errorf("a later result must replace the earlier one: %+v", got.Services["api"].Push)
+	}
+	if err := m.SetPush(path, "nope", state.Push{}); err == nil {
+		t.Error("an unknown service was accepted")
+	}
+}

@@ -135,3 +135,17 @@ func withDefaults(s *State) {
 		s.Dependencies[name] = dep
 	}
 }
+
+// SetPush records the outcome of pushing one service: the status, the pull request URL
+// when there is one, or the error. A later result replaces the earlier one.
+func (m *Manager) SetPush(path, service string, push Push) error {
+	return m.Update(path, func(s *State) error {
+		ss, ok := s.Services[service]
+		if !ok {
+			return fmt.Errorf("ticket %q has no service %q", s.TicketID, service)
+		}
+		ss.Push = push
+		s.Services[service] = ss
+		return nil
+	})
+}

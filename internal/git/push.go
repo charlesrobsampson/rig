@@ -43,7 +43,9 @@ type PushResult struct {
 	Ref    string          `json:"ref,omitempty"` // the remote ref that was updated
 	Sha    string          `json:"sha,omitempty"` // what it now points to
 	Pushed bool            `json:"pushed"`
-	Note   string          `json:"note,omitempty"`
+	// PRURL is the pull request, in pr mode.
+	PRURL string `json:"pr_url,omitempty"`
+	Note  string `json:"note,omitempty"`
 }
 
 // Push publishes the branch as the push mode says: none reports and pushes nothing,
