@@ -442,3 +442,43 @@ func TestAStartedTicketShowsUpAsProvisioned(t *testing.T) {
 		t.Errorf("list = %+v, %v", list, err)
 	}
 }
+
+func TestDryRunReportsLaunchesWithoutSecretsOrSideEffects(t *testing.T) {
+	f := newFixture(t, domain.SandboxContainer)
+	repo := testkit.NewRepo(t)
+	path := f.create("demo", repo)
+	yamlPath := filepath.Join(path, "ticket.yaml")
+	raw, _ := os.ReadFile(yamlPath)
+	os.WriteFile(yamlPath, append(raw, []byte("secrets: [DB_PASSWORD]\nauth: work\n")...), 0o600)
+	f.lc = lifecycle.New(lifecycle.Options{Dir: f.dir, States: f.states, Bus: f.bus, Clock: testkit.NewFakeClock(epoch), Global: config.Global{
+		Defaults: config.Defaults{Sandbox: domain.SandboxContainer, BranchPrefix: "rig/"},
+		Auth:     config.Auth{Profiles: map[string]config.AuthProfile{"work": {Type: domain.AuthOAuthToken, Secrets: []string{"WORK_TOKEN"}}}},
+	}})
+
+	res, err := f.lc.Start(ctx, api.TicketStartParams{ID: "demo", DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Checkouts) != 0 || len(res.Launches) != 1 {
+		t.Fatalf("result = %+v", res)
+	}
+	env := res.Launches[0].Env
+	if env["CLAUDE_CODE_OAUTH_TOKEN"] != "<secret WORK_TOKEN>" || env["DB_PASSWORD"] != "<secret DB_PASSWORD>" {
+		t.Errorf("secret values must be placeholders, env = %v", env)
+	}
+	if _, err := os.Stat(filepath.Join(path, "svc1")); !os.IsNotExist(err) {
+		t.Errorf("a dry run created a checkout: %v", err)
+	}
+	if st, err := f.states.Load(filepath.Join(path, "state.json")); err != nil || (st.Services["svc1"].Status != "" && st.Services["svc1"].Status != domain.ServicePending) {
+		t.Errorf("a dry run changed state: %+v, %v", st.Services["svc1"], err)
+	}
+
+	t.Run("an undefined auth profile is reported", func(t *testing.T) {
+		g := lifecycle.New(lifecycle.Options{Dir: f.dir, States: f.states, Bus: f.bus, Clock: testkit.NewFakeClock(epoch), Global: config.Global{}})
+		_, err := g.Start(ctx, api.TicketStartParams{ID: "demo", DryRun: true})
+		var apiErr *api.Error
+		if !errors.As(err, &apiErr) || apiErr.Code != api.CodeInvalid || !strings.Contains(err.Error(), `"work"`) {
+			t.Errorf("error = %v", err)
+		}
+	})
+}

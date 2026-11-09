@@ -75,14 +75,30 @@ type TicketNewResult struct {
 
 // TicketStartParams provisions a ticket's checkouts. Sandbox, when set, overrides the
 // sandbox the ticket and global config would choose for every service.
+//
+// DryRun provisions nothing and launches nothing: it only reports, per service, the
+// agent launch that a start would use (secret values are never included).
 type TicketStartParams struct {
 	ID      string         `json:"id"`
 	Sandbox domain.Sandbox `json:"sandbox,omitempty"`
+	DryRun  bool           `json:"dry_run,omitempty"`
 }
 
 type TicketStartResult struct {
 	Summary   TicketSummary  `json:"summary"`
 	Checkouts []CheckoutInfo `json:"checkouts"`
+	// Launches is set only for a dry run.
+	Launches []LaunchInfo `json:"launches,omitempty"`
+}
+
+// LaunchInfo is what would start a service's agent. Environment values that come from
+// secrets are shown as "<secret NAME>".
+type LaunchInfo struct {
+	Service string            `json:"service"`
+	Harness string            `json:"harness"`
+	Dir     string            `json:"dir"`
+	Command []string          `json:"command"`
+	Env     map[string]string `json:"env"`
 }
 
 // CheckoutInfo says where a service's code lives. Created is false when the checkout

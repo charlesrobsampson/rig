@@ -79,6 +79,18 @@ func (m *Manager) Start(ctx context.Context, p api.TicketStartParams) (api.Ticke
 		return api.TicketStartResult{}, &api.Error{Code: api.CodeConflict, Message: fmt.Sprintf("ticket %q is done", p.ID)}
 	}
 
+	if p.DryRun {
+		launches, err := m.previewLaunches(t, st, ticketDir, p.Sandbox)
+		if err != nil {
+			return api.TicketStartResult{}, err
+		}
+		res, err := m.reg.Get(p.ID)
+		if err != nil {
+			return api.TicketStartResult{}, err
+		}
+		return api.TicketStartResult{Summary: res.Summary, Launches: launches}, nil
+	}
+
 	var infos []api.CheckoutInfo
 	var created []git.Checkout
 	rollback := func() {

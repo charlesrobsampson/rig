@@ -98,3 +98,46 @@ func TestStartErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestStartDryRunShowsTheLaunchAndChangesNothing(t *testing.T) {
+	home, d, repo := newEnv(t)
+	other := testkit.NewRepo(t)
+	newTicket(t, d, "demo", repo, other)
+
+	stdout, stderr, code := rig(t, d, "start", "demo", "--dry-run")
+	if code != 0 {
+		t.Fatalf("code %d, stderr %q", code, stderr)
+	}
+	for _, want := range []string{
+		"service svc1 (claude-code)", "service svc2 (claude-code)",
+		"dir: " + filepath.Join(home, "tickets", "demo", "svc1"),
+		"    claude", "    --settings", "RIG_TICKET=demo", "RIG_SERVICE=svc2", "bytes",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout lacks %q:\n%s", want, stdout)
+		}
+	}
+	if strings.Contains(stdout, `"hooks"`) {
+		t.Errorf("long arguments should be summarized by size:\n%s", stdout)
+	}
+	if _, err := os.Stat(filepath.Join(home, "tickets", "demo", "svc1")); !os.IsNotExist(err) {
+		t.Errorf("a dry run created a checkout: %v", err)
+	}
+	if listing, _, _ := rig(t, d, "list"); strings.Contains(listing, "provisioned") {
+		t.Errorf("a dry run changed the ticket:\n%s", listing)
+	}
+}
+
+func TestStartDryRunJSONHasTheFullCommand(t *testing.T) {
+	_, d, repo := newEnv(t)
+	newTicket(t, d, "demo", repo)
+	stdout, _, code := rig(t, d, "start", "demo", "--dry-run", "--json")
+	var got api.TicketStartResult
+	if err := json.Unmarshal([]byte(stdout), &got); code != 0 || err != nil || len(got.Launches) != 1 || len(got.Checkouts) != 0 {
+		t.Fatalf("code %d, %q, %v", code, stdout, err)
+	}
+	cmd := got.Launches[0].Command
+	if len(cmd) != 4 || cmd[0] != "claude" || !strings.Contains(cmd[2], "agent-event") || !strings.Contains(cmd[3], `service "svc1"`) {
+		t.Errorf("command = %q", cmd)
+	}
+}
