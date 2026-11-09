@@ -15,6 +15,7 @@ import (
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/config"
+	"github.com/charlesrobsampson/rig/internal/contract"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/state"
 	"github.com/charlesrobsampson/rig/internal/ticket"
@@ -149,6 +150,9 @@ func (c *Creator) write(dir string, t domain.Ticket, seed ticket.Seed, yamlDoc [
 			return err
 		}
 		files[name] = buf.Bytes()
+	}
+	if len(t.Services) >= 2 { // the contract between services only exists when there are several
+		files["contract.md"] = []byte(contract.Template(t.ID))
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), content, 0o600); err != nil {
