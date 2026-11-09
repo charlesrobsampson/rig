@@ -606,7 +606,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 54 · Plan gate requires contract
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/54-contract-gate` · Depends: 24, 29, 51
 - Read: `manifest.md` §3
 - Build: for multi-service tickets, `plan_approval` also requires a non-empty `## Agreed` section; harness prompt tells agents to read the contract at start and propose rather than edit.
