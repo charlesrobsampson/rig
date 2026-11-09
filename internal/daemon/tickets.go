@@ -61,7 +61,7 @@ func RegisterTicketCreateHandler(s *Server, c *registry.Creator, bus *events.Bus
 	})
 }
 
-// RegisterLifecycleHandlers serves ticket.start.
+// RegisterLifecycleHandlers serves ticket.start and ticket.stop.
 func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 	s.Handle(api.MethodTicketStart, func(ctx context.Context, params json.RawMessage) (any, error) {
 		var p api.TicketStartParams
@@ -69,5 +69,16 @@ func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 			return nil, &api.Error{Code: api.CodeInvalid, Message: "ticket.start needs params like {\"id\": \"ticket-1\"}"}
 		}
 		return m.Start(ctx, p)
+	})
+	registerStop(s, m)
+}
+
+func registerStop(s *Server, m *lifecycle.Manager) {
+	s.Handle(api.MethodTicketStop, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.TicketStopParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "ticket.stop needs params like {\"id\": \"ticket-1\"}"}
+		}
+		return m.Stop(ctx, p)
 	})
 }

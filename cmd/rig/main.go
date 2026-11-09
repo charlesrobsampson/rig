@@ -17,6 +17,7 @@ var version = "dev"
 type deps struct {
 	spawner client.Spawner // nil means start a detached `rig daemon run`
 	clock   clock.Clock    // nil means the real clock
+	stdin   io.Reader      // nil means os.Stdin; read for confirmation prompts
 }
 
 func main() {
@@ -29,6 +30,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, d deps) i
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	root.SetArgs(args)
+	if d.stdin != nil {
+		root.SetIn(d.stdin)
+	}
 	if err := root.ExecuteContext(ctx); err != nil {
 		printError(stderr, err)
 		return exitCode(err)
@@ -56,6 +60,6 @@ func newRootCmd(d deps) *cobra.Command {
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError(err) })
 	root.PersistentFlags().StringVar(&a.configPath, "config", "", "global config file (default $RIG_CONFIG, then ~/.config/rig/config.json)")
 	root.PersistentFlags().BoolVar(&a.json, "json", false, "print machine-readable JSON")
-	root.AddCommand(newConfigCmd(a), newDaemonCmd(a), newListCmd(a), newEventsCmd(a), newNewCmd(a), newStartCmd(a))
+	root.AddCommand(newConfigCmd(a), newDaemonCmd(a), newListCmd(a), newEventsCmd(a), newNewCmd(a), newStartCmd(a), newStopCmd(a))
 	return root
 }

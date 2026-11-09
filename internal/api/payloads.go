@@ -92,3 +92,25 @@ type CheckoutInfo struct {
 	Branch  string              `json:"branch"`
 	Created bool                `json:"created"`
 }
+
+// TicketStopParams tears a ticket's checkouts down. Force discards uncommitted and
+// unimportable work instead of refusing; KeepCheckouts imports and marks the services
+// stopped but leaves the directories alone.
+type TicketStopParams struct {
+	ID            string `json:"id"`
+	Force         bool   `json:"force,omitempty"`
+	KeepCheckouts bool   `json:"keep_checkouts,omitempty"`
+}
+
+type TicketStopResult struct {
+	Summary  TicketSummary `json:"summary"`
+	Services []StopInfo    `json:"services"`
+}
+
+// StopInfo says what happened to one service's checkout.
+type StopInfo struct {
+	Service string `json:"service"`
+	// Imported: a clone's branch was fetched into the main repository.
+	Imported bool `json:"imported"`
+	Removed  bool `json:"removed"`
+}

@@ -205,7 +205,8 @@ rig/
 ### CLI
 * `rig` open TUI (auto-starts daemon)
 * `rig new` create ticket (manual or `--from jira:PROJ-412`)
-* `rig start <id> [--sandbox host|container]` provision checkouts (stop comes later)
+* `rig start <id> [--sandbox host|container]` provision checkouts
+* `rig stop <id> [--force] [--keep-checkouts] [--yes]` import work, then remove checkouts (never loses work silently)
 * `rig list` tickets, phase, status, ports
 * `rig attach <id> [service]` jump into agent terminal
 * `rig approve <id> <gate>` pass a gate
