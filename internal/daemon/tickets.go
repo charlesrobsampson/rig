@@ -7,6 +7,7 @@ import (
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/domain"
+	"github.com/charlesrobsampson/rig/internal/events"
 	"github.com/charlesrobsampson/rig/internal/registry"
 )
 
@@ -37,5 +38,24 @@ func RegisterTicketHandlers(s *Server, r *registry.Registry) {
 			return nil, &api.Error{Code: api.CodeNotFound, Message: err.Error()}
 		}
 		return res, err
+	})
+}
+
+// RegisterTicketCreateHandler serves ticket.new: create the ticket's files, then
+// announce it on the bus. Nothing is announced for a failed create.
+func RegisterTicketCreateHandler(s *Server, c *registry.Creator, bus *events.Bus) {
+	s.Handle(api.MethodTicketNew, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.TicketNewParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "ticket.new needs params like {\"id\": \"...\", \"title\": \"...\", \"services\": [...]}"}
+		}
+		res, err := c.Create(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		if err := bus.Publish(api.EventTicketCreated, res.Summary.ID, "", api.EmptyData{}); err != nil {
+			return nil, err
+		}
+		return res, nil
 	})
 }
