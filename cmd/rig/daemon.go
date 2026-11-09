@@ -19,8 +19,10 @@ import (
 	"github.com/charlesrobsampson/rig/internal/config"
 	"github.com/charlesrobsampson/rig/internal/daemon"
 	"github.com/charlesrobsampson/rig/internal/events"
+	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/registry"
 	"github.com/charlesrobsampson/rig/internal/state"
+	"github.com/charlesrobsampson/rig/internal/ticket"
 )
 
 func (a *app) global() (config.Global, error) {
@@ -101,7 +103,15 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	})
 	bus := events.NewBus(clk, 0)
 	daemon.RegisterEventHandlers(srv, bus)
-	daemon.RegisterTicketHandlers(srv, registry.New(g.TicketsDir(), state.NewManager(clk)))
+	states := state.NewManager(clk)
+	daemon.RegisterTicketHandlers(srv, registry.New(g.TicketsDir(), states))
+	daemon.RegisterTicketCreateHandler(srv, registry.NewCreator(registry.CreatorOptions{
+		Dir:          g.TicketsDir(),
+		States:       states,
+		Sources:      ticket.DefaultRegistry(),
+		RepoCheck:    func(path string) error { return git.CheckRepo(context.Background(), path) },
+		BranchPrefix: g.Defaults.BranchPrefix,
+	}), bus)
 
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

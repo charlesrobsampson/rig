@@ -3,9 +3,21 @@ package git
 import (
 	"context"
 	"errors"
+	"os"
 	"sort"
 	"strings"
 )
+
+// CheckRepo reports why dir cannot be used as a main repository, or nil.
+func CheckRepo(ctx context.Context, dir string) error {
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return errors.New("no such directory")
+	}
+	if _, err := Trusted().Run(ctx, dir, "rev-parse", "--git-dir"); err != nil {
+		return errors.New("not a git repository")
+	}
+	return nil
+}
 
 // Branches lists the repository's local branches, sorted.
 func Branches(ctx context.Context, repo string) ([]string, error) {

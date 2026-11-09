@@ -12,7 +12,11 @@ import (
 	"github.com/charlesrobsampson/rig/internal/domain"
 )
 
-var ErrNotFound = errors.New("ticket not found at its source")
+var (
+	ErrNotFound      = errors.New("ticket not found at its source")
+	ErrUnknownSource = errors.New("unknown ticket source")
+	ErrUnusable      = errors.New("the source gave an unusable ticket")
+)
 
 // Seed is what a source knows about a ticket before rig creates it.
 type Seed struct {
@@ -126,7 +130,7 @@ func (r *Registry) Types() []string {
 func (r *Registry) Fetch(ctx context.Context, typ, ref string) (Seed, error) {
 	src, ok := r.sources[typ]
 	if !ok {
-		return Seed{}, fmt.Errorf("unknown ticket source %q (known: %s)", typ, strings.Join(r.Types(), ", "))
+		return Seed{}, fmt.Errorf("%w %q (known: %s)", ErrUnknownSource, typ, strings.Join(r.Types(), ", "))
 	}
 	seed, err := src.Fetch(ctx, ref)
 	if err != nil {
@@ -134,7 +138,7 @@ func (r *Registry) Fetch(ctx context.Context, typ, ref string) (Seed, error) {
 	}
 	seed.ID = SanitizeID(seed.ID)
 	if err := seed.Validate(); err != nil {
-		return Seed{}, fmt.Errorf("%s %q gave an unusable ticket: %w", typ, ref, err)
+		return Seed{}, fmt.Errorf("%w: %s %q: %v", ErrUnusable, typ, ref, err)
 	}
 	return seed, nil
 }

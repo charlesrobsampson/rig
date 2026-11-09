@@ -1,0 +1,11 @@
+# Manual tests
+
+Steps for a human to check the result by hand. Each step is a `###` heading with an id
+and a title. Placeholders such as `{{[[.Service]].url}}` and `{{[[.Service]].port}}` are
+filled in with the live addresses when the steps are shown.
+
+### example: the service responds
+
+```sh
+curl {{[[.Service]].url}}/
+```

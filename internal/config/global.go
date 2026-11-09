@@ -38,7 +38,9 @@ type Defaults struct {
 	TerminalBackend string             `json:"terminal_backend"`
 	TicketSource    string             `json:"ticket_source"`
 	NetworkMode     domain.NetworkMode `json:"network_mode"`
-	Policy          domain.Policy      `json:"policy"`
+	// BranchPrefix starts the default branch name of new tickets: <prefix><ticket>/<service>.
+	BranchPrefix string        `json:"branch_prefix"`
+	Policy       domain.Policy `json:"policy"`
 }
 
 type Limits struct {
@@ -86,9 +88,10 @@ type GlobalOptions struct {
 }
 
 var (
-	hostPattern = regexp.MustCompile(`^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`)
-	terminals   = []string{"herdr", "tmux"}
-	summarizers = []string{"none", "ollama", "claude"}
+	branchPrefix = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9._-]*/)*$`)
+	hostPattern  = regexp.MustCompile(`^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`)
+	terminals    = []string{"herdr", "tmux"}
+	summarizers  = []string{"none", "ollama", "claude"}
 )
 
 func defaultGlobal(userHome string) Global {
@@ -100,6 +103,7 @@ func defaultGlobal(userHome string) Global {
 			TerminalBackend: "herdr",
 			TicketSource:    "manual",
 			NetworkMode:     domain.NetworkBridge,
+			BranchPrefix:    "rig/",
 			Policy: domain.Policy{
 				Gates: []domain.Gate{domain.GatePlanApproval, domain.GateReviewApproval},
 				Push:  domain.PushPolicy{Mode: domain.PushPR},
@@ -214,6 +218,9 @@ func validateGlobal(g Global) []string {
 	}
 	if !contains(summarizers, g.Summarizer.Provider) {
 		add("summarizer.provider: %q is not supported (want %s)", g.Summarizer.Provider, strings.Join(summarizers, ", "))
+	}
+	if !branchPrefix.MatchString(g.Defaults.BranchPrefix) {
+		add("defaults.branch_prefix: %q must be empty or end with a slash, like \"rig/\" (letters, digits, dots, dashes, underscores)", g.Defaults.BranchPrefix)
 	}
 	if g.Limits.MaxActiveTickets < 1 {
 		add("limits.max_active_tickets: must be at least 1")
