@@ -314,7 +314,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 27 · Herdr backend
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/27-herdr-backend` · Depends: 26
 - Read: `docs/spikes/02-herdr.md`
 - Build: Herdr implementation of `TerminalBackend` over the socket API in the dedicated `rig` session (mapping and quirks in `docs/spikes/02-herdr.md` §4–5), passing the contract suite under the `integration` tag; starts the headless session server when absent; clear errors when Herdr is absent or not running.
