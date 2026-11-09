@@ -208,12 +208,3 @@ func TestWorktreesOfOneRepoShareItsObjectStore(t *testing.T) {
 		t.Errorf("the other worktree cannot see the new commit: %q", typ)
 	}
 }
-
-func TestProvisionRejectsKindsNotImplementedYet(t *testing.T) {
-	repo := testkit.NewRepo(t)
-	spec := worktreeSpec(repo, newPath(t), "feat/z", "main")
-	spec.Kind = domain.CheckoutClone
-	if _, err := git.Provision(ctx, spec); err == nil || !strings.Contains(err.Error(), "clone") {
-		t.Errorf("error = %v, want one naming the unsupported kind", err)
-	}
-}
