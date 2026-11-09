@@ -806,7 +806,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 66 · Daemon restart reconciliation
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/66-reconcile` · Depends: 44, 30
 - Read: `manifest.md` §7 (recovery)
 - Build: on daemon start, reconcile `state.json` against real containers (by labels), checkouts, and panes; mark drift (missing, orphaned) and expose it in `rig list`; `rig reconcile --fix` removes orphans after confirmation.
