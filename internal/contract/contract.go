@@ -5,6 +5,8 @@
 package contract
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -278,6 +280,13 @@ func fields(body []string) (what, why, rejected string) {
 		}
 	}
 	return strings.TrimSpace(what), strings.TrimSpace(why), strings.TrimSpace(rejected)
+}
+
+// AgreedHash identifies the agreed section's content (comments and surrounding
+// whitespace do not count), so a change to it can be told from any other edit.
+func (d Doc) AgreedHash() string {
+	sum := sha256.Sum256([]byte(d.Agreed))
+	return hex.EncodeToString(sum[:])
 }
 
 // OpenProposals are the proposals still waiting for a human.

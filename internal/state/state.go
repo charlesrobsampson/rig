@@ -91,6 +91,14 @@ type Network struct {
 
 type Contract struct {
 	Pending bool `json:"pending"`
+	// AgreedHash is the hash of the agreed section as rig last knew it to be right; a
+	// different hash after the plan is approved means someone edited it directly.
+	AgreedHash string `json:"agreed_hash,omitempty"`
+	// Seen lists the proposal ids already announced, so each is announced once, even
+	// across daemon restarts.
+	Seen []string `json:"seen,omitempty"`
+	// Violation describes an unresolved direct edit of the agreed section.
+	Violation string `json:"violation,omitempty"`
 }
 
 type ManualTests struct {

@@ -80,7 +80,7 @@ Shape per manifest §5, plus:
   "dependencies": {"db": {"container_id": "", "status": "pending"}},
   "network": {"name": "", "id": ""},
   "egress_network": {"name": "", "id": ""},
-  "contract": {"pending": false},
+  "contract": {"pending": false, "agreed_hash": "", "seen": [], "violation": ""},
   "manual_tests": {"steps": {}, "signed_off": false},
   "created_at": "2026-11-05T14:00:00Z",
   "updated_at": "2026-11-05T14:05:00Z"
@@ -91,6 +91,7 @@ Shape per manifest §5, plus:
 - `services[].status`: `pending | provisioned | running | stopped | error`.
 - `agent.state` / `AgentState`: `working | blocked | idle | unknown | exited`.
 - `push.status`: `pending | done | failed`.
+- `contract.pending` is true while some proposal is open; `agreed_hash` is the hash of the agreed section as rig last knew it to be right (set from the template when the ticket is created; follows edits freely during the `plan` phase); `seen` lists the proposal ids already announced; `violation` is non-empty after the agreed section was edited directly once the plan phase is over, and stays until it is resolved.
 - `egress_network` is present only in `network_mode: internal` (the proxy's outward network); absent otherwise.
 - Writes are atomic (temp file + rename) and serialized per ticket.
 
