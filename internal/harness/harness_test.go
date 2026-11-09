@@ -32,6 +32,8 @@ func ticket(services ...string) domain.Ticket {
 	return t
 }
 
+func promptOf(l harness.Launch) string { return l.Command[len(l.Command)-1] }
+
 func launch(t *testing.T, r harness.Request) harness.Launch {
 	t.Helper()
 	h, err := harness.Get("claude-code")
@@ -52,13 +54,13 @@ func TestTheLaunchCommandPerPhase(t *testing.T) {
 	for _, phase := range []domain.Phase{domain.PhasePlan, domain.PhaseImplement, domain.PhaseTest, domain.PhaseReview, domain.PhasePush} {
 		t.Run(string(phase), func(t *testing.T) {
 			l := launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: phase, TicketDir: dir, Dir: "/work/api"})
-			if l.Command[0] != "claude" || l.Command[1] != "--settings" || len(l.Command) != 4 {
-				t.Fatalf("command = %q, want claude --settings <json> <prompt>", l.Command[:2])
+			if l.Command[0] != "claude" || l.Command[1] != "--settings" || l.Command[3] != "--add-dir" || l.Command[4] != dir || len(l.Command) != 6 {
+				t.Fatalf("command = %q, want claude --settings <json> --add-dir <ticket dir> <prompt>", l.Command[:5])
 			}
 			if l.Dir != "/work/api" {
 				t.Errorf("dir = %q", l.Dir)
 			}
-			prompt := l.Command[3]
+			prompt := promptOf(l)
 			if !strings.Contains(prompt, "Current phase: "+string(phase)+".") {
 				t.Errorf("prompt does not name the phase %s:\n%s", phase, prompt)
 			}
@@ -69,7 +71,7 @@ func TestTheLaunchCommandPerPhase(t *testing.T) {
 	}
 	t.Run("done has no phase rules but still launches", func(t *testing.T) {
 		l := launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhaseDone, TicketDir: dir, Dir: "/w"})
-		if strings.Contains(l.Command[3], "## This phase") {
+		if strings.Contains(promptOf(l), "## This phase") {
 			t.Error("a done ticket got phase rules")
 		}
 	})
@@ -78,7 +80,7 @@ func TestTheLaunchCommandPerPhase(t *testing.T) {
 func TestThePromptCarriesTheArtifactsAndTheRules(t *testing.T) {
 	dir := ticketDir(t, artifacts)
 	l := launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhaseImplement, TicketDir: dir, Dir: "/w"})
-	prompt := l.Command[3]
+	prompt := promptOf(l)
 	for _, want := range []string{
 		`service "api" of rig ticket demo-1: Add locale`,
 		"Use a locale header.", "- [ ] add header",
@@ -94,19 +96,19 @@ func TestThePromptCarriesTheArtifactsAndTheRules(t *testing.T) {
 func TestTheContractIsIncludedOnlyForMultiServiceTickets(t *testing.T) {
 	dir := ticketDir(t, artifacts)
 	single := launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhaseImplement, TicketDir: dir, Dir: "/w"})
-	if strings.Contains(single.Command[3], "GET /x") {
+	if strings.Contains(promptOf(single), "GET /x") {
 		t.Error("a single-service prompt included contract.md")
 	}
 	multi := launch(t, harness.Request{Ticket: ticket("api", "web"), Service: "web", Phase: domain.PhaseImplement, TicketDir: dir, Dir: "/w"})
-	if !strings.Contains(multi.Command[3], "GET /x") {
+	if !strings.Contains(promptOf(multi), "GET /x") {
 		t.Error("a multi-service prompt left out contract.md")
 	}
 }
 
 func TestMissingArtifactsAreSkippedNotFatal(t *testing.T) {
 	l := launch(t, harness.Request{Ticket: ticket("api", "web"), Service: "api", Phase: domain.PhasePlan, TicketDir: ticketDir(t, map[string]string{"plan.md": "only a plan"}), Dir: "/w"})
-	if !strings.Contains(l.Command[3], "only a plan") || strings.Contains(l.Command[3], "## tasks.md") {
-		t.Errorf("prompt = %s", l.Command[3])
+	if !strings.Contains(promptOf(l), "only a plan") || strings.Contains(promptOf(l), "## tasks.md") {
+		t.Errorf("prompt = %s", promptOf(l))
 	}
 }
 
@@ -261,6 +263,15 @@ func TestUnknownHarnessesAndBadRequests(t *testing.T) {
 	} {
 		if _, err := h.Command(r); err == nil {
 			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+func TestWithoutATicketDirectoryNoExtraDirectoryIsGranted(t *testing.T) {
+	l := launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhasePlan, Dir: "/w"})
+	for _, arg := range l.Command {
+		if arg == "--add-dir" {
+			t.Errorf("command = %q", l.Command[:3])
 		}
 	}
 }
