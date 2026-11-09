@@ -208,6 +208,7 @@ rig/
 * `rig new` create ticket (manual or `--from jira:PROJ-412`)
 * `rig start <id> [--sandbox host|container]` provision checkouts
 * `rig stop <id> [--force] [--keep-checkouts] [--yes]` import work, then remove checkouts (never loses work silently)
+* `rig phase <id> <phase> [--reason ...]` move a ticket (forward needs its approvals; backward needs a reason)
 * `rig gates <id>` show the approvals a ticket needs; `rig approve <id> <gate> [--service name]` grant one (humans only)
 * `rig list` tickets, phase, status, ports
 * `rig attach <id> [service]` jump into agent terminal
