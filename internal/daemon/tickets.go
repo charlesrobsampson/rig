@@ -8,6 +8,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/events"
+	"github.com/charlesrobsampson/rig/internal/lifecycle"
 	"github.com/charlesrobsampson/rig/internal/registry"
 )
 
@@ -57,5 +58,16 @@ func RegisterTicketCreateHandler(s *Server, c *registry.Creator, bus *events.Bus
 			return nil, err
 		}
 		return res, nil
+	})
+}
+
+// RegisterLifecycleHandlers serves ticket.start.
+func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
+	s.Handle(api.MethodTicketStart, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.TicketStartParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "ticket.start needs params like {\"id\": \"ticket-1\"}"}
+		}
+		return m.Start(ctx, p)
 	})
 }

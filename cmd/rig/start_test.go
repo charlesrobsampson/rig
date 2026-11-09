@@ -1,0 +1,100 @@
+package main
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/charlesrobsampson/rig/internal/api"
+	"github.com/charlesrobsampson/rig/internal/domain"
+	"github.com/charlesrobsampson/rig/internal/testkit"
+)
+
+func newTicket(t *testing.T, d deps, id string, repos ...*testkit.Repo) {
+	t.Helper()
+	args := []string{"new", "--id", id, "--title", "Ticket " + id}
+	for i, r := range repos {
+		args = append(args, "--service", "svc"+string(rune('1'+i))+"="+r.Dir)
+	}
+	if _, stderr, code := rig(t, d, args...); code != 0 {
+		t.Fatalf("rig new failed: %s", stderr)
+	}
+}
+
+func TestStartProvisionsCheckoutsThatListShows(t *testing.T) {
+	home, d, repo := newEnv(t)
+	other := testkit.NewRepo(t)
+	newTicket(t, d, "demo", repo, other)
+
+	stdout, stderr, code := rig(t, d, "start", "demo")
+	if code != 0 {
+		t.Fatalf("code %d, stderr %q", code, stderr)
+	}
+	for _, want := range []string{"svc1", "svc2", "clone", filepath.Join(home, "tickets", "demo", "svc1"), "created"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout lacks %q:\n%s", want, stdout)
+		}
+	}
+	co := filepath.Join(home, "tickets", "demo", "svc1")
+	if branch := testkit.RunGit(t, co, "rev-parse", "--abbrev-ref", "HEAD"); branch != "rig/demo/svc1" {
+		t.Errorf("checkout is on %q", branch)
+	}
+
+	listing, _, _ := rig(t, d, "list")
+	if !strings.Contains(listing, "svc1:provisioned") || !strings.Contains(listing, "svc2:provisioned") {
+		t.Errorf("list after start:\n%s", listing)
+	}
+
+	again, _, code := rig(t, d, "start", "demo")
+	if code != 0 || strings.Contains(again, "created") || !strings.Contains(again, "existing") {
+		t.Errorf("a second start: code %d, stdout:\n%s", code, again)
+	}
+}
+
+func TestStartSandboxFlag(t *testing.T) {
+	home, d, repo := newEnv(t)
+	newTicket(t, d, "demo", repo)
+	stdout, stderr, code := rig(t, d, "start", "demo", "--sandbox", "host")
+	if code != 0 || !strings.Contains(stdout, "worktree") {
+		t.Fatalf("code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	if info, err := os.Stat(filepath.Join(home, "tickets", "demo", "svc1", ".git")); err != nil || info.IsDir() {
+		t.Errorf("a host-sandbox checkout should be a worktree with a .git pointer file: %v", err)
+	}
+}
+
+func TestStartJSON(t *testing.T) {
+	_, d, repo := newEnv(t)
+	newTicket(t, d, "demo", repo)
+	stdout, _, code := rig(t, d, "start", "demo", "--json")
+	var got api.TicketStartResult
+	if err := json.Unmarshal([]byte(stdout), &got); code != 0 || err != nil || len(got.Checkouts) != 1 || got.Checkouts[0].Kind != domain.CheckoutClone || !got.Checkouts[0].Created {
+		t.Errorf("code %d, %q, %v", code, stdout, err)
+	}
+}
+
+func TestStartErrors(t *testing.T) {
+	_, d, repo := newEnv(t)
+	newTicket(t, d, "demo", repo)
+	tests := []struct {
+		name string
+		args []string
+		code int
+		text string
+	}{
+		{"no ticket id", []string{"start"}, 2, "arg"},
+		{"too many arguments", []string{"start", "a", "b"}, 2, "arg"},
+		{"an invalid sandbox", []string{"start", "demo", "--sandbox", "vm"}, 2, "sandbox"},
+		{"an unknown ticket", []string{"start", "nope"}, 5, "nope"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout, stderr, code := rig(t, d, tt.args...)
+			if code != tt.code || !strings.Contains(stderr, tt.text) || stdout != "" {
+				t.Errorf("code %d (want %d), stdout %q, stderr %q", code, tt.code, stdout, stderr)
+			}
+		})
+	}
+}
