@@ -318,8 +318,8 @@ func (m *Manager) recordService(l loaded, service, containerID string, status do
 }
 
 // removeServiceContainers stops and removes the ticket's service containers and
-// releases their ports. Containers already gone are fine; anything else that fails
-// leaves the rest of the stop undone.
+// releases their ports. Containers already gone are fine. It tries every service and
+// returns every failure, so one stuck container does not hide the others.
 func (m *Manager) removeServiceContainers(ctx context.Context, id string, t domain.Ticket, st state.State) error {
 	if m.opts.Docker == nil {
 		return nil
@@ -328,22 +328,25 @@ func (m *Manager) removeServiceContainers(ctx context.Context, id string, t doma
 	if grace == 0 {
 		grace = 10 * time.Second
 	}
+	var failures []error
 	for _, svc := range t.Services {
 		if !runsInDocker(svc) {
 			continue
 		}
 		name := ContainerName(id, svc.Name)
 		if err := m.opts.Docker.StopContainer(ctx, name, grace); err != nil && !errors.Is(err, docker.ErrNotFound) {
-			return dockerError(fmt.Sprintf("ticket %q: stop service %s", id, svc.Name), err)
+			failures = append(failures, dockerError(fmt.Sprintf("service %s: stop its container", svc.Name), err))
+			continue
 		}
 		if err := m.opts.Docker.RemoveContainer(ctx, name, true); err != nil && !errors.Is(err, docker.ErrNotFound) {
-			return dockerError(fmt.Sprintf("ticket %q: remove service %s", id, svc.Name), err)
+			failures = append(failures, dockerError(fmt.Sprintf("service %s: remove its container", svc.Name), err))
+			continue
 		}
 		if m.ports != nil && st.Services[svc.Name].HostPort != 0 {
 			if err := m.ports.Release(id, svc.Name); err != nil {
-				return &api.Error{Code: api.CodeInternal, Message: fmt.Sprintf("release the port of %s: %v", svc.Name, err)}
+				failures = append(failures, &api.Error{Code: api.CodeInternal, Message: fmt.Sprintf("service %s: release its host port: %v", svc.Name, err)})
 			}
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }

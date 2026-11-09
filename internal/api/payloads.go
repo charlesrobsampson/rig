@@ -181,6 +181,9 @@ type TicketStopParams struct {
 type TicketStopResult struct {
 	Summary  TicketSummary `json:"summary"`
 	Services []StopInfo    `json:"services"`
+	// Resources lists the Docker containers and networks this stop removed
+	// ("container rig-demo-svc1", "network rig-demo").
+	Resources []string `json:"resources,omitempty"`
 }
 
 // StopInfo says what happened to one service's checkout.

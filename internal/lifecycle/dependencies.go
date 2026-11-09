@@ -134,7 +134,8 @@ func (m *Manager) recordDependency(l loaded, name, containerID string, status do
 	})
 }
 
-// removeDependencyContainers removes the ticket's sidecars; already-gone ones are fine.
+// removeDependencyContainers removes the ticket's sidecars; already-gone ones are fine,
+// and every failure is reported.
 func (m *Manager) removeDependencyContainers(ctx context.Context, id string, t domain.Ticket) error {
 	if m.opts.Docker == nil {
 		return nil
@@ -143,14 +144,16 @@ func (m *Manager) removeDependencyContainers(ctx context.Context, id string, t d
 	if grace == 0 {
 		grace = 10 * time.Second
 	}
+	var failures []error
 	for _, dep := range t.Dependencies {
 		name := DependencyName(id, dep.Name)
 		if err := m.opts.Docker.StopContainer(ctx, name, grace); err != nil && !errors.Is(err, docker.ErrNotFound) {
-			return dockerError(fmt.Sprintf("ticket %q: stop dependency %s", id, dep.Name), err)
+			failures = append(failures, dockerError(fmt.Sprintf("dependency %s: stop its container", dep.Name), err))
+			continue
 		}
 		if err := m.opts.Docker.RemoveContainer(ctx, name, true); err != nil && !errors.Is(err, docker.ErrNotFound) {
-			return dockerError(fmt.Sprintf("ticket %q: remove dependency %s", id, dep.Name), err)
+			failures = append(failures, dockerError(fmt.Sprintf("dependency %s: remove its container", dep.Name), err))
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }

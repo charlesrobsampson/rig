@@ -151,3 +151,23 @@ func TestStopErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestStopListsWhatItRemovedAndStoppingTwiceIsQuiet(t *testing.T) {
+	_, d, repo, _, _ := newEnvFull(t)
+	repo.Commit("Dockerfile", "FROM scratch\n", "add a Dockerfile")
+	newTicket(t, d, "demo", repo)
+	if _, stderr, code := rig(t, d, "start", "demo"); code != 0 {
+		t.Fatalf("start: %q", stderr)
+	}
+	stdout, stderr, code := rig(t, d, "stop", "demo")
+	if code != 0 || !strings.Contains(stdout, "removed: container rig-demo-svc1-agent, network rig-demo") {
+		t.Errorf("first stop: code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	stdout, stderr, code = rig(t, d, "stop", "demo")
+	if code != 0 || !strings.Contains(stdout, "demo is already stopped") || strings.Contains(stdout, "removed:") {
+		t.Errorf("second stop: code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	if _, _, code := rig(t, d, "stop", "ghost"); code != 5 {
+		t.Errorf("an unknown ticket: code %d", code)
+	}
+}

@@ -42,12 +42,23 @@ imports and marks the ticket stopped but leaves the directories in place.`,
 			if a.json {
 				return printJSON(cmd.OutOrStdout(), res)
 			}
-			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "SERVICE\tIMPORTED\tREMOVED")
-			for _, s := range res.Services {
-				fmt.Fprintf(tw, "%s\t%s\t%s\n", s.Service, yesNo(s.Imported), yesNo(s.Removed))
+			if len(res.Services) > 0 {
+				tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+				fmt.Fprintln(tw, "SERVICE\tIMPORTED\tREMOVED")
+				for _, s := range res.Services {
+					fmt.Fprintf(tw, "%s\t%s\t%s\n", s.Service, yesNo(s.Imported), yesNo(s.Removed))
+				}
+				if err := tw.Flush(); err != nil {
+					return err
+				}
 			}
-			return tw.Flush()
+			if len(res.Services) == 0 && len(res.Resources) == 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "%s is already stopped\n", p.ID)
+			}
+			if len(res.Resources) > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "\nremoved: %s\n", strings.Join(res.Resources, ", "))
+			}
+			return nil
 		},
 	}
 	f := cmd.Flags()

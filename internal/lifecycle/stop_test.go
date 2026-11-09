@@ -302,7 +302,6 @@ func TestStopErrors(t *testing.T) {
 		text string
 	}{
 		{"a ticket that was never started", "fresh", api.CodeConflict, "nothing to stop"},
-		{"stopping twice", "again", api.CodeConflict, "nothing to stop"},
 		{"an unknown ticket", "nope", api.CodeNotFound, "nope"},
 		{"an invalid id", "../etc", api.CodeInvalid, "ticket id"},
 	}

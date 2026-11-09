@@ -185,19 +185,20 @@ func sortedEnvKeys(env map[string]string) []string {
 
 // removeAgentContainers removes the ticket's agent containers. Already-gone ones are
 // fine; an unreachable Docker is an error unless force (the checkout must not be
-// removed under an agent that may still be running).
+// removed under an agent that may still be running). Every failure is reported.
 func (m *Manager) removeAgentContainers(ctx context.Context, id string, t domain.Ticket, force bool) error {
 	if m.opts.Docker == nil {
 		return nil
 	}
+	var failures []error
 	for _, svc := range t.Services {
 		name := AgentContainerName(id, svc.Name)
 		err := m.opts.Docker.RemoveContainer(ctx, name, true)
 		switch {
 		case err == nil, errors.Is(err, docker.ErrNotFound), force:
 		default:
-			return dockerError(fmt.Sprintf("ticket %q: remove the agent container of %s", id, svc.Name), err)
+			failures = append(failures, dockerError(fmt.Sprintf("agent of %s: remove its container", svc.Name), err))
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }
