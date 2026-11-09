@@ -26,18 +26,24 @@ type DirtyError struct {
 	Dirtiness
 }
 
-func (e *DirtyError) Error() string {
+// Describe lists the work at risk, such as "2 modified file(s), 1 commit(s) not imported
+// into the main repository".
+func (d Dirtiness) Describe() string {
 	var parts []string
-	if e.Modified > 0 {
-		parts = append(parts, fmt.Sprintf("%d modified file(s)", e.Modified))
+	if d.Modified > 0 {
+		parts = append(parts, fmt.Sprintf("%d modified file(s)", d.Modified))
 	}
-	if e.Untracked > 0 {
-		parts = append(parts, fmt.Sprintf("%d untracked file(s)", e.Untracked))
+	if d.Untracked > 0 {
+		parts = append(parts, fmt.Sprintf("%d untracked file(s)", d.Untracked))
 	}
-	if e.Unimported > 0 {
-		parts = append(parts, fmt.Sprintf("%d commit(s) not imported into the main repository", e.Unimported))
+	if d.Unimported > 0 {
+		parts = append(parts, fmt.Sprintf("%d commit(s) not imported into the main repository", d.Unimported))
 	}
-	msg := fmt.Sprintf("checkout %s still holds work: %s", e.Path, strings.Join(parts, ", "))
+	return strings.Join(parts, ", ")
+}
+
+func (e *DirtyError) Error() string {
+	msg := fmt.Sprintf("checkout %s still holds work: %s", e.Path, e.Describe())
 	if e.Unimported > 0 {
 		msg += "; import the branch first"
 	}
