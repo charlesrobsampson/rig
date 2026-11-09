@@ -204,3 +204,26 @@ func TestTicketStartHandlerErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestTicketStopHandlerErrors(t *testing.T) {
+	dir := filepath.Join(testkit.RealTempDir(t), "tickets")
+	lc := lifecycle.New(lifecycle.Options{Dir: dir, States: state.NewManager(testkit.NewFakeClock(epoch))})
+	h := start(t, func(s *daemon.Server) { daemon.RegisterLifecycleHandlers(s, lc) })
+	c := dial(t, h.opts.SocketPath)
+	c.hello(t)
+	for name, tt := range map[string]struct {
+		params any
+		code   api.ErrorCode
+	}{
+		"an unknown ticket":             {api.TicketStopParams{ID: "nope"}, api.CodeNotFound},
+		"an invalid id":                 {api.TicketStopParams{ID: "../etc"}, api.CodeInvalid},
+		"params that are not an object": {"oops", api.CodeInvalid},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var apiErr *api.Error
+			if err := c.call(t, api.MethodTicketStop, tt.params).Err(); !errors.As(err, &apiErr) || apiErr.Code != tt.code {
+				t.Errorf("error = %v, want code %s", err, tt.code)
+			}
+		})
+	}
+}
