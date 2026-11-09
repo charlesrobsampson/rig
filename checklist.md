@@ -822,7 +822,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 67 · Limits and cost readout
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/67-limits` · Depends: 15, 29
 - Read: `manifest.md` §7 (limits)
 - Build: enforce `max_active_tickets` on `rig start` with a clear message; optional per-agent token/cost readout when the harness exposes it, shown in `rig list --json` and the dashboard.
