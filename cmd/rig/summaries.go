@@ -17,9 +17,9 @@ import (
 // summaryService builds the background summary job from the config. Anything that keeps
 // it from working (an unknown provider, an unreadable store) is logged and turns the job
 // off: summaries are advisory and never stop the daemon from starting.
-func newSummaryService(g config.Global, bus *events.Bus, clk clock.Clock, logger *slog.Logger) *summary.Service {
+func newSummaryService(g config.Global, secret func(names []string) (map[string]string, error), bus *events.Bus, clk clock.Clock, logger *slog.Logger) *summary.Service {
 	var s summary.Summarizer = summary.None{}
-	if built, err := summary.New(g.Summarizer, summary.ProviderOptions{}); err != nil {
+	if built, err := summary.New(g.Summarizer, summary.ProviderOptions{APIKey: anthropicKey(secret)}); err != nil {
 		logger.Warn("summaries are off", "err", err)
 	} else {
 		s = built
@@ -35,6 +35,23 @@ func newSummaryService(g config.Global, bus *events.Bus, clk clock.Clock, logger
 		}
 	}
 	return summary.NewService(summary.Options{Dir: g.TicketsDir(), Store: st, Summarizer: s, Bus: bus, Clock: clk, Logger: logger})
+}
+
+// anthropicKeyName is the secret the claude summarizer reads, from the Keychain or the
+// .env file like any other secret (docs/formats.md §2).
+const anthropicKeyName = "ANTHROPIC_API_KEY"
+
+func anthropicKey(secret func(names []string) (map[string]string, error)) func() (string, error) {
+	if secret == nil {
+		return nil
+	}
+	return func() (string, error) {
+		values, err := secret([]string{anthropicKeyName})
+		if err != nil {
+			return "", err
+		}
+		return values[anthropicKeyName], nil
+	}
 }
 
 // summaryInputs gathers a ticket's plan, tasks and diff through the same code paths the

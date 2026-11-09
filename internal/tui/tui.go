@@ -437,6 +437,9 @@ func (m Model) header(w int) string {
 	if m.opts.Version != "" {
 		title += " " + m.opts.Version
 	}
+	if backend, ok := remoteSummaries(m.tickets); ok {
+		title += " · summaries from a remote model (" + backend + "): ticket content leaves this machine"
+	}
 	return ansi.Truncate(title, w, "…")
 }
 

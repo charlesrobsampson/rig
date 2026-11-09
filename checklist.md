@@ -740,13 +740,19 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Manual check (with Ollama running and a model pulled, `summarizer: {provider: ollama, model: ...}` in the config, `rig list --summaries`) is for you.
 
 ### 62 · Claude summarizer and dashboard integration
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/62-summary-claude` · Depends: 56, 61
 - Read: `manifest.md` §7
 - Build: `claude` backend (key via secrets resolver); dashboard shows the summary next to diff stats, marked advisory, with an indicator when a remote backend is active.
 - Tests (`httptest`): request body excludes files outside the ticket; summary and stats both render; remote indicator shown only for remote backends.
 - Manual check: summary appears in the dashboard for a real ticket.
+- Notes:
+  - `summary.Claude` (`POST {endpoint}/v1/messages`, headers `x-api-key` and `anthropic-version: 2023-06-01`): the request body is exactly model, `max_tokens` (400) and one user message holding `Prompt(input)`, built only from the ticket's plan/tasks/diffs (tests assert no extra fields and that nothing from outside the ticket appears). Default model `claude-haiku-5-5`. Always `Remote()`. Endpoint must be https (http only for this machine). The key comes from the secrets resolver as `ANTHROPIC_API_KEY` (Keychain, then `.env`), looked up on every request so adding it later works without a restart; it is never in a body, log or error (transport errors are scrubbed). 401/403, 429 and other statuses give plain explanations.
+  - Daemon: `newSummaryService` takes the daemon's secrets resolver; without one the claude provider cannot be built and summaries stay off with a warning.
+  - TUI dashboard: the selected ticket's summary is drawn under the table, headed "summary (advisory)" with backend/model, "REMOTE" when the content was sent off this machine, and the real diff stats (files +added -deleted) beside it; at most 5 lines (cut with …), a failed refresh is shown beside the old text ("out of date, refresh failed: ..."). The header names a remote backend whenever any ticket's summary came from one ("summaries from a remote model (claude): ticket content leaves this machine"); nothing is shown for local-only or no summaries. The pane steps aside on screens under 14 lines so the table is never squeezed out.
+  - Mutation-checked: the remote indicator.
+  - Manual check (a summary in the dashboard for a real ticket) is for you: set `summarizer: {provider: claude}` in the config and put `ANTHROPIC_API_KEY` in the Keychain (`security add-generic-password -s rig -a ANTHROPIC_API_KEY -w`) or the `.env`.
 
 ### 63 · Jira ticket source
 - [ ] Done

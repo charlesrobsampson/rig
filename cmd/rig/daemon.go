@@ -119,7 +119,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		gate, _ := gates.Awaiting(g, t, st)
 		return gate
 	})
-	summaries := newSummaryService(g, bus, clk, logger)
+	summaries := newSummaryService(g, secretValues(g, a.deps.keychain), bus, clk, logger)
 	reg.WithAISummary(summaries.Info)
 	daemon.RegisterTicketHandlers(srv, reg)
 	daemon.RegisterTicketCreateHandler(srv, registry.NewCreator(registry.CreatorOptions{
