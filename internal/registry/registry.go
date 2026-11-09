@@ -22,6 +22,15 @@ var ErrNotFound = errors.New("ticket not found")
 type Registry struct {
 	dir    string
 	states *state.Manager
+	// pendingGate, when set, names the approval a ticket is waiting for (it needs the
+	// global policy, which the registry does not know).
+	pendingGate func(domain.Ticket, state.State) domain.Gate
+}
+
+// WithPendingGate makes summaries carry the gate a human has yet to approve.
+func (r *Registry) WithPendingGate(f func(domain.Ticket, state.State) domain.Gate) *Registry {
+	r.pendingGate = f
+	return r
 }
 
 func New(ticketsDir string, states *state.Manager) *Registry {
@@ -95,6 +104,9 @@ func (r *Registry) load(id string) api.TicketGetResult {
 		res.Summary.ContractViolation = st.Contract.Violation != ""
 	}
 
+	if res.Ticket != nil && res.State != nil && r.pendingGate != nil {
+		res.Summary.PendingGate = r.pendingGate(*res.Ticket, *res.State)
+	}
 	if res.Ticket != nil {
 		for _, svc := range res.Ticket.Services {
 			summary := api.ServiceSummary{Name: svc.Name}

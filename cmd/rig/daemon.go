@@ -21,8 +21,10 @@ import (
 	"github.com/charlesrobsampson/rig/internal/contractwatch"
 	"github.com/charlesrobsampson/rig/internal/daemon"
 	"github.com/charlesrobsampson/rig/internal/docker/dockercli"
+	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/egress"
 	"github.com/charlesrobsampson/rig/internal/events"
+	"github.com/charlesrobsampson/rig/internal/gates"
 	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/inject"
 	"github.com/charlesrobsampson/rig/internal/lifecycle"
@@ -113,7 +115,10 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	bus := events.NewBus(clk, 0)
 	daemon.RegisterEventHandlers(srv, bus)
 	states := state.NewManager(clk)
-	daemon.RegisterTicketHandlers(srv, registry.New(g.TicketsDir(), states))
+	daemon.RegisterTicketHandlers(srv, registry.New(g.TicketsDir(), states).WithPendingGate(func(t domain.Ticket, st state.State) domain.Gate {
+		gate, _ := gates.Awaiting(g, t, st)
+		return gate
+	}))
 	daemon.RegisterTicketCreateHandler(srv, registry.NewCreator(registry.CreatorOptions{
 		Dir:          g.TicketsDir(),
 		States:       states,

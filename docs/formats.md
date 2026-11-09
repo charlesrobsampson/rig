@@ -133,7 +133,7 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 |---|---|
 | `hello`, `status` | handshake; daemon version, pid, uptime |
 | `config.get` | effective global config |
-| `ticket.list`, `ticket.get`, `ticket.rescan` | read tickets |
+| `ticket.list`, `ticket.get`, `ticket.rescan` | read tickets; a summary carries `pending_gate` (the approval a human still owes to leave the ticket's current phase, omitted when none) beside `contract_pending` and `contract_violation` |
 | `ticket.new`, `ticket.start`, `ticket.stop` | create / provision / teardown (`start` params: `sandbox`, `dry_run`; the result also carries `network`, `containers[]`, `dependencies[]`, `warnings[]`; the result also carries `agents[]` of `{service, pane_id, launched, note, error}` (one agent per host-sandbox service); a dry run provisions nothing and returns `launches[]` of `{service, harness, dir, command, env}` with secret values as `<secret NAME>`; `stop` params: `force`, `keep_checkouts`; its result lists `services[]` (checkout imported/removed) and `resources[]`, the Docker containers and networks removed; stopping an already stopped ticket succeeds with nothing in either; a stop that cannot finish fails with the cause's code and `details[]` naming what failed and what remains, and keeps the checkouts) |
 | `gate.list`, `gate.approve` | pending gates / approve |
 | `phase.set`, `transition.request` | human move / agent request |

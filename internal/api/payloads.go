@@ -27,8 +27,11 @@ type TicketSummary struct {
 	ContractPending bool             `json:"contract_pending"`
 	// ContractViolation is set while the agreed section has been edited directly and
 	// nobody has resolved it.
-	ContractViolation bool   `json:"contract_violation,omitempty"`
-	Error             string `json:"error,omitempty"`
+	ContractViolation bool `json:"contract_violation,omitempty"`
+	// PendingGate is the approval a human still has to give to move the ticket out of
+	// its current phase; empty when none is waiting.
+	PendingGate domain.Gate `json:"pending_gate,omitempty"`
+	Error       string      `json:"error,omitempty"`
 }
 
 type ServiceSummary struct {

@@ -639,13 +639,19 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Manual check (run `rig` with the daemon up and down) is for you; I could only exercise it with fakes, since a real terminal is not available to me.
 
 ### 56 · Dashboard view
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/56-tui-dashboard` · Depends: 55
 - Read: `manifest.md` §1 (goal: what needs me)
 - Build: fleet table (ticket, phase, per-service agent state lights, ports, pending gates, "contract change pending"); "needs me" rows sorted to the top (blocked agent, awaiting gate, pending contract change, errors); navigation bounds.
 - Tests: rows sort by attention priority; each need type renders its marker; selection stays on the same ticket when rows reorder; empty fleet message.
 - Manual check: run with two demo tickets in different states.
+- Notes:
+  - New data for "awaiting gate": `gates.Awaiting` (the gate guarding the current phase's exit while some service still owes it), exposed as `TicketSummary.pending_gate` through `registry.WithPendingGate`, wired in the daemon with the global policy.
+  - `internal/tui/dashboard.go`: table TICKET / PHASE / AGENTS (one light per service: ● working, ○ idle, ! blocked, ✕ exited, · unknown) / PORTS / NEEDS / TITLE. Needs, most urgent first: BLOCKED agent, CONTRACT EDITED, CONTRACT CHANGE, ERROR (ticket files or a service in error), APPROVE <gate>. A row ranks by its most urgent need; tickets needing nothing sort last; ties by id.
+  - Selection is a ticket id, so reordering never moves it onto another ticket; if its ticket disappears it falls to the row now in its place (or the last). `j/k/↑/↓`, `g/G`, `home/end` stop at the ends; the window scrolls to keep the selection visible and never overflows the given height.
+  - Mutation-checked: selection following and navigation bounds.
+  - Manual check (two demo tickets in different states) is for you.
 
 ### 57 · Detail view
 - [ ] Done
