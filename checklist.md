@@ -280,7 +280,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 25 · Transitions, log, and agent requests
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/25-transitions` · Depends: 16, 24
 - Read: `manifest.md` §3
 - Build: `rig phase <id> <phase>` (human) and a `transition.request` API method (agent); both go through the gate checks. Append-only transition log (who, when, reason, from, to) in `state.json`; backward moves require a reason; emits a phase-changed event.
