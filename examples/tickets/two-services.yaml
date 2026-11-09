@@ -1,0 +1,34 @@
+# Two services that must agree on an interface. Rig writes contract.md for tickets like
+# this: the agents propose changes to it and you accept or reject them, and the plan
+# cannot be approved until something is agreed.
+id: user-dashboard
+title: Full-stack feature for the user dashboard
+sandbox: container
+
+services:
+  - name: backend
+    repo: /home/me/code/backend
+    branch: feat/dashboard-backend
+    build: { dockerfile: Dockerfile }
+    start: go run ./cmd/server
+    test: go test ./...
+    internal_port: 8080
+    healthcheck: /healthz
+    policy:
+      push: { mode: pr }
+
+  - name: frontend
+    repo: /home/me/code/frontend
+    branch: feat/dashboard-frontend
+    start: bun dev
+    test: bun test
+    internal_port: 3000
+    policy:
+      push: { mode: pr }
+
+dependencies:
+  - name: db
+    image: postgres:16
+    env: { POSTGRES_PASSWORD: dev }
+
+secrets: [ANTHROPIC_API_KEY]
