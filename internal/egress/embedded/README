@@ -1,0 +1,3 @@
+`task build:egress` writes rig-egress-linux-amd64 and rig-egress-linux-arm64 here (they
+are git-ignored). They are embedded into the rig binary; without them rig still builds
+and says so when an internal-mode ticket needs the proxy.
