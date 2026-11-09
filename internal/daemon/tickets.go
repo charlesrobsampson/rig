@@ -73,6 +73,13 @@ func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 		return m.Start(ctx, p)
 	})
 	registerStop(s, m)
+	s.Handle(api.MethodReviewDiff, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.ReviewDiffParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "review.diff needs params like {\"ticket\": \"ticket-1\"}"}
+		}
+		return m.ReviewDiff(ctx, p)
+	})
 	s.HandleStream(api.MethodLogsStream, func(ctx context.Context, params json.RawMessage, send func(any) error) error {
 		var p api.LogsParams
 		if err := json.Unmarshal(params, &p); err != nil {

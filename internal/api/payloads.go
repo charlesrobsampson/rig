@@ -293,3 +293,36 @@ type LogLine struct {
 	Service string `json:"service"`
 	Line    string `json:"line"`
 }
+
+// ReviewDiffParams asks for what a ticket's services changed. Service may be empty for all.
+type ReviewDiffParams struct {
+	Ticket  string `json:"ticket"`
+	Service string `json:"service,omitempty"`
+}
+
+type ReviewDiffResult struct {
+	Services []ServiceDiff `json:"services"`
+}
+
+// ServiceDiff is one service's change since its branch left Base, committed or not.
+// Patch is a unified diff; a service without a checkout has Note instead, and one whose
+// diff could not be built has Error.
+type ServiceDiff struct {
+	Service   string       `json:"service"`
+	Branch    string       `json:"branch"`
+	Base      string       `json:"base"`
+	MergeBase string       `json:"merge_base,omitempty"`
+	Files     []FileChange `json:"files"`
+	Patch     string       `json:"patch"`
+	Note      string       `json:"note,omitempty"`
+	Error     string       `json:"error,omitempty"`
+}
+
+// FileChange is one file in a ServiceDiff; Untracked files are new and not yet added.
+type FileChange struct {
+	Path      string `json:"path"`
+	Added     int    `json:"added"`
+	Deleted   int    `json:"deleted"`
+	Binary    bool   `json:"binary,omitempty"`
+	Untracked bool   `json:"untracked,omitempty"`
+}

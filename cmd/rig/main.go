@@ -27,6 +27,9 @@ type deps struct {
 	docker docker.Docker
 	// keychain replaces the macOS `security` tool for secret lookups (tests).
 	keychain secrets.SecurityRunner
+	// delta shows a patch through the `delta` pager; found is false when it is not
+	// installed (nil means the real tool).
+	delta func(patch string, out io.Writer) (found bool, err error)
 	// exec replaces this process with a command (rig attach); nil means syscall.Exec.
 	exec func(argv []string) error
 }
@@ -71,6 +74,6 @@ func newRootCmd(d deps) *cobra.Command {
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError(err) })
 	root.PersistentFlags().StringVar(&a.configPath, "config", "", "global config file (default $RIG_CONFIG, then ~/.config/rig/config.json)")
 	root.PersistentFlags().BoolVar(&a.json, "json", false, "print machine-readable JSON")
-	root.AddCommand(newConfigCmd(a), newDaemonCmd(a), newListCmd(a), newEventsCmd(a), newNewCmd(a), newStartCmd(a), newStopCmd(a), newGatesCmd(a), newApproveCmd(a), newPhaseCmd(a), newAgentEventCmd(a), newAttachCmd(a), newMsgCmd(a), newLogsCmd(a))
+	root.AddCommand(newConfigCmd(a), newDaemonCmd(a), newListCmd(a), newEventsCmd(a), newNewCmd(a), newStartCmd(a), newStopCmd(a), newGatesCmd(a), newApproveCmd(a), newPhaseCmd(a), newAgentEventCmd(a), newAttachCmd(a), newMsgCmd(a), newLogsCmd(a), newReviewCmd(a))
 	return root
 }
