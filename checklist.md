@@ -468,7 +468,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 42 · Egress proxy
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/42-egress-proxy` · Depends: 05, 36
 - Read: `docs/spikes/05-egress.md` (all of it), `manifest.md` §4, `docs/formats.md` §7, §9
 - Build: `internal/egress` (the Go allowlist CONNECT proxy from `spikes/egress/goproxy`, hardened and tested) plus a `cmd/rig-egress` main; `task release` builds static `linux/arm64` and `linux/amd64` binaries that are embedded with `go:embed` and turned into a `FROM scratch` image on first use (cached by content hash, `docs/spikes/05-egress.md` §7). One proxy container per ticket in `internal` mode, attached to both ticket networks; allowlist = `egress.default_allow` + ticket + service `egress.allow`; agent/service env gets `HTTPS_PROXY`/`https_proxy`/`HTTP_PROXY`/`http_proxy` and `NO_PROXY`/`no_proxy` (localhost, the proxy, all service and dependency names); the daemon turns the proxy's JSON log into `egress.denied` events.
