@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/charlesrobsampson/rig/internal/api"
-	"github.com/charlesrobsampson/rig/internal/config"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/state"
@@ -31,24 +29,12 @@ type stopTarget struct {
 // This is where later teardown steps go ahead of the checkout removal: agents first,
 // then service containers and the ticket network.
 func (m *Manager) Stop(ctx context.Context, p api.TicketStopParams) (api.TicketStopResult, error) {
-	if err := domain.ValidateTicketID(p.ID); err != nil {
-		return api.TicketStopResult{}, invalid("%v", err)
-	}
-	defer m.lock(p.ID)()
-
-	ticketDir := filepath.Join(m.opts.Dir, p.ID)
-	if info, err := os.Stat(ticketDir); err != nil || !info.IsDir() {
-		return api.TicketStopResult{}, &api.Error{Code: api.CodeNotFound, Message: fmt.Sprintf("ticket %q not found", p.ID)}
-	}
-	t, err := config.LoadTicket(filepath.Join(ticketDir, "ticket.yaml"), config.TicketOptions{RepoCheck: func(string) error { return nil }})
+	l, unlock, err := m.begin(p.ID)
 	if err != nil {
-		return api.TicketStopResult{}, invalid("%v", err)
+		return api.TicketStopResult{}, err
 	}
-	statePath := filepath.Join(ticketDir, "state.json")
-	st, err := m.opts.States.Load(statePath)
-	if err != nil {
-		return api.TicketStopResult{}, invalid("%v", err)
-	}
+	defer unlock()
+	t, st, statePath := l.ticket, l.state, l.statePath
 
 	targets, unrecognized := m.stopTargets(ctx, t, st)
 	if len(targets) == 0 && len(unrecognized) == 0 {

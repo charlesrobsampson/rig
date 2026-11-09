@@ -40,6 +40,11 @@ type fixture struct {
 
 func newFixture(t *testing.T, defaultSandbox domain.Sandbox) *fixture {
 	t.Helper()
+	return newFixtureWithGates(t, defaultSandbox, nil)
+}
+
+func newFixtureWithGates(t *testing.T, defaultSandbox domain.Sandbox, gates []domain.Gate) *fixture {
+	t.Helper()
 	dir := filepath.Join(testkit.RealTempDir(t), "tickets")
 	clock := testkit.NewFakeClock(epoch)
 	states := state.NewManager(clock)
@@ -47,10 +52,10 @@ func newFixture(t *testing.T, defaultSandbox domain.Sandbox) *fixture {
 	sub := bus.Subscribe()
 	<-sub.Events() // the ack
 	t.Cleanup(sub.Close)
-	global := config.Global{Defaults: config.Defaults{Sandbox: defaultSandbox, BranchPrefix: "rig/"}}
+	global := config.Global{Defaults: config.Defaults{Sandbox: defaultSandbox, BranchPrefix: "rig/", Policy: domain.Policy{Gates: gates}}}
 	return &fixture{
 		t: t, dir: dir, states: states, bus: bus, sub: sub,
-		lc: lifecycle.New(lifecycle.Options{Dir: dir, States: states, Global: global, Bus: bus}),
+		lc: lifecycle.New(lifecycle.Options{Dir: dir, States: states, Global: global, Bus: bus, Clock: clock}),
 		creator: registry.NewCreator(registry.CreatorOptions{
 			Dir: dir, States: states, Sources: ticket.DefaultRegistry(),
 			RepoCheck: func(p string) error { return git.CheckRepo(ctx, p) }, BranchPrefix: "rig/",

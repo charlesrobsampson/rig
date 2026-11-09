@@ -1,6 +1,8 @@
 package api
 
 import (
+	"time"
+
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/state"
 )
@@ -113,4 +115,36 @@ type StopInfo struct {
 	// Imported: a clone's branch was fetched into the main repository.
 	Imported bool `json:"imported"`
 	Removed  bool `json:"removed"`
+}
+
+type GateListParams struct {
+	ID string `json:"id"`
+}
+
+// GateListResult lists every gate any service of the ticket requires, with whether it
+// has been approved. Approving a gate returns the same list, updated.
+type GateListResult struct {
+	Phase domain.Phase `json:"phase"`
+	Gates []GateStatus `json:"gates"`
+}
+
+// GateStatus is one gate one service must pass.
+type GateStatus struct {
+	Gate     domain.Gate  `json:"gate"`
+	From     domain.Phase `json:"from"`
+	To       domain.Phase `json:"to"`
+	Service  string       `json:"service"`
+	Approved bool         `json:"approved"`
+	By       string       `json:"by,omitempty"`
+	At       *time.Time   `json:"at,omitempty"`
+	// Current: this gate guards the move out of the ticket's current phase.
+	Current bool `json:"current"`
+}
+
+// GateApproveParams records a human approval. An empty Service approves the gate for
+// every service that requires it.
+type GateApproveParams struct {
+	ID      string      `json:"id"`
+	Gate    domain.Gate `json:"gate"`
+	Service string      `json:"service,omitempty"`
 }

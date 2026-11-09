@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/charlesrobsampson/rig/internal/api"
+	"github.com/charlesrobsampson/rig/internal/clock"
 	"github.com/charlesrobsampson/rig/internal/config"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/events"
@@ -27,6 +28,7 @@ type Options struct {
 	States *state.Manager
 	Global config.Global
 	Bus    *events.Bus
+	Clock  clock.Clock // nil means the real clock
 }
 
 type Manager struct {
@@ -38,6 +40,9 @@ type Manager struct {
 }
 
 func New(o Options) *Manager {
+	if o.Clock == nil {
+		o.Clock = clock.Real()
+	}
 	return &Manager{opts: o, reg: registry.New(o.Dir, o.States), locks: map[string]*sync.Mutex{}}
 }
 
@@ -64,24 +69,12 @@ func invalid(format string, args ...any) *api.Error {
 // exist are kept as they are, and one left behind by a crash is adopted. If any
 // service fails, the checkouts created by this call are removed and nothing is recorded.
 func (m *Manager) Start(ctx context.Context, p api.TicketStartParams) (api.TicketStartResult, error) {
-	if err := domain.ValidateTicketID(p.ID); err != nil {
-		return api.TicketStartResult{}, invalid("%v", err)
-	}
-	defer m.lock(p.ID)()
-
-	ticketDir := filepath.Join(m.opts.Dir, p.ID)
-	if info, err := os.Stat(ticketDir); err != nil || !info.IsDir() {
-		return api.TicketStartResult{}, &api.Error{Code: api.CodeNotFound, Message: fmt.Sprintf("ticket %q not found", p.ID)}
-	}
-	t, err := config.LoadTicket(filepath.Join(ticketDir, "ticket.yaml"), config.TicketOptions{RepoCheck: func(string) error { return nil }})
+	l, unlock, err := m.begin(p.ID)
 	if err != nil {
-		return api.TicketStartResult{}, invalid("%v", err)
+		return api.TicketStartResult{}, err
 	}
-	statePath := filepath.Join(ticketDir, "state.json")
-	st, err := m.opts.States.Load(statePath)
-	if err != nil {
-		return api.TicketStartResult{}, invalid("%v", err)
-	}
+	defer unlock()
+	t, st, ticketDir, statePath := l.ticket, l.state, l.dir, l.statePath
 	if st.Phase == domain.PhaseDone {
 		return api.TicketStartResult{}, &api.Error{Code: api.CodeConflict, Message: fmt.Sprintf("ticket %q is done", p.ID)}
 	}
