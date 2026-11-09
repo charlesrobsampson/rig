@@ -9,6 +9,7 @@ import (
 
 	"github.com/charlesrobsampson/rig/internal/client"
 	"github.com/charlesrobsampson/rig/internal/clock"
+	"github.com/charlesrobsampson/rig/internal/docker"
 	"github.com/charlesrobsampson/rig/internal/terminal"
 )
 
@@ -21,6 +22,8 @@ type deps struct {
 	stdin   io.Reader      // nil means os.Stdin; read for confirmation prompts
 	// backend runs agents; nil means the one defaults.terminal_backend names.
 	backend terminal.Backend
+	// docker runs networks and containers; nil means the docker command.
+	docker docker.Docker
 	// exec replaces this process with a command (rig attach); nil means syscall.Exec.
 	exec func(argv []string) error
 }

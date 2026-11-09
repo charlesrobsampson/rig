@@ -15,6 +15,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/clock"
 	"github.com/charlesrobsampson/rig/internal/config"
+	"github.com/charlesrobsampson/rig/internal/docker"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/events"
 	"github.com/charlesrobsampson/rig/internal/git"
@@ -41,6 +42,9 @@ type Options struct {
 	// Secrets resolves secret names to values for agent launches (task 41). Without
 	// it, a launch that needs a secret fails with an explanation.
 	Secrets func(names []string) (map[string]string, error)
+	// Docker runs the ticket's networks and containers. Without it, starting only
+	// provisions checkouts (and agents on the host).
+	Docker docker.Docker
 }
 
 type Manager struct {
@@ -152,13 +156,17 @@ func (m *Manager) Start(ctx context.Context, p api.TicketStartParams) (api.Ticke
 		m.publish(api.EventTicketStarted, p.ID, "", api.EmptyData{})
 	}
 
+	netInfo, err := m.provisionNetworks(ctx, l, p.Sandbox)
+	if err != nil {
+		return api.TicketStartResult{}, err
+	}
 	agents := m.launchAgents(ctx, l, infos, p.Sandbox)
 
 	res, err := m.reg.Get(p.ID)
 	if err != nil {
 		return api.TicketStartResult{}, err
 	}
-	return api.TicketStartResult{Summary: res.Summary, Checkouts: infos, Agents: agents}, nil
+	return api.TicketStartResult{Summary: res.Summary, Checkouts: infos, Agents: agents, Network: netInfo}, nil
 }
 
 func kindFor(s domain.Sandbox) domain.CheckoutKind {

@@ -91,6 +91,16 @@ type TicketStartResult struct {
 	Launches []LaunchInfo `json:"launches,omitempty"`
 	// Agents says, per service, whether an agent was started (never for a dry run).
 	Agents []AgentInfo `json:"agents,omitempty"`
+	// Network is the ticket's Docker network; nil when the ticket needs no Docker.
+	Network *NetworkInfo `json:"network,omitempty"`
+}
+
+// NetworkInfo names a ticket's Docker networks. Egress is set only in internal mode.
+type NetworkInfo struct {
+	Name     string `json:"name"`
+	ID       string `json:"id"`
+	Internal bool   `json:"internal"`
+	Egress   string `json:"egress,omitempty"`
 }
 
 // AgentInfo is the outcome of starting one service's agent. Launched is false with

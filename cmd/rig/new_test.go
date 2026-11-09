@@ -22,11 +22,18 @@ func newEnv(t *testing.T) (home string, d deps, repo *testkit.Repo) {
 // and the exec seam recording what `rig attach` would run.
 func newEnvWithTerminal(t *testing.T) (home string, d deps, repo *testkit.Repo, term *testkit.FakeTerminal) {
 	t.Helper()
+	home, d, repo, term, _ = newEnvFull(t)
+	return home, d, repo, term
+}
+
+// newEnvFull also returns the in-memory Docker the daemon uses.
+func newEnvFull(t *testing.T) (home string, d deps, repo *testkit.Repo, term *testkit.FakeTerminal, dk *testkit.FakeDocker) {
+	t.Helper()
 	home = rigEnv(t)
-	term = testkit.NewFakeTerminal()
-	daemon := &inProcessDaemon{backend: term}
+	term, dk = testkit.NewFakeTerminal(), testkit.NewFakeDocker()
+	daemon := &inProcessDaemon{backend: term, docker: dk}
 	t.Cleanup(func() { daemon.shutdown(t) })
-	return home, deps{spawner: daemon.spawn, backend: term}, testkit.NewRepo(t), term
+	return home, deps{spawner: daemon.spawn, backend: term, docker: dk}, testkit.NewRepo(t), term, dk
 }
 
 func TestNewCreatesATicketThatListShows(t *testing.T) {
