@@ -269,7 +269,11 @@ func Run(t *testing.T, newSubject func(t *testing.T) Subject) {
 			}
 			for _, tt := range tests {
 				spec := e.spec(tt.mutate)
-				if _, err := e.Docker.CreateContainer(ctx, spec); !errors.Is(err, tt.want) {
+				info, err := e.Docker.CreateContainer(ctx, spec)
+				if err == nil {
+					e.ctrs = append(e.ctrs, info.ID) // so a wrongly accepted create is still cleaned up
+				}
+				if !errors.Is(err, tt.want) {
 					t.Errorf("%s: error = %v, want %v", tt.name, err, tt.want)
 				}
 			}

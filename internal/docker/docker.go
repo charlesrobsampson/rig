@@ -19,6 +19,25 @@ const (
 	LabelRole    = "rig.role"
 )
 
+// Roles for the rig.role label.
+const (
+	RoleService    = "service"
+	RoleAgent      = "agent"
+	RoleDependency = "dependency"
+	RoleProxy      = "proxy"
+	RoleNetwork    = "network"
+)
+
+// Labels builds the labels every object of a ticket carries; service may be empty
+// (networks and proxies belong to the ticket as a whole).
+func Labels(ticket, service, role string) map[string]string {
+	l := map[string]string{LabelTicket: ticket, LabelRole: role}
+	if service != "" {
+		l[LabelService] = service
+	}
+	return l
+}
+
 var (
 	// ErrNotFound: no such network, container or image.
 	ErrNotFound = errors.New("docker object not found")
