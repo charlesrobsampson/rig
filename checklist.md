@@ -334,7 +334,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 29 · Harness interface and claude-code launcher
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/29-harness` · Depends: 10, 26
 - Read: `manifest.md` §6 (interfaces), §3 (artifacts), `docs/formats.md` §13, `docs/spikes/02-herdr.md` §5 (trust dialog)
 - Build: `internal/harness` interface (`Command(ticket, service, seed) -> {cmd, env, cwd}` (claude-code adds `DISABLE_AUTOUPDATER=1`, `DISABLE_TELEMETRY=1`, `DISABLE_ERROR_REPORTING=1` when the network mode is `internal`), plus `AuthEnv(profile) -> env` mapping an auth profile type to the harness's env vars (claude-code: `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, Bedrock/Vertex/Foundry flags); for claude-code the command includes `--settings` with the hooks config from `docs/spikes/03-tmux.md` §2 and env `RIG_TICKET`/`RIG_SERVICE`); claude-code implementation seeds the agent with a prompt built from `plan.md`, `tasks.md`, current phase, and (when present) `contract.md`; harness selectable per ticket.
