@@ -756,7 +756,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 63 · Jira ticket source
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/63-jira` · Depends: 19, 41
 - Read: `manifest.md` §5 (`source`)
 - Build: `jira` source (`rig new --from jira:PROJ-412`) filling title and description into `plan.md`; credentials from the secrets resolver; no writes back to Jira.
