@@ -623,13 +623,20 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 ## Phase 9: TUI
 
 ### 55 · TUI skeleton
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/55-tui-skeleton` · Depends: 16, 15
 - Read: `manifest.md` §1, §6
 - Build: Bubble Tea app opened by bare `rig` (prints `list` output when stdout is not a terminal): root model, layout, keymap, status bar, help overlay, daemon connection with reconnect and a "daemon not running" state.
 - Tests (drive the model with key messages, assert state/view text): help toggles; quit; daemon-down state renders; reconnect restores the view; narrow terminal doesn't panic.
 - Manual check: run `rig` with the daemon up and down.
+- Notes:
+  - `internal/tui` (Bubble Tea v1.3 + x/ansi): root `Model` with header, body, status bar, help overlay (`?`, closed by `?`/`esc`; it swallows other keys, `ctrl+c` always quits), `r` refresh, `q` quit. Data comes through a small `Source` interface (`Tickets(ctx)`), so tests use a fake and the model is driven with messages only.
+  - Connection: first load on Init; failure shows the "daemon is not running" view with the error and schedules exactly one retry timer (`RetryEvery`, default 2s; `retrying` flag prevents stacking); a later success restores the fleet and stops retrying, a later loss starts again.
+  - A terminal too small to show anything shows just the status bar; every line is cut to the width (rune-aware), so odd sizes never panic.
+  - Bare `rig`: TUI when stdin and stdout are terminals and `--json` is not set, otherwise the `rig list` table (scriptable). `daemonSource` connects with autostart, so `rig` works from a cold machine and a dead daemon is restarted on retry. Seams: `deps.isTerminal`, `deps.runTUI`.
+  - The fleet body is a plain list placeholder until task 56's dashboard.
+  - Manual check (run `rig` with the daemon up and down) is for you; I could only exercise it with fakes, since a real terminal is not available to me.
 
 ### 56 · Dashboard view
 - [ ] Done

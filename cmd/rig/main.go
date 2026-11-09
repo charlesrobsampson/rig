@@ -13,6 +13,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/secrets"
 	"github.com/charlesrobsampson/rig/internal/terminal"
+	"github.com/charlesrobsampson/rig/internal/tui"
 )
 
 var version = "dev"
@@ -35,6 +36,10 @@ type deps struct {
 	gh git.GH
 	// exec replaces this process with a command (rig attach); nil means syscall.Exec.
 	exec func(argv []string) error
+	// isTerminal says whether to show the TUI (nil means: stdin and stdout are
+	// terminals); runTUI shows it (nil means the real one).
+	isTerminal func() bool
+	runTUI     func(ctx context.Context, o tui.Options) error
 }
 
 func main() {
@@ -72,7 +77,7 @@ func newRootCmd(d deps) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          usageArgs(cobra.NoArgs),
-		RunE:          func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
+		RunE:          a.rootRun,
 	}
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError(err) })
 	root.PersistentFlags().StringVar(&a.configPath, "config", "", "global config file (default $RIG_CONFIG, then ~/.config/rig/config.json)")
