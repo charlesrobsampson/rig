@@ -356,3 +356,23 @@ type PushServiceResult struct {
 	Note    string            `json:"note,omitempty"`
 	Error   string            `json:"error,omitempty"`
 }
+
+// TestsRenderParams asks for a ticket's manual tests with live addresses filled in.
+type TestsRenderParams struct {
+	Ticket string `json:"ticket"`
+}
+
+// TestsRenderResult is manual-tests.md rendered: the introduction and each step with its
+// placeholders replaced, and whether a human has ticked the step off.
+type TestsRenderResult struct {
+	Preamble  string      `json:"preamble,omitempty"`
+	Steps     []TestsStep `json:"steps"`
+	SignedOff bool        `json:"signed_off"`
+}
+
+type TestsStep struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	Done  bool   `json:"done"`
+}
