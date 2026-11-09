@@ -52,6 +52,9 @@ func writeTicketTable(w io.Writer, tickets []api.TicketSummary) {
 		if t.ContractPending {
 			phase += " (contract change pending)"
 		}
+		if t.ContractViolation {
+			phase += " (contract edited outside rig)"
+		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", t.ID, phase, serviceCell(t.Services), portsCell(t.Services), titleCell(t))
 	}
 	tw.Flush()

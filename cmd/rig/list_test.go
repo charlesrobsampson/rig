@@ -154,3 +154,30 @@ func TestListFailsClearlyWhenTheDaemonCannotStart(t *testing.T) {
 		t.Errorf("code %d, stderr %q; want exit 4", code, stderr)
 	}
 }
+
+func TestListShowsAPendingContractChangeAndADirectEditOfTheAgreedSection(t *testing.T) {
+	home, d, repo := newEnv(t)
+	other := testkit.NewRepo(t)
+	if _, stderr, code := rig(t, d, "new", "--id", "duo", "--title", "Two", "--service", "api="+repo.Dir, "--service", "web="+other.Dir); code != 0 {
+		t.Fatalf("new: %q", stderr)
+	}
+	statePath := filepath.Join(home, "tickets", "duo", "state.json")
+	raw, _ := os.ReadFile(statePath)
+	var st map[string]any
+	json.Unmarshal(raw, &st)
+	st["contract"] = map[string]any{"pending": true, "violation": "the agreed section of contract.md was edited directly"}
+	out, _ := json.Marshal(st)
+	os.WriteFile(statePath, out, 0o600)
+
+	listing, _, code := rig(t, d, "list")
+	if code != 0 || !strings.Contains(listing, "(contract change pending)") || !strings.Contains(listing, "(contract edited outside rig)") {
+		t.Errorf("code %d, list:\n%s", code, listing)
+	}
+	jsonOut, _, _ := rig(t, d, "list", "--json")
+	if !strings.Contains(jsonOut, `"contract_pending": true`) && !strings.Contains(jsonOut, `"contract_pending":true`) {
+		t.Errorf("--json lacks contract_pending: %s", jsonOut)
+	}
+	if !strings.Contains(jsonOut, `contract_violation`) {
+		t.Errorf("--json lacks contract_violation: %s", jsonOut)
+	}
+}

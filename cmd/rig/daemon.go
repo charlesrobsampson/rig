@@ -17,6 +17,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/client"
 	"github.com/charlesrobsampson/rig/internal/clock"
 	"github.com/charlesrobsampson/rig/internal/config"
+	"github.com/charlesrobsampson/rig/internal/contractwatch"
 	"github.com/charlesrobsampson/rig/internal/daemon"
 	"github.com/charlesrobsampson/rig/internal/docker/dockercli"
 	"github.com/charlesrobsampson/rig/internal/egress"
@@ -146,11 +147,13 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	supCtx, stopSup := context.WithCancel(ctx)
-	supDone, watchDone := make(chan struct{}), make(chan struct{})
+	supDone, watchDone, contractDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	go func() { sup.Run(supCtx); close(supDone) }()
+	cw := contractwatch.New(contractwatch.Options{Dir: g.TicketsDir(), States: states, Bus: bus, Clock: clk, Logger: logger})
+	go func() { cw.Run(supCtx); close(contractDone) }()
 	watcher := &egress.Watcher{Docker: dk, Bus: bus, Clock: clk, Logger: logger}
 	go func() { watcher.Run(supCtx); close(watchDone) }()
-	defer func() { stopSup(); <-supDone; <-watchDone }()
+	defer func() { stopSup(); <-supDone; <-watchDone; <-contractDone }()
 	return srv.Serve(ctx)
 }
 
