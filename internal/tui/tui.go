@@ -6,6 +6,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -21,6 +22,13 @@ import (
 type Source interface {
 	// Tickets returns the fleet. An error means the daemon could not be reached.
 	Tickets(ctx context.Context) ([]api.TicketSummary, error)
+	// File reads a lifecycle file of a ticket (plan.md, tasks.md, contract.md);
+	// ErrMissing when it does not exist.
+	File(ctx context.Context, ticket, name string) (string, error)
+	// Diff is what the ticket's services changed, ready to show (ErrMissing when
+	// there is nothing to diff yet); Logs is the recent output of its containers.
+	Diff(ctx context.Context, ticket string) (string, error)
+	Logs(ctx context.Context, ticket string) (string, error)
 }
 
 type Options struct {
@@ -29,6 +37,9 @@ type Options struct {
 	// RetryEvery is how long to wait before looking for a daemon that is not running
 	// (default 2s).
 	RetryEvery time.Duration
+	// RefreshEvery is how often the open ticket's current tab is looked at again, so
+	// it follows an agent editing the files (default 2s).
+	RefreshEvery time.Duration
 }
 
 // Messages. They are exported only to the package's own tests.
@@ -40,6 +51,19 @@ type (
 	}
 	// retryMsg says it is time to look for the daemon again.
 	retryMsg struct{}
+	// tabLoadedMsg is a tab's content arriving.
+	tabLoadedMsg struct {
+		ticket string
+		gen    int
+		tab    Tab
+		text   string
+		err    error
+	}
+	// refreshMsg says it is time to look at the open tab again.
+	refreshMsg struct {
+		ticket string
+		gen    int
+	}
 )
 
 type Model struct {
@@ -55,11 +79,16 @@ type Model struct {
 	retrying  bool // a retry timer is already running
 	tickets   []api.TicketSummary
 	dash      *dashboard
+	det       *detail // the open ticket, nil on the dashboard
+	openGen   int
 }
 
 func New(o Options) Model {
 	if o.RetryEvery == 0 {
 		o.RetryEvery = 2 * time.Second
+	}
+	if o.RefreshEvery == 0 {
+		o.RefreshEvery = 2 * time.Second
 	}
 	return Model{opts: o, dash: &dashboard{}}
 }
@@ -101,6 +130,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.dash.set(msg.tickets)
 		return m, nil
 
+	case tabLoadedMsg:
+		if m.det == nil || m.det.ticket != msg.ticket || m.det.gen != msg.gen {
+			return m, nil // for a ticket that is no longer open
+		}
+		p := page{loaded: true, text: msg.text}
+		switch {
+		case errors.Is(msg.err, ErrMissing):
+			p = page{loaded: true, missing: true}
+		case msg.err != nil:
+			p = page{loaded: true, err: msg.err.Error()}
+		}
+		m.det.pages[msg.tab] = p
+		return m, nil
+
+	case refreshMsg:
+		if m.det == nil || m.det.ticket != msg.ticket || m.det.gen != msg.gen {
+			return m, nil
+		}
+		return m, tea.Batch(m.loadTab(m.det.tab), m.refreshTick())
+
 	case retryMsg:
 		m.retrying = false
 		if m.connected {
@@ -117,8 +166,10 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "esc":
-		m.help = false
-		return m, nil
+		if m.help {
+			m.help = false
+			return m, nil
+		}
 	case "?":
 		m.help = !m.help
 		return m, nil
@@ -126,12 +177,19 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.help {
 		return m, nil // the overlay swallows everything else until it is closed
 	}
+	if m.det != nil {
+		return m.detailKey(msg)
+	}
 	switch msg.String() {
 	case "q":
 		m.quitting = true
 		return m, tea.Quit
 	case "r":
 		return m, m.load()
+	case "enter", "right", "l":
+		if t, ok := m.dash.current(); ok {
+			return m.open(t.ID)
+		}
 	case "down", "j":
 		m.dash.move(1)
 	case "up", "k":
@@ -144,15 +202,106 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// open shows a ticket's detail view, loading its first tab.
+func (m Model) open(id string) (tea.Model, tea.Cmd) {
+	m.openGen++
+	m.det = &detail{ticket: id, gen: m.openGen}
+	return m, tea.Batch(m.loadTab(TabPlan), m.refreshTick())
+}
+
+func (m Model) refreshTick() tea.Cmd {
+	id, gen := m.det.ticket, m.det.gen
+	return tea.Tick(m.opts.RefreshEvery, func(time.Time) tea.Msg { return refreshMsg{ticket: id, gen: gen} })
+}
+
+// loadTab reads one tab of the open ticket from the source.
+func (m Model) loadTab(t Tab) tea.Cmd {
+	src, id, gen := m.opts.Source, m.det.ticket, m.det.gen
+	return func() tea.Msg {
+		msg := tabLoadedMsg{ticket: id, gen: gen, tab: t}
+		if src == nil {
+			msg.err = errors.New("no daemon connection configured")
+			return msg
+		}
+		ctx := context.Background()
+		switch t {
+		case TabDiff:
+			msg.text, msg.err = src.Diff(ctx, id)
+		case TabLogs:
+			msg.text, msg.err = src.Logs(ctx, id)
+		default:
+			msg.text, msg.err = src.File(ctx, id, tabFile[t])
+		}
+		return msg
+	}
+}
+
+func (m Model) detailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	d := m.det
+	page := m.pageSize()
+	switch msg.String() {
+	case "q":
+		m.quitting = true
+		return m, tea.Quit
+	case "esc", "backspace", "left", "h":
+		m.det = nil
+		return m, nil
+	case "r":
+		return m, m.loadTab(d.tab)
+	case "tab", "right", "l":
+		return m.goTo(d.tab + 1)
+	case "shift+tab":
+		return m.goTo(d.tab - 1)
+	case "1", "2", "3", "4", "5":
+		return m.goTo(Tab(msg.String()[0] - '1'))
+	case "down", "j":
+		d.scrollBy(1)
+	case "up", "k":
+		d.scrollBy(-1)
+	case "pgdown", " ", "ctrl+f":
+		d.scrollBy(page)
+	case "pgup", "ctrl+b":
+		d.scrollBy(-page)
+	case "ctrl+d":
+		d.scrollBy(page / 2)
+	case "ctrl+u":
+		d.scrollBy(-page / 2)
+	case "home", "g":
+		d.scrollTo(0)
+	case "end", "G":
+		d.bottom()
+	}
+	return m, nil
+}
+
+// pageSize is how many lines of a tab fit on screen.
+func (m Model) pageSize() int {
+	h := m.height
+	if h <= 0 {
+		h = 24
+	}
+	return max(h-3, 1) // minus the header, the status bar and the tab bar
+}
+
+func (m Model) goTo(t Tab) (tea.Model, tea.Cmd) {
+	if m.det.switchTo(t) {
+		return m, m.loadTab(m.det.tab)
+	}
+	return m, nil
+}
+
 // Keys documents the keymap; the help overlay and the status bar render from it.
 var Keys = []struct{ Key, Help string }{
 	{"?", "show or hide this help"},
 	{"j/k ↑/↓", "move the selection"},
 	{"g/G", "first / last ticket"},
+	{"enter", "open the selected ticket"},
+	{"esc", "back from a ticket"},
+	{"tab/1-5", "next tab / jump to a tab (plan, tasks, contract, diff, logs)"},
+	{"pgup/pgdn", "scroll a page; g/G top/bottom"},
 	{"r", "refresh now"},
 	{"q", "quit"},
 	{"ctrl+c", "quit from anywhere"},
-	{"esc", "close help"},
 }
 
 func (m Model) View() string {
@@ -176,6 +325,8 @@ func (m Model) View() string {
 	switch {
 	case m.help:
 		body = m.helpView()
+	case m.det != nil:
+		body = m.det.view(w, bodyH)
 	case !m.loaded:
 		body = "connecting to the daemon…"
 	case !m.connected:
@@ -201,8 +352,10 @@ func (m Model) statusBar(w int) string {
 		s = "connecting…"
 	case !m.connected:
 		s = "daemon not running · r retry · q quit"
+	case m.det != nil:
+		s = "esc back · tab switch · j/k scroll · r reload · ? help"
 	default:
-		s = fmt.Sprintf("connected · %d tickets · ? help · q quit", len(m.tickets))
+		s = fmt.Sprintf("connected · %d tickets · enter open · ? help · q quit", len(m.tickets))
 	}
 	return ansi.Truncate(s, w, "…")
 }

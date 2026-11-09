@@ -177,7 +177,7 @@ func TestValidateRejectsMalformedRequests(t *testing.T) {
 
 func TestEveryDocumentedMethodIsKnownAndOnlyStreamingOnesStream(t *testing.T) {
 	documented := []string{
-		"hello", "status", "config.get", "ticket.list", "ticket.get", "ticket.rescan", "ticket.new",
+		"hello", "status", "config.get", "ticket.list", "ticket.get", "ticket.rescan", "ticket.file", "ticket.new",
 		"ticket.start", "ticket.stop", "gate.list", "gate.approve", "phase.set", "transition.request",
 		"agent.attach", "agent.message", "agent.event", "contract.list", "contract.accept",
 		"contract.reject", "contract.ack", "review.diff", "push.run", "tests.render", "logs.stream", "events.subscribe",

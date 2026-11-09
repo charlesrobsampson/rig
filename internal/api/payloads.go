@@ -426,3 +426,19 @@ type ContractResolveResult struct {
 type ContractAckParams struct {
 	Ticket string `json:"ticket"`
 }
+
+// TicketFileNames are the lifecycle files a client may read with ticket.file.
+var TicketFileNames = []string{"plan.md", "tasks.md", "contract.md", "manual-tests.md"}
+
+// TicketFileParams asks for one of a ticket's lifecycle files.
+type TicketFileParams struct {
+	Ticket string `json:"ticket"`
+	Name   string `json:"name"` // one of TicketFileNames
+}
+
+// TicketFileResult is the file's text. An absent file is not_found: contract.md exists
+// only for tickets with several services.
+type TicketFileResult struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+}

@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/charlesrobsampson/rig/internal/api"
@@ -17,7 +18,11 @@ import (
 	"github.com/charlesrobsampson/rig/internal/state"
 )
 
-var ErrNotFound = errors.New("ticket not found")
+var (
+	ErrNotFound = errors.New("ticket not found")
+	// ErrBadFile is a request for a file that is not one of the ticket's lifecycle files.
+	ErrBadFile = errors.New("not a readable ticket file")
+)
 
 type Registry struct {
 	dir    string
@@ -54,6 +59,29 @@ func (r *Registry) List() ([]api.TicketSummary, error) {
 		}
 	}
 	return tickets, nil
+}
+
+// File reads one of the ticket's lifecycle files (api.TicketFileNames). It is not_found
+// when the ticket or the file does not exist, and an error naming the allowed files for
+// any other name, so a client can never read outside the ticket's files.
+func (r *Registry) File(id, name string) (string, error) {
+	if err := domain.ValidateTicketID(id); err != nil {
+		return "", err
+	}
+	if !slices.Contains(api.TicketFileNames, name) {
+		return "", fmt.Errorf("%w: %q (readable files: %s)", ErrBadFile, name, strings.Join(api.TicketFileNames, ", "))
+	}
+	if info, err := os.Stat(filepath.Join(r.dir, id)); err != nil || !info.IsDir() {
+		return "", fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	raw, err := os.ReadFile(filepath.Join(r.dir, id, name))
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("%w: %s has no %s", ErrNotFound, id, name)
+	}
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", name, err)
+	}
+	return string(raw), nil
 }
 
 // Get returns whatever could be read of one ticket; Summary.Error says what could not.
