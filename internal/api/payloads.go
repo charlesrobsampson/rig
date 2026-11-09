@@ -226,3 +226,18 @@ type AgentEventParams struct {
 	Service string `json:"service"`
 	State   string `json:"state"`
 }
+
+// AgentMessageParams types Text into a service's running agent, as if a human had
+// typed it and pressed Enter (docs/spikes/03-tmux.md §3). Rig prefixes it with "[rig]".
+type AgentMessageParams struct {
+	Ticket  string `json:"ticket"`
+	Service string `json:"service"`
+	Text    string `json:"text"`
+}
+
+// AgentMessageResult reports what reached the agent: Sent is the exact text typed
+// (prefix and escaping included).
+type AgentMessageResult struct {
+	Service string `json:"service"`
+	Sent    string `json:"sent"`
+}
