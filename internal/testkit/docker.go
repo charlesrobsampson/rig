@@ -34,6 +34,8 @@ type FakeDocker struct {
 
 	execFn func(id string, spec docker.ExecSpec) (docker.ExecResult, error)
 	execs  map[string][]docker.ExecSpec
+
+	healthImages map[string]bool
 }
 
 var _ docker.Docker = (*FakeDocker)(nil)
@@ -53,7 +55,7 @@ type fakeCtr struct {
 func NewFakeDocker() *FakeDocker {
 	return &FakeDocker{
 		nets: map[string]*fakeNet{}, ctrs: map[string]*fakeCtr{}, images: map[string]bool{},
-		nextPort: 40000, changed: make(chan struct{}), execs: map[string][]docker.ExecSpec{},
+		nextPort: 40000, changed: make(chan struct{}), execs: map[string][]docker.ExecSpec{}, healthImages: map[string]bool{},
 	}
 }
 
@@ -144,6 +146,14 @@ func (f *FakeDocker) ContainerSpec(nameOrID string) docker.ContainerSpec {
 		return c.spec
 	}
 	return docker.ContainerSpec{}
+}
+
+// SetImageHealthcheck makes containers of the image report health (as an image with
+// its own HEALTHCHECK does): starting after start, until SetHealth moves them.
+func (f *FakeDocker) SetImageHealthcheck(image string) {
+	f.mu.Lock()
+	f.healthImages[image] = true
+	f.mu.Unlock()
 }
 
 // HostPorts lists the host ports held by running containers, sorted.
@@ -433,7 +443,7 @@ func (f *FakeDocker) StartContainer(ctx context.Context, nameOrID string) error 
 	}
 	c.info.Ports = ports
 	c.info.State, c.info.ExitCode = docker.StateRunning, 0
-	if c.spec.Healthcheck != nil {
+	if c.spec.Healthcheck != nil || f.healthImages[c.spec.Image] {
 		c.info.Health = docker.HealthStarting
 	}
 	f.broadcast()
@@ -445,7 +455,7 @@ func (f *FakeDocker) stop(c *fakeCtr, code int) {
 		return
 	}
 	c.info.State, c.info.ExitCode = docker.StateExited, code
-	if c.spec.Healthcheck != nil {
+	if c.spec.Healthcheck != nil || f.healthImages[c.spec.Image] {
 		c.info.Health = docker.HealthNone
 	}
 	f.broadcast()
