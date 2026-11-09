@@ -14,10 +14,17 @@ import (
 )
 
 func newListCmd(a *app) *cobra.Command {
-	return &cobra.Command{
+	var summaries bool
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List tickets with their phase, services, and ports",
-		Args:  usageArgs(cobra.NoArgs),
+		Long: `List tickets with their phase, services and ports.
+
+--summaries also prints each ticket's language-model summary, when summarizer.provider
+is set in the config (ollama or claude) and one has been made. A summary is advisory: it
+is always printed with the real diff stats it was made from, and the backend that wrote
+it is named, marked "remote" when the content left this machine.`,
+		Args: usageArgs(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			c, err := a.connect(cmd.Context(), true)
 			if err != nil {
@@ -32,8 +39,57 @@ func newListCmd(a *app) *cobra.Command {
 				return printJSON(cmd.OutOrStdout(), res)
 			}
 			writeTicketTable(cmd.OutOrStdout(), res.Tickets)
+			if summaries {
+				writeSummaries(cmd.OutOrStdout(), res.Tickets)
+			}
 			return nil
 		},
+	}
+	cmd.Flags().BoolVar(&summaries, "summaries", false, "also show each ticket's language-model summary")
+	return cmd
+}
+
+// writeSummaries prints each ticket's summary under the table, labelled so nobody takes
+// it for fact: the backend, whether it is remote, and the raw diff stats beside it.
+func writeSummaries(w io.Writer, tickets []api.TicketSummary) {
+	shown := 0
+	for _, t := range tickets {
+		s := t.AISummary
+		if s == nil {
+			continue
+		}
+		if shown == 0 {
+			fmt.Fprintln(w)
+		}
+		shown++
+		backend := s.Backend
+		if s.Model != "" {
+			backend += " " + s.Model
+		}
+		if s.Remote {
+			backend += ", REMOTE: the ticket's content was sent to it"
+		}
+		stats := fmt.Sprintf("%d files +%d -%d", s.Files, s.Added, s.Deleted)
+		at := ""
+		if s.At != nil {
+			at = ", " + s.At.Local().Format("15:04")
+		}
+		fmt.Fprintf(w, "%s  summary (advisory; %s; %s%s)\n", t.ID, backend, stats, at)
+		for _, line := range strings.Split(strings.TrimSpace(s.Text), "\n") {
+			if line != "" {
+				fmt.Fprintf(w, "    %s\n", line)
+			}
+		}
+		if s.Error != "" {
+			note := "refresh failed"
+			if s.Text != "" {
+				note = "the summary above is out of date; refresh failed"
+			}
+			fmt.Fprintf(w, "    (%s: %s)\n", note, s.Error)
+		}
+	}
+	if shown == 0 {
+		fmt.Fprintln(w, "\nno summaries (set summarizer.provider in the config to ollama or claude)")
 	}
 }
 

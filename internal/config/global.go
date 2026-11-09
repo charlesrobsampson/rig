@@ -241,6 +241,9 @@ func validateGlobal(g Global) []string {
 	if !contains(summarizers, g.Summarizer.Provider) {
 		add("summarizer.provider: %q is not supported (want %s)", g.Summarizer.Provider, strings.Join(summarizers, ", "))
 	}
+	if g.Summarizer.Provider == "ollama" && strings.TrimSpace(g.Summarizer.Model) == "" {
+		add("summarizer.model: required when the provider is ollama (for example \"llama3:8b\")")
+	}
 	if !branchPrefix.MatchString(g.Defaults.BranchPrefix) {
 		add("defaults.branch_prefix: %q must be empty or end with a slash, like \"rig/\" (letters, digits, dots, dashes, underscores)", g.Defaults.BranchPrefix)
 	}
