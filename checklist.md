@@ -741,7 +741,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 62 · Claude summarizer and dashboard integration
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/62-summary-claude` · Depends: 56, 61
 - Read: `manifest.md` §7
 - Build: `claude` backend (key via secrets resolver); dashboard shows the summary next to diff stats, marked advisory, with an indicator when a remote backend is active.
