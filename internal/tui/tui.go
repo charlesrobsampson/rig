@@ -54,13 +54,14 @@ type Model struct {
 	err       string
 	retrying  bool // a retry timer is already running
 	tickets   []api.TicketSummary
+	dash      *dashboard
 }
 
 func New(o Options) Model {
 	if o.RetryEvery == 0 {
 		o.RetryEvery = 2 * time.Second
 	}
-	return Model{opts: o}
+	return Model{opts: o, dash: &dashboard{}}
 }
 
 // Init asks for the fleet at once.
@@ -97,6 +98,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Tick(m.opts.RetryEvery, func(time.Time) tea.Msg { return retryMsg{} })
 		}
 		m.connected, m.err, m.tickets = true, "", msg.tickets
+		m.dash.set(msg.tickets)
 		return m, nil
 
 	case retryMsg:
@@ -130,6 +132,14 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "r":
 		return m, m.load()
+	case "down", "j":
+		m.dash.move(1)
+	case "up", "k":
+		m.dash.move(-1)
+	case "home", "g":
+		m.dash.first()
+	case "end", "G":
+		m.dash.last()
 	}
 	return m, nil
 }
@@ -137,6 +147,8 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // Keys documents the keymap; the help overlay and the status bar render from it.
 var Keys = []struct{ Key, Help string }{
 	{"?", "show or hide this help"},
+	{"j/k ↑/↓", "move the selection"},
+	{"g/G", "first / last ticket"},
 	{"r", "refresh now"},
 	{"q", "quit"},
 	{"ctrl+c", "quit from anywhere"},
@@ -169,7 +181,7 @@ func (m Model) View() string {
 	case !m.connected:
 		body = m.downView()
 	default:
-		body = m.fleetView()
+		body = m.dash.view(w, bodyH)
 	}
 	return strings.Join([]string{header, fit(body, w, bodyH), status}, "\n")
 }
@@ -203,22 +215,6 @@ func (m Model) downView() string {
 	}
 	fmt.Fprintf(&b, "Looking again every %s; press r to try now.", m.opts.RetryEvery)
 	return b.String()
-}
-
-// fleetView is the placeholder list until the dashboard (task 56) replaces it.
-func (m Model) fleetView() string {
-	if len(m.tickets) == 0 {
-		return "no tickets yet — create one with: rig new"
-	}
-	lines := make([]string, len(m.tickets))
-	for i, t := range m.tickets {
-		phase := string(t.Phase)
-		if phase == "" {
-			phase = "-"
-		}
-		lines[i] = fmt.Sprintf("%-20s %-10s %s", t.ID, phase, t.Title)
-	}
-	return strings.Join(lines, "\n")
 }
 
 func (m Model) helpView() string {

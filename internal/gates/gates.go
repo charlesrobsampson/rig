@@ -109,3 +109,17 @@ func InvalidatedByMovingTo(to domain.Phase) []domain.Gate {
 	}
 	return gates
 }
+
+// Awaiting is the gate a human has yet to approve to move the ticket on: the gate
+// guarding the exit of its current phase, when some service requires it and not every
+// service has it. ok is false when nothing is waiting on a human.
+func Awaiting(g config.Global, t domain.Ticket, st state.State) (gate domain.Gate, ok bool) {
+	gate, guarded := GuardingExit(st.Phase)
+	if !guarded {
+		return "", false
+	}
+	if len(Missing(Requirements(g, t, st), gate)) == 0 {
+		return "", false
+	}
+	return gate, true
+}

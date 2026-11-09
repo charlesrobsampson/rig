@@ -260,3 +260,26 @@ func TestGet(t *testing.T) {
 		}
 	})
 }
+
+func TestSummariesCarryThePendingGateWhenTheRegistryKnowsHowToFindIt(t *testing.T) {
+	f := newFixture(t)
+	f.writeYAML("alpha", yaml("alpha", "A", "api"))
+	f.writeState("alpha", state.State{Phase: domain.PhasePlan})
+	f.writeYAML("broken", "id: [")
+	if got := f.list(); got[0].PendingGate != "" {
+		t.Errorf("without a finder the gate = %q", got[0].PendingGate)
+	}
+
+	var seen []string
+	f.reg.WithPendingGate(func(t domain.Ticket, s state.State) domain.Gate {
+		seen = append(seen, t.ID)
+		return domain.GatePlanApproval
+	})
+	got := f.list()
+	if got[0].ID != "alpha" || got[0].PendingGate != domain.GatePlanApproval {
+		t.Errorf("alpha = %+v", got[0])
+	}
+	if got[1].PendingGate != "" || len(seen) != 1 {
+		t.Errorf("a ticket that cannot be read has no gate: %+v, asked about %v", got[1], seen)
+	}
+}

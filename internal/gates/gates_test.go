@@ -180,3 +180,29 @@ func TestBackwardMovesInvalidateLaterApprovals(t *testing.T) {
 		}
 	}
 }
+
+func TestAwaitingNamesTheGateAHumanStillOwes(t *testing.T) {
+	two := ticketOf(svc("a", nil), svc("b", nil))
+	tests := []struct {
+		name  string
+		g     config.Global
+		phase domain.Phase
+		appr  []state.Approval
+		want  domain.Gate
+	}{
+		{"plan, nothing approved", global(domain.GatePlanApproval), domain.PhasePlan, nil, domain.GatePlanApproval},
+		{"plan, one of two approved", global(domain.GatePlanApproval), domain.PhasePlan, []state.Approval{approval(domain.GatePlanApproval, "a")}, domain.GatePlanApproval},
+		{"plan, all approved", global(domain.GatePlanApproval), domain.PhasePlan, []state.Approval{approval(domain.GatePlanApproval, "")}, ""},
+		{"plan, gate not required", global(), domain.PhasePlan, nil, ""},
+		{"only the gate leaving the current phase counts", global(domain.GateReviewApproval), domain.PhasePlan, nil, ""},
+		{"review waits on its own gate", global(domain.GatePlanApproval, domain.GateReviewApproval), domain.PhaseReview, nil, domain.GateReviewApproval},
+		{"a phase with no gate", global(domain.GatePlanApproval), domain.PhaseImplement, nil, ""},
+		{"done", global(domain.GatePlanApproval), domain.PhaseDone, nil, ""},
+	}
+	for _, tt := range tests {
+		got, ok := gates.Awaiting(tt.g, two, state.State{Phase: tt.phase, Approvals: tt.appr})
+		if got != tt.want || ok != (tt.want != "") {
+			t.Errorf("%s: Awaiting = %q, %v; want %q", tt.name, got, ok, tt.want)
+		}
+	}
+}
