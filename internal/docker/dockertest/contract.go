@@ -323,6 +323,31 @@ func Run(t *testing.T, newSubject func(t *testing.T) Subject) {
 				}
 			}
 		})
+		t.Run("a container can be connected to a second network", func(t *testing.T) {
+			e := newEnv(t, newSubject)
+			first, second := e.network(false), e.network(true)
+			c := e.start(e.spec(func(s *docker.ContainerSpec) { s.Network = first.Name }))
+			if err := e.Docker.ConnectNetwork(ctx, c.ID, second.Name, []string{"proxy"}); err != nil {
+				t.Fatal(err)
+			}
+			got, err := e.Docker.InspectContainer(ctx, c.ID)
+			if err != nil || len(got.Networks) != 2 || !contains(got.Networks[second.Name].Aliases, "proxy") || !contains(got.Networks[second.Name].Aliases, c.Name) {
+				t.Errorf("networks = %+v (%v), want both, with the alias and the container's own name on the second", got.Networks, err)
+			}
+			info, _ := e.Docker.InspectNetwork(ctx, second.ID)
+			if !contains(info.Containers, c.ID) {
+				t.Errorf("the second network's members = %v", info.Containers)
+			}
+			if err := e.Docker.ConnectNetwork(ctx, c.ID, second.Name, nil); !errors.Is(err, docker.ErrExists) {
+				t.Errorf("connecting twice = %v, want ErrExists", err)
+			}
+			if err := e.Docker.ConnectNetwork(ctx, c.ID, "rig-no-such-network", nil); !errors.Is(err, docker.ErrNotFound) {
+				t.Errorf("an unknown network = %v, want ErrNotFound", err)
+			}
+			if err := e.Docker.ConnectNetwork(ctx, "rigt-no-such-container", second.Name, nil); !errors.Is(err, docker.ErrNotFound) {
+				t.Errorf("an unknown container = %v, want ErrNotFound", err)
+			}
+		})
 		t.Run("a network with containers attached cannot be removed", func(t *testing.T) {
 			e := newEnv(t, newSubject)
 			n := e.network(false)

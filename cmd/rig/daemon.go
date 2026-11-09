@@ -19,6 +19,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/config"
 	"github.com/charlesrobsampson/rig/internal/daemon"
 	"github.com/charlesrobsampson/rig/internal/docker/dockercli"
+	"github.com/charlesrobsampson/rig/internal/egress"
 	"github.com/charlesrobsampson/rig/internal/events"
 	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/inject"
@@ -145,9 +146,11 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	supCtx, stopSup := context.WithCancel(ctx)
-	supDone := make(chan struct{})
+	supDone, watchDone := make(chan struct{}), make(chan struct{})
 	go func() { sup.Run(supCtx); close(supDone) }()
-	defer func() { stopSup(); <-supDone }()
+	watcher := &egress.Watcher{Docker: dk, Bus: bus, Clock: clk, Logger: logger}
+	go func() { watcher.Run(supCtx); close(watchDone) }()
+	defer func() { stopSup(); <-supDone; <-watchDone }()
 	return srv.Serve(ctx)
 }
 

@@ -20,6 +20,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/docker"
 	"github.com/charlesrobsampson/rig/internal/docker/ports"
 	"github.com/charlesrobsampson/rig/internal/domain"
+	"github.com/charlesrobsampson/rig/internal/egress"
 	"github.com/charlesrobsampson/rig/internal/events"
 	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/policy"
@@ -53,19 +54,23 @@ type Options struct {
 	HealthProbe func(ctx context.Context, url string) bool
 	// ServiceStartTimeout is how long a service has to become healthy (default 60s);
 	// HealthPoll is how often it is checked (default 500ms); Settle is how long a
-	// service without a healthcheck must stay up to count as started (default 2s).
+	// service without a healthcheck must stay up to count as started (default 2s; a
+	// negative value checks once and does not wait).
 	ServiceStartTimeout time.Duration
 	HealthPoll          time.Duration
 	Settle              time.Duration
+	// EgressBinary finds the egress proxy's binary (nil means the embedded one).
+	EgressBinary egress.BinaryFinder
 	// StopGrace is how long a stopping container gets before it is killed (default 10s).
 	StopGrace time.Duration
 }
 
 type Manager struct {
-	opts        Options
-	reg         *registry.Registry
-	ports       *ports.Allocator
-	agentImages *agentimage.Builder
+	opts         Options
+	reg          *registry.Registry
+	ports        *ports.Allocator
+	agentImages  *agentimage.Builder
+	egressImages *egress.Images
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex
@@ -81,6 +86,7 @@ func New(o Options) *Manager {
 		if min == 0 && max == 0 { // a Global built without the defaults
 			min, max = 41000, 41999
 		}
+		m.egressImages = egress.NewImages(o.Docker, o.EgressBinary, "")
 		m.agentImages = agentimage.New(o.Docker, o.Global.Docker.ClaudeVersion, o.Global.Docker.ExtraCACerts)
 		m.ports = ports.New(ports.Options{Dir: o.Dir, States: o.States, Min: min, Max: max, Probe: m.portUsable})
 	}
@@ -192,12 +198,16 @@ func (m *Manager) Start(ctx context.Context, p api.TicketStartParams) (api.Ticke
 	if err != nil {
 		return api.TicketStartResult{}, err
 	}
+	proxyEnv, err := m.startProxy(ctx, l, netInfo)
+	if err != nil {
+		return api.TicketStartResult{}, err
+	}
 	deps, err := m.startDependencies(ctx, l, netInfo)
 	if err != nil {
 		return api.TicketStartResult{}, err
 	}
-	containers := m.startServices(ctx, l, infos, netInfo)
-	agents, warnings := m.launchAgents(ctx, l, infos, p.Sandbox, netInfo)
+	containers := m.startServices(ctx, l, infos, netInfo, proxyEnv)
+	agents, warnings := m.launchAgents(ctx, l, infos, p.Sandbox, netInfo, proxyEnv)
 
 	res, err := m.reg.Get(p.ID)
 	if err != nil {

@@ -44,7 +44,7 @@ func EventsDir(ticketDir, service string) string {
 // the clone reads it through alternates), the ticket's working files, and a directory
 // for hook events. It joins the ticket's network. No git credentials, no Docker socket,
 // no other branches.
-func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domain.Service, eff policy.Effective, co api.CheckoutInfo, net *api.NetworkInfo) (agentLaunch, error) {
+func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domain.Service, eff policy.Effective, co api.CheckoutInfo, net *api.NetworkInfo, extraEnv map[string]string) (agentLaunch, error) {
 	h, req, err := m.agentRequest(l, svc, eff)
 	if err != nil {
 		return agentLaunch{}, err
@@ -113,12 +113,22 @@ func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domai
 	// The pane runs `docker exec -it`; the agent's environment travels in the docker
 	// process's own environment (`--env NAME`), so secrets never appear on a command line.
 	command := []string{"docker", "exec", "-it", "--workdir", agentWorkDir}
-	for _, k := range sortedEnvKeys(launch.Env) {
+	merged := map[string]string{}
+	for k, v := range launch.Env {
+		merged[k] = v
+	}
+	for k, v := range extraEnv {
+		merged[k] = v
+	}
+	for _, k := range sortedEnvKeys(merged) {
 		command = append(command, "--env", k)
 	}
 	command = append(append(command, name), launch.Command...)
 	env := map[string]string{}
 	for k, v := range launch.Env {
+		env[k] = v
+	}
+	for k, v := range extraEnv { // the proxy settings: the only way out of an internal network
 		env[k] = v
 	}
 	for _, k := range []string{"DOCKER_HOST", "DOCKER_CONTEXT"} { // so the pane's docker finds the same daemon

@@ -25,7 +25,7 @@ func agentsFixture(t *testing.T, mutate func(*lifecycle.Options)) (*fixture, *te
 	f := newFixture(t, domain.SandboxContainer)
 	dk, term := testkit.NewFakeDocker(), testkit.NewFakeTerminal()
 	opts := lifecycle.Options{
-		Dir: f.dir, States: f.states, Bus: f.bus, Docker: dk, Backend: term, BackendName: "fake",
+		Dir: f.dir, States: f.states, Bus: f.bus, Docker: dk, Backend: term, BackendName: "fake", EgressBinary: fakeProxyBinary,
 		HealthProbe: func(context.Context, string) bool { return true },
 		Global: config.Global{Defaults: config.Defaults{Sandbox: domain.SandboxContainer, BranchPrefix: "rig/"},
 			Docker: config.Docker{AgentBase: "debian:bookworm-slim", ClaudeVersion: "latest"}},

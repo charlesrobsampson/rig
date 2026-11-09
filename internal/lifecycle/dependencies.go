@@ -96,6 +96,9 @@ func (m *Manager) waitDependencyUp(ctx context.Context, id string) error {
 	deadline := m.opts.Clock.After(timeout)
 	settled := m.opts.Clock.After(settle)
 	isSettled := false
+	if settle < 0 { // a caller that cannot wait (a fake clock) asks to check once
+		isSettled, settled = true, nil
+	}
 	for {
 		c, err := m.opts.Docker.InspectContainer(ctx, id)
 		if err != nil {

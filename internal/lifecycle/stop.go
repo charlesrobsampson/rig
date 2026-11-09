@@ -64,6 +64,9 @@ func (m *Manager) Stop(ctx context.Context, p api.TicketStopParams) (api.TicketS
 	if err := m.removeDependencyContainers(ctx, p.ID, t); err != nil {
 		return api.TicketStopResult{}, err
 	}
+	if err := m.removeProxy(ctx, p.ID); err != nil {
+		return api.TicketStopResult{}, err
+	}
 	if err := m.removeNetworks(ctx, p.ID, st); err != nil {
 		return api.TicketStopResult{}, err
 	}

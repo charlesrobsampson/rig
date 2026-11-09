@@ -119,6 +119,15 @@ func (c *Client) RemoveNetwork(ctx context.Context, nameOrID string) error {
 	return err
 }
 
+func (c *Client) ConnectNetwork(ctx context.Context, container, network string, aliases []string) error {
+	args := []string{"network", "connect"}
+	for _, a := range aliases {
+		args = append(args, "--alias", a)
+	}
+	_, err := c.run(ctx, append(args, network, container)...)
+	return err
+}
+
 // Images
 
 // buildTail is how much of a failed build's output the error carries.

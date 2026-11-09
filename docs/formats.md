@@ -106,7 +106,7 @@ Shape per manifest §5, plus:
 - Agents may *request* forward transitions; rig grants only if gates pass. Agents may not approve gates.
 
 ## 7. Naming and container topology
-- Network: `rig-<ticket>` (created `--internal` when `network_mode: internal`); `rig-<ticket>-egress` (normal bridge, joined only by the egress proxy). Service container: `rig-<ticket>-<service>`. Agent container: `rig-<ticket>-<service>-agent`. Dependency: `rig-<ticket>-dep-<name>`. Egress proxy: `rig-<ticket>-proxy`.
+- Network: `rig-<ticket>` (created `--internal` when `network_mode: internal`); `rig-<ticket>-egress` (normal bridge, joined only by the egress proxy). Service container: `rig-<ticket>-<service>`. Agent container: `rig-<ticket>-<service>-agent`. Dependency: `rig-<ticket>-dep-<name>`. Egress proxy: `rig-<ticket>-proxy` (in `internal` mode it also publishes the services' host ports, which Docker cannot do for a container that is only on an internal network, and forwards them inward; env `ALLOW_HOSTS`, `ALLOW_PORTS`, `LISTEN`, `FORWARD=<port>=<service>:<port>,...`).
 - Labels on every Docker object: `rig.ticket=<id>`, `rig.service=<name>` (when applicable), `rig.role=service|agent|dependency|proxy|network`.
 - **Working topology (spike 04 confirms or amends):** per service, a *service container* runs the `start` command, and an *agent container* (toolchain image with the agent installed) runs the agent. Both bind-mount the same worktree and join the ticket network, so the agent can run tests and reach the service by name. Dependencies are siblings on the same network.
 - In-network URL of a service: `http://<service>:<internal_port>`. Host URL: `http://localhost:<host_port>`.

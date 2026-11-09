@@ -66,6 +66,9 @@ type Docker interface {
 	ListNetworks(ctx context.Context, labels map[string]string) ([]NetworkInfo, error)
 	// RemoveNetwork fails with ErrInUse while containers are attached.
 	RemoveNetwork(ctx context.Context, nameOrID string) error
+	// ConnectNetwork attaches a container to one more network (a container is created
+	// on one), with extra aliases there. ErrExists if it is already on that network.
+	ConnectNetwork(ctx context.Context, container, network string, aliases []string) error
 
 	// BuildImage builds Spec.Tag from a Dockerfile. A failed build returns an error
 	// that ends with the tail of the build output.

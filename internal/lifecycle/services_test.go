@@ -41,7 +41,7 @@ func serviceFixture(t *testing.T, mutate func(*lifecycle.Options)) (*fixture, *t
 	dk := testkit.NewFakeDocker()
 	probe := &probeFn{healthy: true}
 	opts := lifecycle.Options{
-		Dir: f.dir, States: f.states, Bus: f.bus, Docker: dk, HealthProbe: probe.probe,
+		Dir: f.dir, States: f.states, Bus: f.bus, Docker: dk, HealthProbe: probe.probe, EgressBinary: fakeProxyBinary,
 		Global:              config.Global{Defaults: config.Defaults{Sandbox: domain.SandboxContainer, BranchPrefix: "rig/"}},
 		ServiceStartTimeout: 300 * time.Millisecond, HealthPoll: time.Millisecond, Settle: 20 * time.Millisecond, StopGrace: time.Second,
 	}

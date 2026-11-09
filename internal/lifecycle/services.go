@@ -55,10 +55,15 @@ func (m *Manager) validateServices(l loaded, checkouts []api.CheckoutInfo) error
 	return nil
 }
 
-// portUsable is the allocator's probe: free on this machine, or held by a service
-// container rig itself started (after a restart it still holds the port it was given).
+// portUsable is the allocator's probe: free on this machine, or held by a container rig
+// itself started for a service (its own, or the proxy that carries it in internal
+// mode); after a restart that container still holds the port it was given.
 func (m *Manager) portUsable(port int) bool {
-	if list, err := m.opts.Docker.ListContainers(context.Background(), map[string]string{docker.LabelRole: docker.RoleService}); err == nil {
+	for _, role := range []string{docker.RoleService, docker.RoleProxy} {
+		list, err := m.opts.Docker.ListContainers(context.Background(), map[string]string{docker.LabelRole: role})
+		if err != nil {
+			continue
+		}
 		for _, c := range list {
 			if c.State != docker.StateRunning {
 				continue
@@ -75,7 +80,7 @@ func (m *Manager) portUsable(port int) bool {
 
 // startServices builds and runs a container for each service that has a Dockerfile.
 // One that fails is reported (and its status recorded as error); the others carry on.
-func (m *Manager) startServices(ctx context.Context, l loaded, checkouts []api.CheckoutInfo, net *api.NetworkInfo) []api.ServiceContainerInfo {
+func (m *Manager) startServices(ctx context.Context, l loaded, checkouts []api.CheckoutInfo, net *api.NetworkInfo, extraEnv map[string]string) []api.ServiceContainerInfo {
 	if m.opts.Docker == nil || net == nil {
 		return nil
 	}
@@ -87,13 +92,13 @@ func (m *Manager) startServices(ctx context.Context, l loaded, checkouts []api.C
 			}
 			continue
 		}
-		info := m.startService(ctx, l, svc, checkouts[i].Path, net)
+		info := m.startService(ctx, l, svc, checkouts[i].Path, net, extraEnv)
 		out = append(out, info)
 	}
 	return out
 }
 
-func (m *Manager) startService(ctx context.Context, l loaded, svc domain.Service, checkout string, net *api.NetworkInfo) api.ServiceContainerInfo {
+func (m *Manager) startService(ctx context.Context, l loaded, svc domain.Service, checkout string, net *api.NetworkInfo, extraEnv map[string]string) api.ServiceContainerInfo {
 	name := ContainerName(l.id, svc.Name)
 	info := api.ServiceContainerInfo{Service: svc.Name, Name: name}
 
@@ -115,6 +120,9 @@ func (m *Manager) startService(ctx context.Context, l loaded, svc domain.Service
 			info.ID, info.Running, info.Note = existing.ID, true, "already running"
 			for _, p := range existing.Ports {
 				info.HostPort = p.Host
+			}
+			if info.HostPort == 0 { // an internal-mode service's port is carried by the proxy
+				info.HostPort = l.state.Services[svc.Name].HostPort
 			}
 			info.URL = hostURL(info.HostPort)
 			return info
@@ -146,6 +154,9 @@ func (m *Manager) startService(ctx context.Context, l loaded, svc domain.Service
 	if err != nil {
 		return fail(err, false)
 	}
+	for k, v := range extraEnv { // the proxy settings (internal mode)
+		env[k] = v
+	}
 	spec := docker.ContainerSpec{
 		Name: name, Image: tag, Env: env, Labels: docker.Labels(l.id, svc.Name, docker.RoleService),
 		WorkDir: "/work", Mounts: []docker.Mount{{Source: checkout, Target: "/work"}},
@@ -154,7 +165,8 @@ func (m *Manager) startService(ctx context.Context, l loaded, svc domain.Service
 	if svc.Start != "" {
 		spec.Command = []string{"sh", "-c", svc.Start}
 	}
-	if hostPort != 0 {
+	// On an internal network Docker cannot publish a port; the proxy container does it.
+	if hostPort != 0 && !net.Internal {
 		spec.Ports = []docker.PortBinding{{Container: svc.InternalPort, Host: hostPort}}
 	}
 	created, err := m.opts.Docker.CreateContainer(ctx, spec)

@@ -15,3 +15,6 @@ spikes/**/bin
 # spike: machine-specific certificates
 spikes/**/certs/
 spikes/**/corp-ca.pem
+
+# embedded egress proxy binaries (task build:egress)
+/internal/egress/embedded/rig-egress-*
