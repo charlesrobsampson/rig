@@ -398,7 +398,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 35 · Host port allocator
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/35-ports` · Depends: 11, 33
 - Read: `manifest.md` §4 (ports)
 - Build: `internal/docker/ports` allocates free host ports (range configurable), persists the map in the ticket's `state.json`, verifies a port is still free on reuse (injectable probe), releases on stop.
