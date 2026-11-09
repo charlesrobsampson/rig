@@ -160,6 +160,18 @@ func (c *Client) ImageExists(ctx context.Context, ref string) (bool, error) {
 	return res.ExitCode == 0, nil
 }
 
+func (c *Client) ImageID(ctx context.Context, ref string) (string, error) {
+	res, err := c.run(ctx, "image", "inspect", "--format", "{{.Id}}", ref)
+	if err != nil {
+		return "", err
+	}
+	id := strings.TrimSpace(res.Stdout)
+	if id == "" {
+		return "", fmt.Errorf("%w: image %s", docker.ErrNotFound, ref)
+	}
+	return id, nil
+}
+
 // runCallAllowFailure returns the result of a failed call too, unless docker itself is
 // unreachable (which is an error whatever the question was).
 func (c *Client) runCallAllowFailure(ctx context.Context, args ...string) (Result, error) {

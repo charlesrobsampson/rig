@@ -36,6 +36,9 @@ type FakeDocker struct {
 	execs  map[string][]docker.ExecSpec
 
 	healthImages map[string]bool
+	builds       map[string]int
+	lastBuild    docker.BuildSpec
+	buildLog     []docker.BuildSpec
 }
 
 var _ docker.Docker = (*FakeDocker)(nil)
@@ -55,7 +58,7 @@ type fakeCtr struct {
 func NewFakeDocker() *FakeDocker {
 	return &FakeDocker{
 		nets: map[string]*fakeNet{}, ctrs: map[string]*fakeCtr{}, images: map[string]bool{},
-		nextPort: 40000, changed: make(chan struct{}), execs: map[string][]docker.ExecSpec{}, healthImages: map[string]bool{},
+		nextPort: 40000, changed: make(chan struct{}), execs: map[string][]docker.ExecSpec{}, healthImages: map[string]bool{}, builds: map[string]int{},
 	}
 }
 
@@ -136,6 +139,13 @@ func (f *FakeDocker) Resolve(from, name string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("%w: %s does not resolve from %s", docker.ErrNotFound, name, from)
+}
+
+// Builds lists every BuildImage call, in order.
+func (f *FakeDocker) Builds() []docker.BuildSpec {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]docker.BuildSpec(nil), f.buildLog...)
 }
 
 // ContainerSpec returns the spec a container was created from (zero if unknown).
@@ -341,6 +351,9 @@ func (f *FakeDocker) BuildImage(ctx context.Context, spec docker.BuildSpec) erro
 		return fmt.Errorf("%w: no Dockerfile at %s", docker.ErrInvalid, filepath.Join(spec.ContextDir, dockerfile))
 	}
 	f.images[spec.Tag] = true
+	f.builds[spec.Tag]++
+	f.lastBuild = spec
+	f.buildLog = append(f.buildLog, spec)
 	return nil
 }
 
@@ -351,6 +364,20 @@ func (f *FakeDocker) ImageExists(ctx context.Context, ref string) (bool, error) 
 	}
 	defer unlock()
 	return f.images[ref], nil
+}
+
+// ImageID is derived from the image's name and how many times it was (re)built, so a
+// rebuilt tag has a new id like a real one.
+func (f *FakeDocker) ImageID(ctx context.Context, ref string) (string, error) {
+	unlock, err := f.begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	if !f.images[ref] {
+		return "", fmt.Errorf("%w: image %s", docker.ErrNotFound, ref)
+	}
+	return fmt.Sprintf("sha256:fake-%s-%d", ref, f.builds[ref]), nil
 }
 
 func (f *FakeDocker) CreateContainer(ctx context.Context, spec docker.ContainerSpec) (docker.ContainerInfo, error) {
