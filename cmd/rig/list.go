@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/charlesrobsampson/rig/internal/api"
+	"github.com/charlesrobsampson/rig/internal/domain"
 )
 
 func newListCmd(a *app) *cobra.Command {
@@ -65,6 +66,9 @@ func serviceCell(services []api.ServiceSummary) string {
 		status := string(s.Status)
 		if status == "" {
 			status = "-"
+		}
+		if s.AgentState != "" && s.AgentState != domain.AgentUnknown {
+			status += "/" + string(s.AgentState)
 		}
 		parts[i] = s.Name + ":" + status
 	}

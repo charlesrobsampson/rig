@@ -89,6 +89,32 @@ type TicketStartResult struct {
 	Checkouts []CheckoutInfo `json:"checkouts"`
 	// Launches is set only for a dry run.
 	Launches []LaunchInfo `json:"launches,omitempty"`
+	// Agents says, per service, whether an agent was started (never for a dry run).
+	Agents []AgentInfo `json:"agents,omitempty"`
+}
+
+// AgentInfo is the outcome of starting one service's agent. Launched is false with
+// Note when none was needed or allowed (already running, or a sandbox that cannot run
+// agents yet) and with Error when starting it failed.
+type AgentInfo struct {
+	Service  string `json:"service"`
+	PaneID   string `json:"pane_id,omitempty"`
+	Launched bool   `json:"launched"`
+	Note     string `json:"note,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
+// AgentAttachParams names the agent to look at. Service may be empty when the ticket
+// has exactly one.
+type AgentAttachParams struct {
+	Ticket  string `json:"ticket"`
+	Service string `json:"service,omitempty"`
+}
+
+// AgentAttachResult is the command a human runs to see the agent's pane.
+type AgentAttachResult struct {
+	Service string   `json:"service"`
+	Command []string `json:"command"`
 }
 
 // LaunchInfo is what would start a service's agent. Environment values that come from

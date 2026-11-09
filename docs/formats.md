@@ -127,10 +127,10 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 | `hello`, `status` | handshake; daemon version, pid, uptime |
 | `config.get` | effective global config |
 | `ticket.list`, `ticket.get`, `ticket.rescan` | read tickets |
-| `ticket.new`, `ticket.start`, `ticket.stop` | create / provision / teardown (`start` params: `sandbox`, `dry_run`; a dry run provisions nothing and returns `launches[]` of `{service, harness, dir, command, env}` with secret values as `<secret NAME>`; `stop` params: `force`, `keep_checkouts`) |
+| `ticket.new`, `ticket.start`, `ticket.stop` | create / provision / teardown (`start` params: `sandbox`, `dry_run`; the result also carries `agents[]` of `{service, pane_id, launched, note, error}` (one agent per host-sandbox service); a dry run provisions nothing and returns `launches[]` of `{service, harness, dir, command, env}` with secret values as `<secret NAME>`; `stop` params: `force`, `keep_checkouts`) |
 | `gate.list`, `gate.approve` | pending gates / approve |
 | `phase.set`, `transition.request` | human move / agent request |
-| `agent.attach`, `agent.message` | returns attach command / injects text |
+| `agent.attach`, `agent.message` | returns attach command / injects text (`agent.attach` params `{ticket, service?}` (service optional when the ticket has one), result `{service, command[]}`; errors `not_found`, `not_running` when no agent is running) |
 | `agent.event` | agent hook reports a state (`ready\|working\|blocked\|idle\|exited`) for a ticket/service |
 | `contract.list`, `contract.accept`, `contract.reject` | contract proposals |
 | `review.diff` | per-service diff and stat |

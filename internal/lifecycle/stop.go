@@ -45,6 +45,10 @@ func (m *Manager) Stop(ctx context.Context, p api.TicketStopParams) (api.TicketS
 		return api.TicketStopResult{}, &api.Error{Code: api.CodeBlocked, Message: fmt.Sprintf("ticket %q has directories rig will not delete", p.ID), Details: unrecognized}
 	}
 
+	// Agents stop first: a running agent keeps changing the checkout being imported.
+	if err := m.closeAgents(ctx, p.ID, l, p.Force); err != nil {
+		return api.TicketStopResult{}, err
+	}
 	atRisk := m.importAndInspect(ctx, targets)
 	if len(atRisk) > 0 && !p.Force && !p.KeepCheckouts {
 		return api.TicketStopResult{}, &api.Error{

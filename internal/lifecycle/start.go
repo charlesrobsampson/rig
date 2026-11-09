@@ -21,6 +21,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/policy"
 	"github.com/charlesrobsampson/rig/internal/registry"
 	"github.com/charlesrobsampson/rig/internal/state"
+	"github.com/charlesrobsampson/rig/internal/terminal"
 )
 
 type Options struct {
@@ -29,6 +30,17 @@ type Options struct {
 	Global config.Global
 	Bus    *events.Bus
 	Clock  clock.Clock // nil means the real clock
+
+	// Backend runs agents. Without one, starting only provisions checkouts.
+	Backend     terminal.Backend
+	BackendName string // recorded in state.json as agent.backend
+	// RigBinary is what agent hooks run to report state (default "rig"); AgentEnv is
+	// added to every agent's environment so the hooks find this daemon.
+	RigBinary string
+	AgentEnv  map[string]string
+	// Secrets resolves secret names to values for agent launches (task 41). Without
+	// it, a launch that needs a secret fails with an explanation.
+	Secrets func(names []string) (map[string]string, error)
 }
 
 type Manager struct {
@@ -140,11 +152,13 @@ func (m *Manager) Start(ctx context.Context, p api.TicketStartParams) (api.Ticke
 		m.publish(api.EventTicketStarted, p.ID, "", api.EmptyData{})
 	}
 
+	agents := m.launchAgents(ctx, l, infos, p.Sandbox)
+
 	res, err := m.reg.Get(p.ID)
 	if err != nil {
 		return api.TicketStartResult{}, err
 	}
-	return api.TicketStartResult{Summary: res.Summary, Checkouts: infos}, nil
+	return api.TicketStartResult{Summary: res.Summary, Checkouts: infos, Agents: agents}, nil
 }
 
 func kindFor(s domain.Sandbox) domain.CheckoutKind {

@@ -100,7 +100,13 @@ func (c ClaudeCode) Command(r Request) (Launch, error) {
 	// Rig's variables come last: nothing a ticket sets may re-point the agent's reports.
 	env["RIG_TICKET"], env["RIG_SERVICE"] = r.Ticket.ID, r.Service
 
-	return Launch{Command: []string{"claude", "--settings", settingsJSON, prompt}, Env: env, Dir: r.Dir}, nil
+	// The ticket directory holds the files the agent works from and writes to (plan.md,
+	// tasks.md, contract.md, manual-tests.md); without this every edit there would ask.
+	command := []string{"claude", "--settings", settingsJSON}
+	if r.TicketDir != "" {
+		command = append(command, "--add-dir", r.TicketDir)
+	}
+	return Launch{Command: append(command, prompt), Env: env, Dir: r.Dir}, nil
 }
 
 // AuthEnv maps a profile to what Claude Code reads (docs/spikes/04-agent-container.md §7).

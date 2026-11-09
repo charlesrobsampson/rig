@@ -57,7 +57,10 @@ working directory, environment) each service would get. Secret values are never 
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", co.Service, co.Kind, co.Branch, note, co.Path)
 			}
-			return tw.Flush()
+			if err := tw.Flush(); err != nil {
+				return err
+			}
+			return printAgents(cmd.OutOrStdout(), res.Agents)
 		},
 	}
 	cmd.Flags().StringVar(&sandbox, "sandbox", "", "override the sandbox for every service: container or host")
@@ -90,4 +93,29 @@ func printLaunches(w io.Writer, launches []api.LaunchInfo) {
 			fmt.Fprintf(w, "    %s=%s\n", k, l.Env[k])
 		}
 	}
+}
+
+// printAgents reports each service's agent and fails if any could not start (the
+// checkouts are fine; starting again retries).
+func printAgents(w io.Writer, agents []api.AgentInfo) error {
+	if len(agents) == 0 {
+		return nil
+	}
+	fmt.Fprintln(w)
+	failed := 0
+	for _, ag := range agents {
+		switch {
+		case ag.Error != "":
+			failed++
+			fmt.Fprintf(w, "agent %s: failed: %s\n", ag.Service, ag.Error)
+		case ag.Launched:
+			fmt.Fprintf(w, "agent %s: started (%s)\n", ag.Service, ag.PaneID)
+		default:
+			fmt.Fprintf(w, "agent %s: %s\n", ag.Service, ag.Note)
+		}
+	}
+	if failed > 0 {
+		return fmt.Errorf("%d agent(s) did not start; fix the problem and run start again", failed)
+	}
+	return nil
 }

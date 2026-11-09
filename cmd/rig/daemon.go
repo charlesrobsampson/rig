@@ -115,12 +115,22 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		RepoCheck:    func(path string) error { return git.CheckRepo(context.Background(), path) },
 		BranchPrefix: g.Defaults.BranchPrefix,
 	}), bus)
-	daemon.RegisterLifecycleHandlers(srv, lifecycle.New(lifecycle.Options{Dir: g.TicketsDir(), States: states, Global: g, Bus: bus, Clock: clk}))
 
-	backend, err := backends.New(g.Defaults.TerminalBackend)
-	if err != nil {
-		return err
+	backend := a.deps.backend
+	if backend == nil {
+		if backend, err = backends.New(g.Defaults.TerminalBackend); err != nil {
+			return err
+		}
 	}
+	rigBinary, _ := os.Executable()
+	agentEnv := map[string]string{"RIG_HOME": g.Paths.Home}
+	if a.configPath != "" {
+		agentEnv["RIG_CONFIG"] = a.configPath
+	}
+	daemon.RegisterLifecycleHandlers(srv, lifecycle.New(lifecycle.Options{
+		Dir: g.TicketsDir(), States: states, Global: g, Bus: bus, Clock: clk,
+		Backend: backend, BackendName: g.Defaults.TerminalBackend, RigBinary: rigBinary, AgentEnv: agentEnv,
+	}))
 	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Logger: logger})
 	daemon.RegisterAgentHandlers(srv, sup)
 

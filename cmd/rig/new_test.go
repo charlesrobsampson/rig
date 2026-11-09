@@ -14,10 +14,19 @@ import (
 // newEnv is a rig home, an in-process daemon that starts on demand, and a git repo.
 func newEnv(t *testing.T) (home string, d deps, repo *testkit.Repo) {
 	t.Helper()
+	home, d, repo, _ = newEnvWithTerminal(t)
+	return home, d, repo
+}
+
+// newEnvWithTerminal is newEnv with the in-memory terminal the daemon runs agents in
+// and the exec seam recording what `rig attach` would run.
+func newEnvWithTerminal(t *testing.T) (home string, d deps, repo *testkit.Repo, term *testkit.FakeTerminal) {
+	t.Helper()
 	home = rigEnv(t)
-	daemon := &inProcessDaemon{}
+	term = testkit.NewFakeTerminal()
+	daemon := &inProcessDaemon{backend: term}
 	t.Cleanup(func() { daemon.shutdown(t) })
-	return home, deps{spawner: daemon.spawn}, testkit.NewRepo(t)
+	return home, deps{spawner: daemon.spawn, backend: term}, testkit.NewRepo(t), term
 }
 
 func TestNewCreatesATicketThatListShows(t *testing.T) {

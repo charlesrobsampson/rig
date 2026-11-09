@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/charlesrobsampson/rig/internal/api"
+	"github.com/charlesrobsampson/rig/internal/terminal"
 )
 
 // rigEnv points rig at a private home with a short path (unix socket limit).
@@ -32,10 +33,11 @@ func rigEnv(t *testing.T) string {
 // inProcessDaemon is a spawner that runs `rig daemon run` in a goroutine instead of a
 // detached process, and a way to wait for it to exit.
 type inProcessDaemon struct {
-	mu     sync.Mutex
-	starts int
-	done   []chan int
-	cancel context.CancelFunc
+	backend terminal.Backend // nil means the configured one
+	mu      sync.Mutex
+	starts  int
+	done    []chan int
+	cancel  context.CancelFunc
 }
 
 func (d *inProcessDaemon) spawn(context.Context) error {
@@ -46,7 +48,9 @@ func (d *inProcessDaemon) spawn(context.Context) error {
 	d.cancel = cancel
 	done := make(chan int, 1)
 	d.done = append(d.done, done)
-	go func() { done <- run(ctx, []string{"daemon", "run"}, &bytes.Buffer{}, &bytes.Buffer{}, deps{}) }()
+	go func() {
+		done <- run(ctx, []string{"daemon", "run"}, &bytes.Buffer{}, &bytes.Buffer{}, deps{backend: d.backend})
+	}()
 	return nil
 }
 

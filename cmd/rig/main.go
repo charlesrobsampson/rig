@@ -9,6 +9,7 @@ import (
 
 	"github.com/charlesrobsampson/rig/internal/client"
 	"github.com/charlesrobsampson/rig/internal/clock"
+	"github.com/charlesrobsampson/rig/internal/terminal"
 )
 
 var version = "dev"
@@ -18,6 +19,10 @@ type deps struct {
 	spawner client.Spawner // nil means start a detached `rig daemon run`
 	clock   clock.Clock    // nil means the real clock
 	stdin   io.Reader      // nil means os.Stdin; read for confirmation prompts
+	// backend runs agents; nil means the one defaults.terminal_backend names.
+	backend terminal.Backend
+	// exec replaces this process with a command (rig attach); nil means syscall.Exec.
+	exec func(argv []string) error
 }
 
 func main() {
@@ -60,6 +65,6 @@ func newRootCmd(d deps) *cobra.Command {
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError(err) })
 	root.PersistentFlags().StringVar(&a.configPath, "config", "", "global config file (default $RIG_CONFIG, then ~/.config/rig/config.json)")
 	root.PersistentFlags().BoolVar(&a.json, "json", false, "print machine-readable JSON")
-	root.AddCommand(newConfigCmd(a), newDaemonCmd(a), newListCmd(a), newEventsCmd(a), newNewCmd(a), newStartCmd(a), newStopCmd(a), newGatesCmd(a), newApproveCmd(a), newPhaseCmd(a), newAgentEventCmd(a))
+	root.AddCommand(newConfigCmd(a), newDaemonCmd(a), newListCmd(a), newEventsCmd(a), newNewCmd(a), newStartCmd(a), newStopCmd(a), newGatesCmd(a), newApproveCmd(a), newPhaseCmd(a), newAgentEventCmd(a), newAttachCmd(a))
 	return root
 }
