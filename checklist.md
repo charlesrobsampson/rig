@@ -546,7 +546,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 49 · Manual-tests renderer
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/49-manual-tests` · Depends: 35
 - Read: `manifest.md` §7 (manual testing), `docs/formats.md` §7, §12
 - Build: render `manual-tests.md` per formats §12, substituting `{{<service>.url}}`, `{{<service>.port}}`, `{{<service>.internal_url}}`, `{{<dependency>.host}}`, `{{ticket.id}}` from live state; parse steps (`### <id>: <title>`); unknown placeholders are errors listing every offender.
