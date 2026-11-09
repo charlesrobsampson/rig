@@ -105,6 +105,7 @@ Shape per manifest §5, plus:
   | test → review | `manual_test_signoff` |
   | review → push | `review_approval` |
 - Default policy gates: `[plan_approval, review_approval]`.
+- For a ticket with more than one service, `plan_approval` is refused (`blocked`, with a detail saying what to write) while `contract.md` has nothing under `## Agreed` (only whitespace and guidance comments count as nothing); the plan → implement move is refused the same way if the contract was emptied after approval. Single-service tickets and tickets whose services do not require the plan gate are unaffected.
 - Agents may *request* forward transitions; rig grants only if gates pass. Agents may not approve gates.
 
 ## 7. Naming and container topology

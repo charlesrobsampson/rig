@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,8 +12,18 @@ import (
 	"github.com/charlesrobsampson/rig/internal/testkit"
 )
 
+// agreeContract writes something under "## Agreed", which a multi-service ticket needs
+// before its plan can be approved.
+func agreeContract(t *testing.T, home, id string) {
+	t.Helper()
+	md := "# Contract: " + id + "\n\n## Agreed\nGET /x returns 200.\n\n## Proposed changes\n\n## Changelog\n"
+	if err := os.WriteFile(filepath.Join(home, "tickets", id, "contract.md"), []byte(md), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestGatesShowsWhatIsRequiredAndApproveGrantsIt(t *testing.T) {
-	_, d, repo := newEnv(t)
+	home, d, repo := newEnv(t)
 	other := testkit.NewRepo(t)
 	newTicket(t, d, "demo", repo, other)
 
@@ -28,6 +40,10 @@ func TestGatesShowsWhatIsRequiredAndApproveGrantsIt(t *testing.T) {
 		t.Errorf("a gate no service requires is listed:\n%s", stdout)
 	}
 
+	if _, stderr, code := rig(t, d, "approve", "demo", "plan_approval"); code != 3 || !strings.Contains(stderr, "contract") {
+		t.Errorf("approving with an empty contract: code %d, stderr %q", code, stderr)
+	}
+	agreeContract(t, home, "demo")
 	stdout, stderr, code = rig(t, d, "approve", "demo", "plan_approval", "--service", "svc1")
 	if code != 0 || !strings.Contains(stdout, "plan_approval approved for: svc1") || !strings.Contains(stdout, "still needed from: svc2") {
 		t.Fatalf("approve: code %d, stdout %q, stderr %q", code, stdout, stderr)

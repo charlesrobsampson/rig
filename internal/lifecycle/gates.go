@@ -3,6 +3,9 @@ package lifecycle
 import (
 	"context"
 	"fmt"
+	"github.com/charlesrobsampson/rig/internal/contract"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charlesrobsampson/rig/internal/api"
@@ -80,6 +83,12 @@ func (m *Manager) Approve(_ context.Context, p api.GateApproveParams) (api.GateL
 			"gate %s guards %s -> %s, but ticket %q is in phase %s; %s", p.Gate, from, to, p.ID, l.state.Phase, hint)}
 	}
 
+	if p.Gate == domain.GatePlanApproval {
+		if e := m.contractAgreed(l, "approve the plan"); e != nil {
+			return api.GateListResult{}, e
+		}
+	}
+
 	added := false
 	err = m.opts.States.Update(l.statePath, func(s *state.State) error {
 		added = false
@@ -121,4 +130,26 @@ func contains(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// contractAgreed refuses, for a multi-service ticket, while its contract's agreed
+// section is empty: the services cannot build against each other without one. A
+// single-service ticket has no contract to agree. what names the action refused.
+func (m *Manager) contractAgreed(l loaded, what string) *api.Error {
+	if len(l.ticket.Services) < 2 {
+		return nil
+	}
+	raw, err := os.ReadFile(filepath.Join(l.dir, "contract.md"))
+	if err == nil && !contract.Parse(string(raw)).AgreedEmpty() {
+		return nil
+	}
+	detail := "contract.md has nothing under \"## Agreed\""
+	if err != nil {
+		detail = "contract.md is missing"
+	}
+	return &api.Error{
+		Code:    api.CodeBlocked,
+		Message: fmt.Sprintf("cannot %s for ticket %q: the services have not agreed a contract yet (%s)", what, l.id, detail),
+		Details: []string{"contract: write what the services agree on under \"## Agreed\" in " + filepath.Join(l.dir, "contract.md")},
+	}
 }

@@ -34,7 +34,16 @@ func (f *fixture) mustApprove(id string, gate domain.Gate, service string) api.G
 	return res
 }
 
+// twoServiceTicket is a two-service ticket whose services have agreed a contract, so
+// the plan can be approved; bareTwoServiceTicket leaves the contract empty.
 func twoServiceTicket(t *testing.T, f *fixture, id string) string {
+	t.Helper()
+	dir := bareTwoServiceTicket(t, f, id)
+	agree(t, dir)
+	return dir
+}
+
+func bareTwoServiceTicket(t *testing.T, f *fixture, id string) string {
 	t.Helper()
 	return f.create(id, testkit.NewRepo(t), testkit.NewRepo(t))
 }

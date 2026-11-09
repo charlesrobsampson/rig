@@ -29,6 +29,7 @@ func repoWithRemote(t *testing.T) (*testkit.Repo, string) {
 func pushReady(t *testing.T, d deps, home string, modes []string, repos ...*testkit.Repo) {
 	t.Helper()
 	newTicket(t, d, "demo", repos...)
+	agreeContract(t, home, "demo")
 	yamlPath := filepath.Join(home, "tickets", "demo", "ticket.yaml")
 	raw, _ := os.ReadFile(yamlPath)
 	doc := string(raw)
