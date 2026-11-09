@@ -438,7 +438,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 39 · Same-service parallel acceptance
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/39-parallel-acceptance` · Depends: 38
 - Read: `manifest.md` §1, §4
 - Build: acceptance test that two tickets run the same service concurrently without collisions; fix whatever it finds.
