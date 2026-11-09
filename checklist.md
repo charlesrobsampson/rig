@@ -672,13 +672,22 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Manual check (open a ticket and move between tabs while an agent edits files) is for you.
 
 ### 58 · TUI actions
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/58-tui-actions` · Depends: 57, 53, 48
 - Read: `manifest.md` §6 (CLI)
 - Build: keybindings for approve, attach (suspends TUI and restores), review, push, stop (with dirty confirmation), inject message, accept/reject contract change; all call the same API as the CLI.
 - Tests: each key sends the right API call; destructive actions require confirmation; errors from the API show in the status bar and change nothing; attach round trip.
 - Manual check: drive a ticket from `plan` to `done` entirely from the TUI.
+- Notes:
+  - `internal/tui/actions.go`: the `Actions` interface (part of `Source`) maps one-to-one onto daemon calls the CLI makes (`gate.approve`, `phase.set`, `push.run`, `ticket.stop`, `agent.message`, `contract.list/accept/reject`, `agent.attach`); `cmd/rig/tui.go` implements it with the same client calls, and tests run it against the in-process daemon.
+  - Keys (dashboard row or open ticket): `a` approve the pending gate, `v` move to review, `p` push, `x` stop, `t` attach, `m` message, `c`/`C` accept/reject a contract proposal. Approve, review, push, stop and accept all ask `[y/N]` first; only `y` proceeds (n, esc, enter, anything else cancels). A rejection needs a typed reason, which is its confirmation.
+  - Stop: first attempt is not forced. If the daemon refuses because work would be lost (`blocked`), the TUI shows the reasons and asks whether to force; only then is a forced stop sent.
+  - Multi-service tickets: `t`, `m` ask which service (enter = the first; unknown names are refused with the choices); several open proposals ask which one.
+  - Attach uses `tea.ExecProcess` (TUI suspended, restored on exit, fleet and open tab refreshed); `Options.Exec` is the test seam. A failing attach program or an attach error is reported in the status bar.
+  - Errors show as `error: ...` in the status bar (with the daemon's reasons), change nothing else, and clear on the next key. Successes show a status line and refresh the fleet and open tab. Action keys do nothing under the help overlay or while the daemon is down.
+  - Mutation-checked: confirmation gate and the force offer.
+  - Manual check (drive a ticket from plan to done entirely in the TUI, real attach) is for you.
 
 ### 59 · Manual-test view
 - [ ] Done

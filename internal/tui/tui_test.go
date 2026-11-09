@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +25,56 @@ type fakeSource struct {
 	logs    string
 	fileErr error
 	reads   []string
+
+	// acts records every action the TUI asked for, as "name args"; actErr fails the
+	// action with that name; the rest is what the actions answer.
+	acts      []string
+	actErr    map[string]error
+	proposals []api.ContractProposal
+	attachCmd []string
+	pushRes   api.PushRunResult
+	stopErr   error // returned by a stop that is not forced
+}
+
+func (f *fakeSource) act(name string, args ...any) error {
+	f.acts = append(f.acts, strings.TrimSpace(name+" "+fmt.Sprint(args...)))
+	return f.actErr[name]
+}
+
+func (f *fakeSource) Approve(_ context.Context, ticket string, gate domain.Gate) error {
+	return f.act("approve", ticket, " ", gate)
+}
+
+func (f *fakeSource) MovePhase(_ context.Context, ticket string, to domain.Phase) error {
+	return f.act("phase", ticket, " ", to)
+}
+
+func (f *fakeSource) Push(_ context.Context, ticket string) (api.PushRunResult, error) {
+	return f.pushRes, f.act("push", ticket)
+}
+
+func (f *fakeSource) Stop(_ context.Context, ticket string, force bool) (api.TicketStopResult, error) {
+	if !force && f.stopErr != nil {
+		f.act("stop", ticket, " force=false")
+		return api.TicketStopResult{}, f.stopErr
+	}
+	return api.TicketStopResult{}, f.act("stop", ticket, fmt.Sprintf(" force=%v", force))
+}
+
+func (f *fakeSource) Message(_ context.Context, ticket, service, text string) error {
+	return f.act("message", ticket, "/", service, ": ", text)
+}
+
+func (f *fakeSource) Proposals(context.Context, string) ([]api.ContractProposal, error) {
+	return f.proposals, f.actErr["proposals"]
+}
+
+func (f *fakeSource) Resolve(_ context.Context, ticket, proposal string, accept bool, reason string) error {
+	return f.act("resolve", ticket, " ", proposal, fmt.Sprintf(" accept=%v reason=%q", accept, reason))
+}
+
+func (f *fakeSource) AttachCommand(_ context.Context, ticket, service string) ([]string, error) {
+	return f.attachCmd, f.act("attach", ticket, "/", service)
 }
 
 func (f *fakeSource) File(_ context.Context, ticket, name string) (string, error) {

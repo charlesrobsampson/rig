@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/charlesrobsampson/rig/internal/api"
+	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/tui"
 )
 
@@ -124,4 +125,62 @@ func missingOr(err error) error {
 		return tui.ErrMissing
 	}
 	return err
+}
+
+// call runs one daemon request, starting the daemon if needed, like every CLI command.
+func (s daemonSource) call(ctx context.Context, method string, params, result any) error {
+	c, err := s.a.connect(ctx, true)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	return c.Call(ctx, method, params, result)
+}
+
+func (s daemonSource) Approve(ctx context.Context, ticket string, gate domain.Gate) error {
+	return s.call(ctx, api.MethodGateApprove, api.GateApproveParams{ID: ticket, Gate: gate}, nil)
+}
+
+func (s daemonSource) MovePhase(ctx context.Context, ticket string, to domain.Phase) error {
+	return s.call(ctx, api.MethodPhaseSet, api.PhaseSetParams{ID: ticket, To: to}, nil)
+}
+
+func (s daemonSource) Push(ctx context.Context, ticket string) (api.PushRunResult, error) {
+	var res api.PushRunResult
+	err := s.call(ctx, api.MethodPushRun, api.PushRunParams{ID: ticket}, &res)
+	return res, err
+}
+
+func (s daemonSource) Stop(ctx context.Context, ticket string, force bool) (api.TicketStopResult, error) {
+	var res api.TicketStopResult
+	err := s.call(ctx, api.MethodTicketStop, api.TicketStopParams{ID: ticket, Force: force}, &res)
+	return res, err
+}
+
+func (s daemonSource) Message(ctx context.Context, ticket, service, text string) error {
+	return s.call(ctx, api.MethodAgentMessage, api.AgentMessageParams{Ticket: ticket, Service: service, Text: text}, nil)
+}
+
+func (s daemonSource) Proposals(ctx context.Context, ticket string) ([]api.ContractProposal, error) {
+	var res api.ContractListResult
+	if err := s.call(ctx, api.MethodContractList, api.ContractListParams{Ticket: ticket}, &res); err != nil {
+		return nil, missingOr(err)
+	}
+	return res.Proposals, nil
+}
+
+func (s daemonSource) Resolve(ctx context.Context, ticket, proposal string, accept bool, reason string) error {
+	method := api.MethodContractReject
+	if accept {
+		method = api.MethodContractAccept
+	}
+	return s.call(ctx, method, api.ContractResolveParams{Ticket: ticket, Proposal: proposal, Reason: reason}, nil)
+}
+
+func (s daemonSource) AttachCommand(ctx context.Context, ticket, service string) ([]string, error) {
+	var res api.AgentAttachResult
+	if err := s.call(ctx, api.MethodAgentAttach, api.AgentAttachParams{Ticket: ticket, Service: service}, &res); err != nil {
+		return nil, err
+	}
+	return res.Command, nil
 }
