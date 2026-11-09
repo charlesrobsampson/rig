@@ -33,6 +33,8 @@ func Provision(ctx context.Context, spec Spec) (Checkout, error) {
 	switch spec.Kind {
 	case domain.CheckoutWorktree:
 		return provisionWorktree(ctx, spec)
+	case domain.CheckoutClone:
+		return provisionClone(ctx, spec)
 	}
 	return nil, fmt.Errorf("checkout kind %q is not supported yet", spec.Kind)
 }
