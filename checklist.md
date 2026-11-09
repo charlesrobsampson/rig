@@ -605,13 +605,18 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Manual check (needs real agents, left for you): two agents on a demo ticket negotiate one endpoint change.
 
 ### 54 · Plan gate requires contract
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/54-contract-gate` · Depends: 24, 29, 51
 - Read: `manifest.md` §3
 - Build: for multi-service tickets, `plan_approval` also requires a non-empty `## Agreed` section; harness prompt tells agents to read the contract at start and propose rather than edit.
 - Tests: approval refused with an empty contract on a multi-service ticket; single-service tickets unaffected; prompt contains the rule only for multi-service tickets.
 - Manual check: try approving a plan with an empty contract.
+- Notes:
+  - `lifecycle.contractAgreed` (gates.go): `Approve` of `plan_approval` and the plan -> implement move (when a service requires the gate) are `blocked` for a ticket with two or more services while `## Agreed` is empty or `contract.md` is missing; the detail says to write the agreed section. Mutation-checked in both places.
+  - Harness: the contract rules moved out of the common rules into `contractRules`, shown (under `## contract.md`) only for multi-service tickets: read it first, never edit `## Agreed`, propose instead and carry on with the current contract, a rejected proposal means work within the agreed one. The single-service prompt no longer mentions a contract.
+  - Existing multi-service tests now write an agreed contract first (`twoServiceTicket`, `agreeContract`).
+  - Manual check (try approving a plan with an empty contract) left for you: `rig approve <id> plan_approval` on a fresh two-service ticket prints the refusal and exits 3.
 
 ---
 

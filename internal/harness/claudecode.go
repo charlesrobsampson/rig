@@ -187,6 +187,10 @@ func Prompt(r Request) (string, error) {
 
 	artifacts := []string{"plan.md", "tasks.md"}
 	if len(r.Ticket.Services) > 1 {
+		b.WriteString("\n## contract.md\n")
+		for _, rule := range contractRules {
+			b.WriteString("- " + rule + "\n")
+		}
 		artifacts = append(artifacts, "contract.md")
 	}
 	for _, name := range artifacts {
@@ -204,9 +208,16 @@ func Prompt(r Request) (string, error) {
 
 var commonRules = []string{
 	"Edit only files inside your own service's checkout (your working directory).",
-	"Never edit state.json, ticket.yaml, or the \"## Agreed\" section of contract.md.",
-	"To change an agreed contract, append a proposal under \"## Proposed changes\" in contract.md; a human accepts it.",
+	"Never edit state.json or ticket.yaml.",
 	"Request phase transitions; never assume them. Gates are approved by a human only.",
+}
+
+// contractRules apply only to a ticket with several services, whose contract.md holds
+// what they have agreed on (docs/formats.md §11).
+var contractRules = []string{
+	"Read contract.md (in the ticket directory) before you start: it is what your service and the others have agreed on, and you build against it.",
+	"Never edit the \"## Agreed\" section. To change it, append a proposal under \"## Proposed changes\" (the format is in the file's comments) and carry on with what the current contract allows; a human accepts or rejects it, and you will be told.",
+	"If a proposal of yours is rejected, work within the agreed contract or propose something else.",
 }
 
 var phaseRules = map[domain.Phase][]string{

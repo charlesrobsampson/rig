@@ -44,6 +44,12 @@ func (m *Manager) moveLocked(l loaded, id, by string, to domain.Phase, reason, s
 		return api.TransitionResult{}, invalid("ticket %q has no service %q", id, service)
 	}
 
+	if l.state.Phase == domain.PhasePlan && to == domain.PhaseImplement && len(gates.Missing(gates.Requirements(m.opts.Global, l.ticket, l.state), domain.GatePlanApproval)) == 0 && planGateRequired(m, l) {
+		if e := m.contractAgreed(l, "leave the plan phase"); e != nil {
+			return api.TransitionResult{}, e
+		}
+	}
+
 	reason = strings.TrimSpace(reason)
 	var made state.Transition
 	err := m.opts.States.Update(l.statePath, func(s *state.State) error {
@@ -131,4 +137,14 @@ func withoutGates(approvals []state.Approval, drop []domain.Gate) []state.Approv
 		}
 	}
 	return kept
+}
+
+// planGateRequired reports whether any service requires the plan approval.
+func planGateRequired(m *Manager, l loaded) bool {
+	for _, r := range gates.Requirements(m.opts.Global, l.ticket, l.state) {
+		if r.Gate == domain.GatePlanApproval {
+			return true
+		}
+	}
+	return false
 }

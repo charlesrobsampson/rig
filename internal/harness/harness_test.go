@@ -84,8 +84,7 @@ func TestThePromptCarriesTheArtifactsAndTheRules(t *testing.T) {
 	for _, want := range []string{
 		`service "api" of rig ticket demo-1: Add locale`,
 		"Use a locale header.", "- [ ] add header",
-		"Never edit state.json, ticket.yaml, or the \"## Agreed\" section",
-		"## Proposed changes", "Request phase transitions", "manual-tests.md",
+		"Never edit state.json or ticket.yaml", "Request phase transitions", "manual-tests.md",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("prompt is missing %q", want)
@@ -102,6 +101,25 @@ func TestTheContractIsIncludedOnlyForMultiServiceTickets(t *testing.T) {
 	multi := launch(t, harness.Request{Ticket: ticket("api", "web"), Service: "web", Phase: domain.PhaseImplement, TicketDir: dir, Dir: "/w"})
 	if !strings.Contains(promptOf(multi), "GET /x") {
 		t.Error("a multi-service prompt left out contract.md")
+	}
+}
+
+func TestContractRulesAppearOnlyForMultiServiceTickets(t *testing.T) {
+	dir := ticketDir(t, artifacts)
+	rules := []string{"Read contract.md", "Never edit the \"## Agreed\" section", "## Proposed changes", "a human accepts or rejects it", "rejected"}
+	single := promptOf(launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhaseImplement, TicketDir: dir, Dir: "/w"}))
+	for _, r := range rules {
+		if strings.Contains(single, r) {
+			t.Errorf("a single-service prompt mentions %q; it has no contract", r)
+		}
+	}
+	for _, phase := range []domain.Phase{domain.PhasePlan, domain.PhaseImplement} {
+		multi := promptOf(launch(t, harness.Request{Ticket: ticket("api", "web"), Service: "web", Phase: phase, TicketDir: dir, Dir: "/w"}))
+		for _, r := range rules {
+			if !strings.Contains(multi, r) {
+				t.Errorf("phase %s: a multi-service prompt lacks %q", phase, r)
+			}
+		}
 	}
 }
 
