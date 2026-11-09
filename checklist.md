@@ -478,7 +478,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 43 · `rig logs`
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/43-logs` · Depends: 37
 - Read: `manifest.md` §6 (CLI)
 - Build: `rig logs <id> [service] [-f] [--tail N] [--json]` multiplexing container logs with a service prefix; works after exit.
