@@ -48,6 +48,11 @@ tasks:
     cmds:
       - go test -tags llm {{.CLI_ARGS | default "./..."}}
 
+  test:linux:
+    desc: Run the default tests on Linux in a container (cross-compiled; needs Docker); pass packages after --
+    cmds:
+      - go run ./tools/linuxtest {{.CLI_ARGS | default "./..."}}
+
   vet:
     desc: go vet
     cmds:

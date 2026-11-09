@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -238,13 +239,26 @@ func (a *app) stopDaemon(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// secretValues is how the daemon finds the values of the secrets tickets name: the
-// Keychain first, then the configured .env file.
-func secretValues(g config.Global, run secrets.SecurityRunner) func(names []string) (map[string]string, error) {
-	keychain := secrets.NewKeychain(g.Secrets.KeychainService)
+// platformStore is the machine's own secret store: the macOS Keychain, or the Secret
+// Service through secret-tool on Linux; anywhere else it finds nothing and only the .env
+// file is used. A test passes a runner to stand in for the real tool; it then always
+// speaks the Keychain's protocol, whatever the platform, so the suite is the same everywhere.
+func platformStore(service string, run secrets.SecurityRunner) secrets.Source {
 	if run != nil {
-		keychain.Run, keychain.Disabled = run, false
+		k := secrets.NewKeychain(service)
+		k.Run, k.Disabled = run, false
+		return k
 	}
-	resolver := secrets.New(keychain, &secrets.EnvFile{Path: g.Secrets.EnvFile})
+	if runtime.GOOS == "linux" {
+		return secrets.NewSecretTool(service)
+	}
+	return secrets.NewKeychain(service)
+}
+
+// secretValues is how the daemon finds the values of the secrets tickets name: the
+// platform's secret store first (the Keychain, or the Secret Service on Linux), then the
+// configured .env file.
+func secretValues(g config.Global, run secrets.SecurityRunner) func(names []string) (map[string]string, error) {
+	resolver := secrets.New(platformStore(g.Secrets.KeychainService, run), &secrets.EnvFile{Path: g.Secrets.EnvFile})
 	return func(names []string) (map[string]string, error) { return resolver.Resolve(context.Background(), names) }
 }

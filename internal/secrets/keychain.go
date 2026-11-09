@@ -13,7 +13,8 @@ import (
 // notFoundExit is what `security find-generic-password` exits with for a missing item.
 const notFoundExit = 44
 
-// SecurityRunner runs the macOS `security` tool and returns its stdout, stderr and exit code.
+// SecurityRunner runs a secret-store command (the macOS `security` tool, or Linux's
+// `secret-tool`) and returns its stdout, stderr and exit code.
 type SecurityRunner func(ctx context.Context, args ...string) (stdout, stderr string, exitCode int, err error)
 
 // Keychain reads generic passwords of one service from the macOS Keychain, the account
@@ -66,8 +67,14 @@ func firstLine(s string) string {
 }
 
 func runSecurity(ctx context.Context, args ...string) (string, string, int, error) {
+	return runCommand(ctx, "/usr/bin/security", args...)
+}
+
+// runCommand runs a program and returns its output and exit code; an exit status is not
+// an error (the caller reads it), a program that cannot run at all is.
+func runCommand(ctx context.Context, program string, args ...string) (string, string, int, error) {
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "/usr/bin/security", args...)
+	cmd := exec.CommandContext(ctx, program, args...)
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
 	var exitErr *exec.ExitError
