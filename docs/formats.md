@@ -197,7 +197,8 @@ errors: 400 invalid_user
 - Proposal heading regex: `^### (P-[a-z][a-z0-9-]*-\d+) · from ([a-z][a-z0-9-]*) · (open|accepted|rejected)$`. The id embeds the proposing service, so agents never collide. The number is that service's next integer.
 - Rejected proposals carry a `**Rejected:** <reason>` line.
 - Agents append proposals only. Rig edits `## Agreed` and `## Changelog` on accept.
-- Malformed proposals are reported, never silently dropped, and never hide valid ones.
+- Malformed proposals are reported, never silently dropped, and never hide valid ones. A proposal is malformed when its heading does not match, its id names a different service than its `from`, its id repeats, it lacks `**What:**` or `**Why:**`, or it is rejected without a `**Rejected:**` reason. The other proposals are still read. HTML comments (the template's guidance) are ignored everywhere, `###` lines inside code fences are text, and a field's value continues over following lines until the next marker.
+- `rig new` writes the template (guidance comments only, nothing agreed) for a ticket with two or more services; single-service tickets have no `contract.md`. "Nothing agreed" means the `## Agreed` section is empty apart from comments.
 
 ## 12. `manual-tests.md`
 - Each step is a level-3 heading `### <step-id>: <title>` (id: `^[a-z0-9-]+$`, unique) followed by free markdown, usually with fenced shell blocks.

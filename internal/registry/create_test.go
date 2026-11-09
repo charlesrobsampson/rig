@@ -11,6 +11,7 @@ import (
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/config"
+	"github.com/charlesrobsampson/rig/internal/contract"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/registry"
 	"github.com/charlesrobsampson/rig/internal/state"
@@ -331,5 +332,41 @@ func TestTwoServicesFromOneRepoGetDistinctDefaultBranches(t *testing.T) {
 	}})
 	if err != nil {
 		t.Fatalf("two instances of one service are a supported setup: %v", err)
+	}
+}
+
+func TestCreateWritesAContractOnlyForTicketsWithSeveralServices(t *testing.T) {
+	tests := []struct {
+		name     string
+		services []api.ServiceSpec
+		want     bool
+	}{
+		{"one service has no contract", []api.ServiceSpec{svc("api")}, false},
+		{"two services get one", []api.ServiceSpec{svc("api"), {Name: "web", Repo: "/repos/web"}}, true},
+		{"three services get one", []api.ServiceSpec{svc("api"), {Name: "web", Repo: "/repos/web"}, {Name: "worker", Repo: "/repos/worker"}}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newCreator(t)
+			res, err := f.creator.Create(ctx, api.TicketNewParams{ID: "demo", Title: "Demo", Services: tt.services})
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(res.Path, "contract.md")
+			info, statErr := os.Stat(path)
+			if tt.want != (statErr == nil) {
+				t.Fatalf("contract.md exists = %v, want %v", statErr == nil, tt.want)
+			}
+			if !tt.want {
+				return
+			}
+			if info.Mode().Perm() != 0o600 {
+				t.Errorf("mode = %v, want 0600", info.Mode().Perm())
+			}
+			doc := contract.Parse(read(t, path))
+			if doc.Title != "Contract: demo" || len(doc.Problems) != 0 || len(doc.Proposals) != 0 || !doc.AgreedEmpty() {
+				t.Errorf("the created contract = %+v", doc)
+			}
+		})
 	}
 }
