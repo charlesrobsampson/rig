@@ -97,6 +97,9 @@ type Contract struct {
 	// Seen lists the proposal ids already announced, so each is announced once, even
 	// across daemon restarts.
 	Seen []string `json:"seen,omitempty"`
+	// Resolved lists proposals a human resolved through rig, whose contract.resolved
+	// event rig already published, so the file watcher does not publish it again.
+	Resolved []string `json:"resolved,omitempty"`
 	// Violation describes an unresolved direct edit of the agreed section.
 	Violation string `json:"violation,omitempty"`
 }

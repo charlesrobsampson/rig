@@ -180,7 +180,7 @@ func TestEveryDocumentedMethodIsKnownAndOnlyStreamingOnesStream(t *testing.T) {
 		"hello", "status", "config.get", "ticket.list", "ticket.get", "ticket.rescan", "ticket.new",
 		"ticket.start", "ticket.stop", "gate.list", "gate.approve", "phase.set", "transition.request",
 		"agent.attach", "agent.message", "agent.event", "contract.list", "contract.accept",
-		"contract.reject", "review.diff", "push.run", "tests.render", "logs.stream", "events.subscribe",
+		"contract.reject", "contract.ack", "review.diff", "push.run", "tests.render", "logs.stream", "events.subscribe",
 		"reconcile.run", "daemon.stop",
 	}
 	for _, m := range documented {

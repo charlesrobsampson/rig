@@ -30,6 +30,7 @@ type Proposal struct {
 	Why      string `json:"why"`
 	Rejected string `json:"rejected,omitempty"` // the reason, for a rejected proposal
 	Line     int    `json:"line"`
+	end      int    // 0-based line index just after the proposal's last line
 }
 
 // Block is a machine-readable fenced block in the agreed section.
@@ -53,6 +54,10 @@ type Doc struct {
 	Proposals []Proposal `json:"proposals"`
 	Changelog []string   `json:"changelog"`
 	Problems  []Problem  `json:"problems"`
+
+	// positions, as 0-based line indexes into the original text, for the edit functions
+	lines                               []string
+	agreedEnd, proposedEnd, changelogAt int // where each section's text ends (exclusive); -1 if absent
 }
 
 var (
@@ -72,8 +77,10 @@ const (
 // Problem and the rest is still returned.
 func Parse(md string) Doc {
 	md = strings.ReplaceAll(md, "\r\n", "\n")
-	lines := blankComments(strings.Split(md, "\n"))
+	original := strings.Split(md, "\n")
+	lines := blankComments(original)
 	var d Doc
+	d.lines, d.agreedEnd, d.proposedEnd, d.changelogAt = original, -1, -1, -1
 	d.Blocks, d.Proposals, d.Changelog, d.Problems = []Block{}, []Proposal{}, []string{}, []Problem{}
 
 	type span struct{ start, end int } // line indexes, end exclusive
@@ -120,13 +127,16 @@ func Parse(md string) Doc {
 	}
 
 	if s, ok := sections[secAgreed]; ok {
+		d.agreedEnd = s.end
 		d.Agreed = strings.TrimSpace(strings.Join(lines[s.start:s.end], "\n"))
 		d.Blocks = parseBlocks(lines, s.start, s.end)
 	}
 	if s, ok := sections[secProposed]; ok {
+		d.proposedEnd = s.end
 		d.Proposals, d.Problems = parseProposals(lines, s.start, s.end, d.Problems)
 	}
 	if s, ok := sections[secChangelog]; ok {
+		d.changelogAt = s.end
 		for _, l := range lines[s.start:s.end] {
 			if t := strings.TrimSpace(l); strings.HasPrefix(t, "- ") {
 				d.Changelog = append(d.Changelog, strings.TrimSpace(strings.TrimPrefix(t, "- ")))
@@ -205,6 +215,7 @@ func parseProposals(lines []string, start, end int, problems []Problem) ([]Propo
 		line    int
 		heading string
 		body    []string
+		end     int
 	}
 	var entries []entry
 	for i := start; i < end; i++ {
@@ -220,6 +231,9 @@ func parseProposals(lines []string, start, end int, problems []Problem) ([]Propo
 			entries[len(entries)-1].body = append(entries[len(entries)-1].body, line)
 		}
 	}
+	for i := range entries {
+		entries[i].end = entries[i].line + len(entries[i].body) // line is 1-based: index of the heading + 1 + body length
+	}
 
 	for _, e := range entries {
 		m := proposalRe.FindStringSubmatch(e.heading)
@@ -227,7 +241,7 @@ func parseProposals(lines []string, start, end int, problems []Problem) ([]Propo
 			problems = append(problems, Problem{e.line, fmt.Sprintf("%q is not a proposal heading; write `### P-<service>-<n> · from <service> · open`", e.heading)})
 			continue
 		}
-		p := Proposal{ID: m[1], From: m[2], Status: Status(m[3]), Line: e.line}
+		p := Proposal{ID: m[1], From: m[2], Status: Status(m[3]), Line: e.line, end: e.end}
 		var bad []string
 		if id := idRe.FindStringSubmatch(p.ID); id != nil && id[1] != p.From {
 			bad = append(bad, fmt.Sprintf("the id %s names service %q but the proposal says it is from %q", p.ID, id[1], p.From))

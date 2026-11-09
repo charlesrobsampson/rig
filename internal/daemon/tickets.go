@@ -87,6 +87,34 @@ func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 		}
 		return m.Push(ctx, p)
 	})
+	s.Handle(api.MethodContractList, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.ContractListParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "contract.list needs params like {\"ticket\": \"ticket-1\"}"}
+		}
+		return m.ContractList(ctx, p)
+	})
+	s.Handle(api.MethodContractAccept, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.ContractResolveParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "contract.accept needs params like {\"ticket\": \"ticket-1\", \"proposal\": \"P-api-1\"}"}
+		}
+		return m.ContractAccept(ctx, p)
+	})
+	s.Handle(api.MethodContractReject, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.ContractResolveParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "contract.reject needs params like {\"ticket\": \"ticket-1\", \"proposal\": \"P-api-1\", \"reason\": \"...\"}"}
+		}
+		return m.ContractReject(ctx, p)
+	})
+	s.Handle(api.MethodContractAck, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.ContractAckParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "contract.ack needs params like {\"ticket\": \"ticket-1\"}"}
+		}
+		return struct{}{}, m.ContractAck(ctx, p)
+	})
 	s.Handle(api.MethodReviewDiff, func(ctx context.Context, params json.RawMessage) (any, error) {
 		var p api.ReviewDiffParams
 		if err := json.Unmarshal(params, &p); err != nil {

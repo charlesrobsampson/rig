@@ -17,6 +17,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/client"
 	"github.com/charlesrobsampson/rig/internal/clock"
 	"github.com/charlesrobsampson/rig/internal/config"
+	"github.com/charlesrobsampson/rig/internal/contractnotify"
 	"github.com/charlesrobsampson/rig/internal/contractwatch"
 	"github.com/charlesrobsampson/rig/internal/daemon"
 	"github.com/charlesrobsampson/rig/internal/docker/dockercli"
@@ -136,20 +137,23 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	if a.configPath != "" {
 		agentEnv["RIG_CONFIG"] = a.configPath
 	}
+	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Logger: logger, Interval: time.Second})
+	injector := inject.New(inject.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Readiness: sup, Clock: clk})
+	notifier := &contractnotify.Notifier{Dir: g.TicketsDir(), Sender: injector, Logger: logger}
 	daemon.RegisterLifecycleHandlers(srv, lifecycle.New(lifecycle.Options{
 		Dir: g.TicketsDir(), States: states, Global: g, Bus: bus, Clock: clk,
 		Backend: backend, BackendName: g.Defaults.TerminalBackend, RigBinary: rigBinary, AgentEnv: agentEnv, Docker: dk, Secrets: secretValues(g, a.deps.keychain), GH: a.deps.gh,
+		OnContractResolved: notifier.Resolved,
 	}))
-	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Logger: logger, Interval: time.Second})
 	daemon.RegisterAgentHandlers(srv, sup)
-	daemon.RegisterMessageHandler(srv, inject.New(inject.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Readiness: sup, Clock: clk}))
+	daemon.RegisterMessageHandler(srv, injector)
 
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	supCtx, stopSup := context.WithCancel(ctx)
 	supDone, watchDone, contractDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	go func() { sup.Run(supCtx); close(supDone) }()
-	cw := contractwatch.New(contractwatch.Options{Dir: g.TicketsDir(), States: states, Bus: bus, Clock: clk, Logger: logger})
+	cw := contractwatch.New(contractwatch.Options{Dir: g.TicketsDir(), States: states, Bus: bus, Clock: clk, Logger: logger, OnProposal: notifier.NewProposal})
 	go func() { cw.Run(supCtx); close(contractDone) }()
 	watcher := &egress.Watcher{Docker: dk, Bus: bus, Clock: clk, Logger: logger}
 	go func() { watcher.Run(supCtx); close(watchDone) }()
