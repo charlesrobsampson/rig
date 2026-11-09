@@ -1,6 +1,7 @@
 package git_test
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -72,4 +73,26 @@ func TestDefaultBranch(t *testing.T) {
 			t.Errorf("error = %v, want one telling the user to set a base", err)
 		}
 	})
+}
+
+func TestCheckRepo(t *testing.T) {
+	repo := testkit.NewRepo(t)
+	file := filepath.Join(t.TempDir(), "afile")
+	os.WriteFile(file, nil, 0o644)
+	tests := []struct {
+		name, dir, want string
+	}{
+		{"a repository", repo.Dir, ""},
+		{"a directory that is not a repository", t.TempDir(), "not a git repository"},
+		{"a missing path", filepath.Join(t.TempDir(), "nope"), "no such directory"},
+		{"a file", file, "no such directory"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := git.CheckRepo(ctx, tt.dir)
+			if (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)) {
+				t.Errorf("CheckRepo = %v, want %q", err, tt.want)
+			}
+		})
+	}
 }
