@@ -17,9 +17,12 @@ type Request struct {
 	Ticket    domain.Ticket
 	Service   string
 	Phase     domain.Phase
-	TicketDir string // holds plan.md, tasks.md and contract.md
-	Dir       string // the service's checkout: the agent's working directory
-	Network   domain.NetworkMode
+	TicketDir string // holds plan.md, tasks.md and contract.md, as rig reads them
+	// AgentTicketDir is where the agent sees those files (a container mounts them
+	// elsewhere); empty means TicketDir.
+	AgentTicketDir string
+	Dir            string // the service's checkout: the agent's working directory
+	Network        domain.NetworkMode
 	// Profile is the resolved auth profile; nil means no credentials are passed.
 	Profile *config.AuthProfile
 	// Secrets holds resolved secret values by name. Only names the ticket lists in
