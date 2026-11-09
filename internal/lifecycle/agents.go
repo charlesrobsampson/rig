@@ -22,7 +22,7 @@ import (
 // without Docker it is not started on the host instead, since that would quietly drop
 // the isolation the sandbox promises. A host-sandbox service's agent runs on the host,
 // which start warns about.
-func (m *Manager) launchAgents(ctx context.Context, l loaded, checkouts []api.CheckoutInfo, sandbox domain.Sandbox, net *api.NetworkInfo) (agents []api.AgentInfo, warnings []string) {
+func (m *Manager) launchAgents(ctx context.Context, l loaded, checkouts []api.CheckoutInfo, sandbox domain.Sandbox, net *api.NetworkInfo, extraEnv map[string]string) (agents []api.AgentInfo, warnings []string) {
 	if m.opts.Backend == nil {
 		return nil, nil
 	}
@@ -66,7 +66,7 @@ func (m *Manager) launchAgents(ctx context.Context, l loaded, checkouts []api.Ch
 				warnings = append(warnings, fmt.Sprintf("service %s: its agent runs directly on this machine (sandbox: host), with your user's access to everything you can reach; use the default container sandbox to isolate it", svc.Name))
 			}
 		} else {
-			al, err = m.prepareContainerAgent(ctx, l, svc, eff, checkouts[i], net)
+			al, err = m.prepareContainerAgent(ctx, l, svc, eff, checkouts[i], net, extraEnv)
 		}
 		if err != nil {
 			info.Error = err.Error()

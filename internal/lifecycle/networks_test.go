@@ -23,7 +23,7 @@ func dockerFixture(t *testing.T, mode domain.NetworkMode) (*fixture, *testkit.Fa
 	clock := testkit.NewFakeClock(epoch)
 	f.lc = lifecycle.New(lifecycle.Options{
 		Dir: f.dir, States: f.states, Bus: f.bus, Clock: clock, Docker: dk,
-		Global: config.Global{Defaults: config.Defaults{Sandbox: domain.SandboxContainer, NetworkMode: mode, BranchPrefix: "rig/"}},
+		EgressBinary: fakeProxyBinary, Settle: -1, Global: config.Global{Defaults: config.Defaults{Sandbox: domain.SandboxContainer, NetworkMode: mode, BranchPrefix: "rig/"}},
 	})
 	return f, dk, clock
 }
@@ -184,3 +184,6 @@ func TestStopOfARefusedDirtyCheckoutLeavesTheNetwork(t *testing.T) {
 		t.Errorf("networks = %v; a refused stop must not tear the network down", got)
 	}
 }
+
+// fakeProxyBinary stands in for the embedded egress proxy, which default tests must not need.
+func fakeProxyBinary(string) ([]byte, error) { return []byte("proxy"), nil }
