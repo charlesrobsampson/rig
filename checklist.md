@@ -324,7 +324,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 28 · tmux backend
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/28-tmux-backend` · Depends: 26
 - Read: `docs/spikes/03-tmux.md`
 - Build: tmux implementation (private socket, one session per ticket, one window per service, `remain-on-exit on`), liveness/exit status from `list-panes`, screen-heuristic fallback and input injection per `docs/spikes/03-tmux.md` §1–3, passing the contract suite under the `integration` tag; `terminal_backend: herdr|tmux` selection from config.
