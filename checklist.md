@@ -226,7 +226,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 20 · Ticket templates and `rig new`
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/20-rig-new` · Depends: 08, 11, 15, 19
 - Read: `manifest.md` §2, §3, `docs/formats.md` §3–5, §10
 - Build: `rig new` (flags: `--id`, `--title`, `--service name=repo[@branch]`, `--from <type>:<ref>`) creates the ticket dir with `ticket.yaml`, `plan.md`, `tasks.md`, `manual-tests.md` stubs, and `state.json` at phase `plan`. Fails if the id exists. Seed description goes into `plan.md`.
