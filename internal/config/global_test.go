@@ -119,6 +119,8 @@ func TestLoadGlobalRejectsBadConfigFiles(t *testing.T) {
 		{"bad terminal backend", `{"defaults":{"terminal_backend":"zellij"}}`, []string{"terminal_backend", "zellij", "herdr", "tmux"}},
 		{"empty harness", `{"defaults":{"harness":""}}`, []string{"harness"}},
 		{"bad summarizer provider", `{"summarizer":{"provider":"gpt"}}`, []string{"summarizer.provider", "gpt"}},
+		{"jira over plain http", `{"jira":{"base_url":"http://jira.acme.com"}}`, []string{"jira.base_url", "https"}},
+		{"jira that is not a url", `{"jira":{"base_url":"acme"}}`, []string{"jira.base_url"}},
 		{"ollama without a model", `{"summarizer":{"provider":"ollama"}}`, []string{"summarizer.model", "ollama"}},
 		{"bad branch prefix", `{"defaults":{"branch_prefix":"no slash"}}`, []string{"defaults.branch_prefix", "no slash"}},
 		{"zero ticket cap", `{"limits":{"max_active_tickets":0}}`, []string{"max_active_tickets"}},

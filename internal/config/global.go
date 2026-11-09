@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -25,6 +26,17 @@ type Global struct {
 	Secrets    Secrets    `json:"secrets"`
 	Docker     Docker     `json:"docker"`
 	Egress     Egress     `json:"egress"`
+	Jira       Jira       `json:"jira"`
+}
+
+// Jira says where to read issues from for `rig new --from jira:KEY`. The credential is
+// the JIRA_API_TOKEN secret (Keychain or .env), never part of the config.
+type Jira struct {
+	// BaseURL is the Jira site, like https://acme.atlassian.net.
+	BaseURL string `json:"base_url,omitempty"`
+	// Email is the Atlassian Cloud account the API token belongs to; leave it out for a
+	// Server/Data Center personal access token.
+	Email string `json:"email,omitempty"`
 }
 
 type Summarizer struct {
@@ -240,6 +252,11 @@ func validateGlobal(g Global) []string {
 	}
 	if !contains(summarizers, g.Summarizer.Provider) {
 		add("summarizer.provider: %q is not supported (want %s)", g.Summarizer.Provider, strings.Join(summarizers, ", "))
+	}
+	if u := g.Jira.BaseURL; u != "" {
+		if parsed, err := url.Parse(u); err != nil || parsed.Host == "" || (parsed.Scheme != "https" && !(parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1"))) {
+			add("jira.base_url: %q must be an https URL like https://acme.atlassian.net", u)
+		}
 	}
 	if g.Summarizer.Provider == "ollama" && strings.TrimSpace(g.Summarizer.Model) == "" {
 		add("summarizer.model: required when the provider is ollama (for example \"llama3:8b\")")

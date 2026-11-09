@@ -755,13 +755,18 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Manual check (a summary in the dashboard for a real ticket) is for you: set `summarizer: {provider: claude}` in the config and put `ANTHROPIC_API_KEY` in the Keychain (`security add-generic-password -s rig -a ANTHROPIC_API_KEY -w`) or the `.env`.
 
 ### 63 · Jira ticket source
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/63-jira` · Depends: 19, 41
 - Read: `manifest.md` §5 (`source`)
 - Build: `jira` source (`rig new --from jira:PROJ-412`) filling title and description into `plan.md`; credentials from the secrets resolver; no writes back to Jira.
 - Tests (`httptest` fake Jira): seed fields mapped; 404 and 401 give clear errors; markup converted to markdown reasonably; credentials never logged.
 - Manual check: create a ticket from a real Jira key.
+- Notes:
+  - `ticket.Jira` (`internal/ticket/jira.go`): `GET /rest/api/2/issue/{KEY}?fields=summary,description` only (a test asserts no request is ever anything but GET). v2 was chosen because Cloud and Server/Data Center both serve it and it returns the description as wiki markup, which `JiraMarkupToMarkdown` converts: headings, bold, monospace, links, nested bullets and numbered lists, `{code}`/`{noformat}` blocks, quotes, tables, strikethrough, rules; unknown markup stays as written. The seed has the key as id (the registry lowercases it to `proj-412`), the summary as title, the converted description and the issue URL, which land in `plan.md`; `source: {type: jira, key}` is recorded.
+  - Config `jira.base_url` (+ optional `email`), validated as https; credential = secret `JIRA_API_TOKEN` via the same resolver as every secret (basic auth with `email`, bearer without). Not configured gives `invalid` naming `jira.base_url`; a missing secret names `JIRA_API_TOKEN`; 404 is `not_found` ("does not exist, or this account cannot see it"), 401/403/429/5xx have their own messages, 401 saying Cloud needs `jira.email`.
+  - Credentials never logged: tests check errors from every status, scrub the credential from transport errors, and scan the whole rig home (ticket files, config, log) after a real `rig new --from jira:` through the in-process daemon.
+  - Manual check (create a ticket from a real Jira key) is for you: add `"jira": {"base_url": "...", "email": "..."}` to the config, `security add-generic-password -s rig -a JIRA_API_TOKEN -w`, then `rig new --from jira:PROJ-123 --service api=<repo>`.
 
 ### 64 · GitHub issues ticket source
 - [ ] Done

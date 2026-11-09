@@ -5,6 +5,8 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,5 +139,118 @@ func TestTheClaudeSummarizerFindsItsKeyThroughTheSecretsResolver(t *testing.T) {
 	// without a resolver the provider cannot be built, and the daemon carries on without summaries
 	if s := newSummaryService(g, nil, nil, clock.Real(), slogDiscard()); s.Enabled() {
 		t.Error("claude without a resolver enabled summaries")
+	}
+}
+
+// jiraEnv is a daemon whose config points at a fake Jira, with the credential in the
+// (fake) Keychain.
+func jiraEnv(t *testing.T, srvURL string, withToken bool) (home string, d deps, repo *testkit.Repo) {
+	t.Helper()
+	home = rigEnv(t)
+	cfg := filepath.Join(t.TempDir(), "config.json")
+	os.WriteFile(cfg, []byte(`{"jira":{"base_url":"`+srvURL+`","email":"me@acme.com"}}`), 0o600)
+	t.Setenv("RIG_CONFIG", cfg)
+	keychain := func(_ context.Context, args ...string) (string, string, int, error) {
+		if withToken && strings.Contains(strings.Join(args, " "), "JIRA_API_TOKEN") {
+			return "jira-token-xyz\n", "", 0, nil
+		}
+		return "", "item could not be found", 44, nil
+	}
+	daemon := &inProcessDaemon{backend: testkit.NewFakeTerminal(), docker: testkit.NewFakeDocker(), keychain: keychain, gh: testkit.NewFakeGH()}
+	t.Cleanup(func() { daemon.shutdown(t) })
+	return home, deps{spawner: daemon.spawn, backend: daemon.backend, docker: daemon.docker, keychain: keychain, gh: daemon.gh}, testkit.NewRepo(t)
+}
+
+func TestNewFromJiraSeedsThePlanAndKeepsTheCredentialOutOfEverything(t *testing.T) {
+	var gotUser, gotPass string
+	var methods []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method+" "+r.URL.Path)
+		gotUser, gotPass, _ = r.BasicAuth()
+		io.WriteString(w, `{"key":"PROJ-412","fields":{"summary":"Dashboard for users","description":"h2. Goal\nShow *bold* things.\n* one"}}`)
+	}))
+	defer srv.Close()
+	home, d, repo := jiraEnv(t, srv.URL, true)
+
+	stdout, stderr, code := rig(t, d, "new", "--from", "jira:PROJ-412", "--service", "api="+repo.Dir)
+	if code != 0 {
+		t.Fatalf("code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	if gotUser != "me@acme.com" || gotPass != "jira-token-xyz" || len(methods) != 1 || methods[0] != "GET /rest/api/2/issue/PROJ-412" {
+		t.Errorf("Jira saw user %q pass %q requests %v", gotUser, gotPass, methods)
+	}
+	dir := filepath.Join(home, "tickets", "proj-412")
+	plan, _ := os.ReadFile(filepath.Join(dir, "plan.md"))
+	yaml, _ := os.ReadFile(filepath.Join(dir, "ticket.yaml"))
+	for _, want := range []string{"Dashboard for users", "## Goal", "Show **bold** things.", "- one", srv.URL + "/browse/PROJ-412"} {
+		if !strings.Contains(string(plan), want) {
+			t.Errorf("plan.md lacks %q:\n%s", want, plan)
+		}
+	}
+	if !strings.Contains(string(yaml), "jira") || !strings.Contains(string(yaml), "PROJ-412") {
+		t.Errorf("ticket.yaml does not record the source:\n%s", yaml)
+	}
+
+	// the credential is nowhere it should not be
+	log, _ := os.ReadFile(filepath.Join(home, "rigd.log"))
+	var files []string
+	filepath.Walk(home, func(p string, info os.FileInfo, _ error) error {
+		if info != nil && !info.IsDir() && !strings.HasSuffix(p, ".sock") {
+			files = append(files, p)
+		}
+		return nil
+	})
+	for _, f := range files {
+		if raw, _ := os.ReadFile(f); strings.Contains(string(raw), "jira-token-xyz") {
+			t.Errorf("the credential was written to %s", f)
+		}
+	}
+	if strings.Contains(string(log)+stdout+stderr, "jira-token-xyz") {
+		t.Error("the credential is in a log or output")
+	}
+}
+
+func TestNewFromJiraErrorsMapToExitCodesAndSayWhatToDo(t *testing.T) {
+	status := http.StatusNotFound
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(status)
+	}))
+	defer srv.Close()
+	_, d, repo := jiraEnv(t, srv.URL, true)
+	tests := []struct {
+		name   string
+		status int
+		args   []string
+		code   int
+		want   string
+	}{
+		{"an unknown issue", 404, []string{"new", "--from", "jira:PROJ-9", "--service", "api=" + repo.Dir}, 5, "PROJ-9 does not exist"},
+		{"a bad credential", 401, []string{"new", "--from", "jira:PROJ-9", "--service", "api=" + repo.Dir}, 4, "rejected the credentials"},
+		{"a malformed key", 200, []string{"new", "--from", "jira:nonsense", "--service", "api=" + repo.Dir}, 2, "not a Jira issue key"},
+	}
+	for _, tt := range tests {
+		status = tt.status
+		_, stderr, code := rig(t, d, tt.args...)
+		if code != tt.code || !strings.Contains(stderr, tt.want) {
+			t.Errorf("%s: code %d (want %d), stderr %q", tt.name, code, tt.code, stderr)
+		}
+	}
+}
+
+func TestNewFromJiraWithoutACredentialOrConfigExplainsWhatIsMissing(t *testing.T) {
+	_, d, repo := jiraEnv(t, "https://acme.atlassian.net", false)
+	_, stderr, code := rig(t, d, "new", "--from", "jira:PROJ-9", "--service", "api="+repo.Dir)
+	if code == 0 || !strings.Contains(stderr, "JIRA_API_TOKEN") {
+		t.Errorf("code %d, stderr %q; it should name the missing secret", code, stderr)
+	}
+
+	// no base_url at all
+	rigEnv(t)
+	plain := &inProcessDaemon{backend: testkit.NewFakeTerminal(), docker: testkit.NewFakeDocker(), gh: testkit.NewFakeGH()}
+	t.Cleanup(func() { plain.shutdown(t) })
+	d2 := deps{spawner: plain.spawn, backend: plain.backend, docker: plain.docker, gh: plain.gh}
+	_, stderr, code = rig(t, d2, "new", "--from", "jira:PROJ-9", "--service", "api="+repo.Dir)
+	if code != 2 || !strings.Contains(stderr, "jira.base_url") {
+		t.Errorf("unconfigured: code %d, stderr %q", code, stderr)
 	}
 }
