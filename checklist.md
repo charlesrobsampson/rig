@@ -408,7 +408,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 36 · Per-ticket network
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/36-network` · Depends: 10, 33
 - Read: `manifest.md` §4
 - Build: create/remove `rig-<ticket-id>` per ticket on start/stop honoring `network_mode` (`bridge` | `internal`; `internal` creates it with Docker's internal flag) and, in `internal` mode, the `rig-<ticket-id>-egress` bridge network for the proxy (formats §7); idempotent; removal waits for containers to detach.
