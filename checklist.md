@@ -512,7 +512,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 46 · Push modes: none, push-branch, merge
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/46-push-modes` · Depends: 18, 10
 - Read: `manifest.md` §5 (push modes)
 - Build: `internal/git` push implementations run on the host, always **after `Import`** (so the branch is in the main repo) and from the main repo with the user's credentials, never from a clone: `none` (report only), `push-branch` (push the feature branch), `merge` (merge into base and push, refusing non-fast-forward unless configured). Credentials stay on the host.
