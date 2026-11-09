@@ -29,6 +29,8 @@ The exact shapes that every part of rig shares. `manifest.md` says *what* and *w
 - Config: `"jira": {"base_url": "https://acme.atlassian.net", "email": "me@acme.com"}`. With `email` the credential is an Atlassian Cloud API token sent with basic auth; without it, a Server/Data Center personal access token sent as a bearer token. The credential is the `JIRA_API_TOKEN` secret (Keychain, then `.env`), looked up per request and never written to the config, ticket files, logs or errors. `base_url` must be https (http only for this machine).
 - Errors: unknown or invisible issue `not_found`; a malformed key or a missing `jira.base_url` `invalid`; a rejected credential, a missing secret or a Jira outage `unavailable`.
 
+- `github:owner/repo#123` reads one issue with `GET <github.api_url>/repos/owner/repo/issues/123` (GET only). The ticket id is `owner-repo-123`; the title and Markdown body come as they are (into `plan.md`, with the issue URL). A pull request is rejected (`invalid`): tickets are seeded from issues. `github.api_url` defaults to `https://api.github.com` (GitHub Enterprise: `https://host/api/v3`; https only, except this machine). The credential is the optional `GITHUB_TOKEN` secret: without it the request is anonymous, which works for public repositories within GitHub's low anonymous rate limit; with it, private repositories work. Errors: unknown, deleted or invisible issue `not_found` (the message suggests `GITHUB_TOKEN` when anonymous); rate limit, rejected token, outage `unavailable`.
+
 ## 3. Ticket directory
 ```text
 <rig home>/tickets/<id>/

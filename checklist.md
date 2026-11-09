@@ -769,13 +769,19 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Manual check (create a ticket from a real Jira key) is for you: add `"jira": {"base_url": "...", "email": "..."}` to the config, `security add-generic-password -s rig -a JIRA_API_TOKEN -w`, then `rig new --from jira:PROJ-123 --service api=<repo>`.
 
 ### 64 · GitHub issues ticket source
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/64-github-source` · Depends: 19, 41
 - Read: `manifest.md` §5
 - Build: `github` source (`--from github:owner/repo#123`), same shape as Jira.
 - Tests (`httptest`): same cases as Jira; PRs referenced as issues handled or rejected clearly.
 - Manual check: create a ticket from a real issue.
+- Notes:
+  - `ticket.GitHub` (`internal/ticket/github.go`) has the Jira source's shape: reference `owner/repo#123` (strictly validated before any request, so no path tricks), `GET /repos/{o}/{r}/issues/{n}` only, Markdown body used as is (CRLF normalized), id `owner-repo-123` after the registry's sanitizing, issue URL kept.
+  - Pull requests: the issues API returns PRs too; a result with a `pull_request` field is rejected with "owner/repo#7 is a pull request, not an issue" (a `null` field is not a PR). Rejecting was chosen over seeding from a PR because a PR is already code, not work to plan.
+  - Credential: optional `GITHUB_TOKEN` secret. New `secrets.ErrNotFound` (the existing "secrets not found" error, now wrapped) lets the source tell "no token configured" (anonymous request, fine for public repos) from "the Keychain failed" (an error). 404 anonymous suggests adding the token; 401, rate limits (403 with remaining 0, 429), 410 and other statuses have their own messages. Config `github.api_url` for GitHub Enterprise, validated https.
+  - Same safeguards and tests as Jira: GET only, credential scrubbed from transport errors and never in any error, end-to-end `rig new --from github:` through the in-process daemon with and without a token.
+  - Manual check (create a ticket from a real issue) is for you: `rig new --from github:owner/repo#123 --service api=<repo>` (add `GITHUB_TOKEN` to the Keychain for a private repo).
 
 ### 65 · MCP server
 - [ ] Done

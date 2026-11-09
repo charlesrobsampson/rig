@@ -63,6 +63,13 @@ func TestMissingSecretsAreNamedTogetherWithWhereWeLooked(t *testing.T) {
 	if strings.Contains(err.Error(), "HAVE") {
 		t.Errorf("a secret that was found is named as missing: %v", err)
 	}
+	if !errors.Is(err, secrets.ErrNotFound) {
+		t.Errorf("a missing secret is not errors.Is ErrNotFound: %v", err)
+	}
+	failing := secrets.New(&fakeSource{name: "k", err: errors.New("locked")})
+	if _, err := failing.Resolve(ctx, []string{"X"}); errors.Is(err, secrets.ErrNotFound) {
+		t.Errorf("a source that failed looks like a missing secret: %v", err)
+	}
 	if _, err := secrets.New().Resolve(ctx, []string{"X"}); err == nil || !strings.Contains(err.Error(), "no secret source") {
 		t.Errorf("with no sources: %v", err)
 	}

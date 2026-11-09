@@ -254,3 +254,95 @@ func TestNewFromJiraWithoutACredentialOrConfigExplainsWhatIsMissing(t *testing.T
 		t.Errorf("unconfigured: code %d, stderr %q", code, stderr)
 	}
 }
+
+// githubEnv is a daemon whose config points at a fake GitHub API.
+func githubEnv(t *testing.T, apiURL string, token string) (home string, d deps, repo *testkit.Repo) {
+	t.Helper()
+	home = rigEnv(t)
+	cfg := filepath.Join(t.TempDir(), "config.json")
+	os.WriteFile(cfg, []byte(`{"github":{"api_url":"`+apiURL+`"}}`), 0o600)
+	t.Setenv("RIG_CONFIG", cfg)
+	keychain := func(_ context.Context, args ...string) (string, string, int, error) {
+		if token != "" && strings.Contains(strings.Join(args, " "), "GITHUB_TOKEN") {
+			return token + "\n", "", 0, nil
+		}
+		return "", "item could not be found", 44, nil
+	}
+	daemon := &inProcessDaemon{backend: testkit.NewFakeTerminal(), docker: testkit.NewFakeDocker(), keychain: keychain, gh: testkit.NewFakeGH()}
+	t.Cleanup(func() { daemon.shutdown(t) })
+	return home, deps{spawner: daemon.spawn, backend: daemon.backend, docker: daemon.docker, keychain: keychain, gh: daemon.gh}, testkit.NewRepo(t)
+}
+
+func TestNewFromGitHubSeedsThePlanWithAndWithoutAToken(t *testing.T) {
+	var auths, paths []string
+	status, body := 200, `{"number":123,"title":"Add a locale header","body":"## Why\nBecause.","html_url":"https://github.com/acme/api/issues/123"}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auths = append(auths, r.Header.Get("Authorization"))
+		paths = append(paths, r.Method+" "+r.URL.Path)
+		w.WriteHeader(status)
+		io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	home, d, repo := githubEnv(t, srv.URL, "ghp_clitoken")
+	_, stderr, code := rig(t, d, "new", "--from", "github:acme/api#123", "--service", "api="+repo.Dir)
+	if code != 0 {
+		t.Fatalf("code %d, stderr %q", code, stderr)
+	}
+	if auths[0] != "Bearer ghp_clitoken" || paths[0] != "GET /repos/acme/api/issues/123" {
+		t.Errorf("GitHub saw %q %q", auths[0], paths[0])
+	}
+	dir := filepath.Join(home, "tickets", "acme-api-123")
+	plan, _ := os.ReadFile(filepath.Join(dir, "plan.md"))
+	yaml, _ := os.ReadFile(filepath.Join(dir, "ticket.yaml"))
+	for _, want := range []string{"Add a locale header", "## Why", "Because.", "https://github.com/acme/api/issues/123"} {
+		if !strings.Contains(string(plan), want) {
+			t.Errorf("plan.md lacks %q:\n%s", want, plan)
+		}
+	}
+	if !strings.Contains(string(yaml), "github") || !strings.Contains(string(yaml), "acme/api#123") {
+		t.Errorf("ticket.yaml does not record the source:\n%s", yaml)
+	}
+	log, _ := os.ReadFile(filepath.Join(home, "rigd.log"))
+	if strings.Contains(string(log), "ghp_clitoken") {
+		t.Error("the token is in the daemon log")
+	}
+}
+
+func TestNewFromGitHubWorksAnonymouslyForPublicRepositories(t *testing.T) {
+	var auth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = r.Header.Get("Authorization")
+		io.WriteString(w, `{"number":5,"title":"Public issue","body":null}`)
+	}))
+	defer srv.Close()
+	home, d, repo := githubEnv(t, srv.URL, "") // no token anywhere
+	if _, stderr, code := rig(t, d, "new", "--from", "github:acme/api#5", "--service", "api="+repo.Dir); code != 0 || auth != "" {
+		t.Fatalf("code %d, auth %q, stderr %q", code, auth, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(home, "tickets", "acme-api-5", "plan.md")); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestNewFromGitHubErrorsMapToExitCodes(t *testing.T) {
+	status, body := 404, `{"message":"Not Found"}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(status)
+		io.WriteString(w, body)
+	}))
+	defer srv.Close()
+	_, d, repo := githubEnv(t, srv.URL, "")
+	run := func(name string, st int, b, ref string, code int, want string) {
+		t.Helper()
+		status, body = st, b
+		_, stderr, got := rig(t, d, "new", "--from", ref, "--service", "api="+repo.Dir)
+		if got != code || !strings.Contains(stderr, want) {
+			t.Errorf("%s: code %d (want %d), stderr %q", name, got, code, stderr)
+		}
+	}
+	run("an unknown issue", 404, `{}`, "github:acme/api#9", 5, "does not exist")
+	run("a pull request", 200, `{"title":"T","pull_request":{"url":"x"}}`, "github:acme/api#9", 2, "is a pull request, not an issue")
+	run("a bad token", 401, `{}`, "github:acme/api#9", 4, "rejected the credentials")
+	run("a malformed reference", 200, `{}`, "github:nonsense", 2, "not a GitHub issue reference")
+}

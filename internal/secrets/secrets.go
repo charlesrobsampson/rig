@@ -7,10 +7,15 @@ package secrets
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 )
+
+// ErrNotFound is what Resolve returns, wrapped, when a secret exists in none of its
+// sources; callers with an optional secret can tell it from a source that failed.
+var ErrNotFound = errors.New("secrets not found")
 
 // Source is one place secret values live.
 type Source interface {
@@ -49,7 +54,7 @@ func (r *Resolver) Resolve(ctx context.Context, names []string) (map[string]stri
 	}
 	if len(missing) > 0 {
 		sort.Strings(missing)
-		return nil, fmt.Errorf("secrets not found: %s (looked in %s)", strings.Join(missing, ", "), r.describe())
+		return nil, fmt.Errorf("%w: %s (looked in %s)", ErrNotFound, strings.Join(missing, ", "), r.describe())
 	}
 	return out, nil
 }
