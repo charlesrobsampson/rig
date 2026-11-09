@@ -418,7 +418,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 37 · Service containers
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/37-service-containers` · Depends: 35, 36, 21
 - Read: `manifest.md` §4 (service definition), §5, `docs/formats.md` §5, §7
 - Build: build the service image from its Dockerfile, run the container on the ticket network with the service's checkout bind-mounted at `/work`, env injected, internal port mapped to the allocated host port, `start`/`test`/`healthcheck` honored; `state.json` records container id, ports, health; `rig list` shows URLs.
