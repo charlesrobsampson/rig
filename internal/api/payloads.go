@@ -44,3 +44,29 @@ type TicketGetResult struct {
 	Ticket  *domain.Ticket `json:"ticket,omitempty"`
 	State   *state.State   `json:"state,omitempty"`
 }
+
+// TicketNewParams creates a ticket. With From ("type:ref", e.g. "jira:PROJ-412") the
+// ticket is seeded from that source; ID, Title and Description, when set, override what
+// the source says. Without From, ID and Title come from the caller (a title alone is
+// enough: the id is derived from it).
+type TicketNewParams struct {
+	ID          string        `json:"id,omitempty"`
+	Title       string        `json:"title,omitempty"`
+	Description string        `json:"description,omitempty"`
+	From        string        `json:"from,omitempty"`
+	Services    []ServiceSpec `json:"services"`
+}
+
+// ServiceSpec names a service and where its code lives. Repo must be an absolute
+// path; an empty Branch becomes <branch prefix><ticket id>/<service name>.
+type ServiceSpec struct {
+	Name   string `json:"name"`
+	Repo   string `json:"repo"`
+	Branch string `json:"branch,omitempty"`
+}
+
+type TicketNewResult struct {
+	Summary TicketSummary `json:"summary"`
+	// Path is the new ticket directory.
+	Path string `json:"path"`
+}
