@@ -6,6 +6,7 @@ package git
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -190,4 +191,30 @@ func withoutKeys(env []string, keys ...string) []string {
 		}
 	}
 	return out
+}
+
+// RunAllowing is Run for commands whose useful answer comes with a non-zero exit, such
+// as `git diff --no-index`, which exits 1 when the files differ. Exit codes in allowed
+// are not errors; any other failure is.
+func (r Runner) RunAllowing(ctx context.Context, dir string, allowed []int, args ...string) (string, error) {
+	env := baseEnv()
+	var prefix []string
+	if r.hardened {
+		env = hardenedEnv(env)
+		prefix = hardenedConfig()
+		prefix = append(prefix, neutralizeFilters(ctx, dir, env, prefix)...)
+	}
+	args = append(prefix, addDiffSafety(args, r.hardened)...)
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir, cmd.Env = dir, env
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && slices.Contains(allowed, exitErr.ExitCode()) {
+			return strings.TrimRight(stdout.String(), "\r\n"), nil
+		}
+		return "", &Error{Args: gitArgsForDisplay(args), Dir: dir, Stderr: stderr.String(), Err: err}
+	}
+	return strings.TrimRight(stdout.String(), "\r\n"), nil
 }
