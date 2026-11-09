@@ -25,6 +25,10 @@ func TestTheBackendMeetsTheContractAgainstRealHerdr(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() {
+			panes, _ := b.List(ctx)
+			for _, p := range panes {
+				b.Close(ctx, p.ID) // also removes launch scripts their shells never ran
+			}
 			exec.Command("herdr", "--session", session, "server", "stop").Run()
 			exec.Command("herdr", "session", "delete", session).Run()
 		})

@@ -27,6 +27,8 @@ type fakeHerdr struct {
 	nextP      int
 	panes      map[string]*fakePane
 	calls      []string
+	scripts    string // where the backend under test writes launch scripts
+	failInput  bool   // pane.send_input fails, as when the shell is not ready
 }
 
 type fakeWorkspace struct {
@@ -219,6 +221,9 @@ func (f *fakeHerdr) dispatch(method string, raw json.RawMessage) (any, *fakeErr)
 			}
 		}
 	case "pane.send_input":
+		if f.failInput {
+			return nil, &fakeErr{"pane_send_failed", "terminal is in canonical mode"}
+		}
 		pn.typed = append(pn.typed, p.Text)
 		pn.screen.WriteString(p.Text)
 		for _, k := range p.Keys {
@@ -370,3 +375,5 @@ func (f *fakeHerdr) callCount(method string) int {
 }
 
 func (f *fakeHerdr) stop() { f.ln.Close(); os.Remove(f.path) }
+
+func (f *fakeHerdr) failInputs() { f.mu.Lock(); f.failInput = true; f.mu.Unlock() }

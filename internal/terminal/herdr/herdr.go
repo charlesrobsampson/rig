@@ -29,6 +29,8 @@ type Options struct {
 	StartTimeout time.Duration // how long Ready waits for a server it starts (default 15s)
 	PollInterval time.Duration // default 50ms
 	Clock        clock.Clock   // nil means the real clock
+	// ScriptDir is where launch scripts are written (default: the system temp dir).
+	ScriptDir string
 }
 
 type Backend struct {
@@ -39,6 +41,9 @@ type Backend struct {
 	seq    atomic.Int64
 
 	spawnMu sync.Mutex // so two services never both create the ticket's workspace
+
+	scriptsMu sync.Mutex
+	scripts   map[terminal.PaneID]string // launch script directories of panes not yet seen to run them
 }
 
 var _ terminal.Backend = (*Backend)(nil)
@@ -68,6 +73,7 @@ func (b *Backend) Ready(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	sweepLaunchScripts(b.opts.ScriptDir, b.opts.Clock.Now())
 	socket, err := b.sock(ctx)
 	if err != nil {
 		return err
@@ -251,10 +257,21 @@ func (b *Backend) Spawn(ctx context.Context, spec terminal.SpawnSpec) (terminal.
 
 	pane := terminal.PaneID(created.RootPane.ID)
 	if line != "" {
-		if err := b.call(ctx, socket, "pane.send_input", map[string]any{"pane_id": created.RootPane.ID, "text": line, "keys": []string{"Enter"}}, nil); err != nil {
+		typed, dir, err := writeLaunchScript(b.opts.ScriptDir, line)
+		if err == nil {
+			err = b.call(ctx, socket, "pane.send_input", map[string]any{"pane_id": created.RootPane.ID, "text": typed, "keys": []string{"Enter"}}, nil)
+		}
+		if err != nil {
+			os.RemoveAll(dir)
 			b.call(context.WithoutCancel(ctx), socket, "pane.close", map[string]string{"pane_id": created.RootPane.ID}, nil)
 			return "", err
 		}
+		b.scriptsMu.Lock()
+		if b.scripts == nil {
+			b.scripts = map[terminal.PaneID]string{}
+		}
+		b.scripts[pane] = dir
+		b.scriptsMu.Unlock()
 	}
 	return pane, nil
 }
@@ -352,7 +369,16 @@ func (b *Backend) Submit(ctx context.Context, id terminal.PaneID) error {
 }
 
 func (b *Backend) Close(ctx context.Context, id terminal.PaneID) error {
-	return b.simple(ctx, "pane.close", map[string]string{"pane_id": string(id)})
+	err := b.simple(ctx, "pane.close", map[string]string{"pane_id": string(id)})
+	// The script deletes itself when it runs; a pane closed before that would leave it.
+	b.scriptsMu.Lock()
+	dir := b.scripts[id]
+	delete(b.scripts, id)
+	b.scriptsMu.Unlock()
+	if dir != "" {
+		os.RemoveAll(dir)
+	}
+	return err
 }
 
 func (b *Backend) simple(ctx context.Context, method string, params any) error {

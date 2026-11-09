@@ -22,7 +22,9 @@ import (
 var ctx = context.Background()
 
 func backendFor(f *fakeHerdr) *herdr.Backend {
-	return herdr.New(herdr.Options{Session: "rig", Socket: f.path})
+	// The fake never runs launch scripts, so they would pile up in the real temp dir.
+	f.scripts = f.t.TempDir()
+	return herdr.New(herdr.Options{Session: "rig", Socket: f.path, ScriptDir: f.scripts})
 }
 
 func spec(t *testing.T, ticket, service string, command ...string) terminal.SpawnSpec {
@@ -131,11 +133,11 @@ func TestSpawnBuildsTheWorkspaceAndTabsTheSpikeDescribes(t *testing.T) {
 		t.Errorf("tab.create called %d times, want 1 (web)", n)
 	}
 
-	if typed := fake.typed(string(api)); !reflect.DeepEqual(typed, []string{"exec 'claude' '--flag'", "<Enter>"}) {
-		t.Errorf("typed into api = %q", typed)
+	if got := launchedLine(t, fake, api); got != "exec 'claude' '--flag'" {
+		t.Errorf("api launches %q", got)
 	}
-	if typed := fake.typed(string(web)); !reflect.DeepEqual(typed, []string{"exec 'bun' 'dev'", "<Enter>"}) {
-		t.Errorf("typed into web = %q", typed)
+	if got := launchedLine(t, fake, web); got != "exec 'bun' 'dev'" {
+		t.Errorf("web launches %q", got)
 	}
 
 	panes, _ := b.List(ctx)
@@ -170,8 +172,8 @@ func TestSpawnTypesTheEnvironmentIntoTheCommand(t *testing.T) {
 	sp := spec(t, "demo", "api", "claude")
 	sp.Env = map[string]string{"RIG_TICKET": "demo", "RIG_SERVICE": "api"}
 	id := mustSpawn(t, backendFor(fake), sp)
-	if typed := fake.typed(string(id)); typed[0] != "exec env RIG_SERVICE='api' RIG_TICKET='demo' 'claude'" {
-		t.Errorf("typed %q", typed)
+	if got := launchedLine(t, fake, id); got != "exec env RIG_SERVICE='api' RIG_TICKET='demo' 'claude'" {
+		t.Errorf("launches %q", got)
 	}
 	sp = spec(t, "demo", "web", "x")
 	sp.Env = map[string]string{"BAD-NAME": "v"}
@@ -423,5 +425,124 @@ func TestTheSocketIsDerivedFromTheDefaultSessionWhenTheSessionIsUnknown(t *testi
 	_, err := b.List(ctx)
 	if !errors.Is(err, terminal.ErrUnavailable) || !strings.Contains(err.Error(), "/cfg/sessions/brand-new/herdr.sock") {
 		t.Errorf("error = %v, want it to name /cfg/sessions/brand-new/herdr.sock", err)
+	}
+}
+
+// launchedLine reads back what a pane would run: Herdr is told to run a script, whose
+// last line is the launch line.
+func launchedLine(t *testing.T, fake *fakeHerdr, id terminal.PaneID) string {
+	t.Helper()
+	typed := fake.typed(string(id))
+	if len(typed) != 2 || typed[1] != "<Enter>" || !strings.HasPrefix(typed[0], "exec sh '") {
+		t.Fatalf("typed = %q, want `exec sh '<script>'` then Enter", typed)
+	}
+	path := strings.TrimSuffix(strings.TrimPrefix(typed[0], "exec sh '"), "'")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
+	return lines[len(lines)-1]
+}
+
+func TestLongLaunchesAndSecretsAreNeverTypedIntoThePane(t *testing.T) {
+	fake := startFakeHerdr(t)
+	b := backendFor(fake)
+	prompt := strings.Repeat("a long multi-line prompt\n", 400) // far over the 1024-byte line limit
+	sp := spec(t, "demo", "api", "claude", prompt)
+	sp.Env = map[string]string{"API_KEY": "sk-sentinel"}
+	id := mustSpawn(t, b, sp)
+
+	typed := fake.typed(string(id))
+	if len(typed[0]) > 200 || strings.Contains(strings.Join(typed, ""), "sk-sentinel") || strings.Contains(typed[0], "prompt") {
+		t.Errorf("the typed line must be short and carry no env or prompt: %.150q", typed[0])
+	}
+	path := strings.TrimSuffix(strings.TrimPrefix(typed[0], "exec sh '"), "'")
+	if script := string(mustRead(t, path)); !strings.Contains(script, "API_KEY='sk-sentinel'") || !strings.Contains(script, "a long multi-line prompt") {
+		t.Errorf("the script lost the command: %.100q", script)
+	}
+
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("script mode = %v, %v; want 0600", info, err)
+	}
+	if info, err := os.Stat(filepath.Dir(path)); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("script directory mode = %v, %v; want 0700", info, err)
+	}
+	// What the script does when run: it removes itself before launching anything.
+	out, err := exec.Command("sh", "-c", strings.Replace(string(mustRead(t, path)), "exec env", "echo", 1)).CombinedOutput()
+	if err != nil || strings.Contains(string(out), "No such file") {
+		t.Errorf("running the script: %v\n%.200s", err, out)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Error("the script did not delete itself")
+	}
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func TestAFailedSpawnLeavesNoScriptOrPaneBehind(t *testing.T) {
+	fake := startFakeHerdr(t)
+	b := backendFor(fake)
+	before := launchDirs(t, fake)
+	fake.failInputs()
+	if _, err := b.Spawn(ctx, spec(t, "demo", "api", "cat")); err == nil || !strings.Contains(err.Error(), "canonical") {
+		t.Fatalf("Spawn = %v, want the send failure", err)
+	}
+	if after := launchDirs(t, fake); len(after) != len(before) {
+		t.Errorf("launch directories: %d before, %d after", len(before), len(after))
+	}
+	if got := fake.snapshot(); len(got) != 0 {
+		t.Errorf("herdr state after a failed spawn = %v", got)
+	}
+}
+
+func launchDirs(t *testing.T, f *fakeHerdr) []string {
+	t.Helper()
+	dirs, _ := filepath.Glob(filepath.Join(f.scripts, "rig-launch*"))
+	return dirs
+}
+
+func TestClosingAPaneRemovesAScriptItNeverRan(t *testing.T) {
+	fake := startFakeHerdr(t)
+	b := backendFor(fake) // the fake never runs the script, as when a pane is closed at once
+	id := mustSpawn(t, b, spec(t, "demo", "api", "cat"))
+	if len(launchDirs(t, fake)) != 1 {
+		t.Fatalf("launch directories = %v", launchDirs(t, fake))
+	}
+	if err := b.Close(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if dirs := launchDirs(t, fake); len(dirs) != 0 {
+		t.Errorf("Close left %v", dirs)
+	}
+}
+
+func TestReadySweepsOnlyOldLaunchScripts(t *testing.T) {
+	fake := startFakeHerdr(t)
+	scripts := t.TempDir()
+	clock := testkit.NewFakeClock(time.Now())
+	b := herdr.New(herdr.Options{Session: "rig", Socket: fake.path, ScriptDir: scripts, Clock: clock})
+	old, recent, other := filepath.Join(scripts, "rig-launch111"), filepath.Join(scripts, "rig-launch222"), filepath.Join(scripts, "unrelated")
+	for _, d := range []string{old, recent, other} {
+		os.Mkdir(d, 0o700)
+	}
+	longAgo := time.Now().Add(-2 * time.Hour)
+	os.Chtimes(old, longAgo, longAgo)
+	os.Chtimes(other, longAgo, longAgo)
+
+	if err := b.Ready(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for dir, want := range map[string]bool{old: false, recent: true, other: true} {
+		if _, err := os.Stat(dir); (err == nil) != want {
+			t.Errorf("%s exists = %v, want %v", filepath.Base(dir), err == nil, want)
+		}
 	}
 }
