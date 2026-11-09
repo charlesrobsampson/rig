@@ -73,6 +73,13 @@ func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 		return m.Start(ctx, p)
 	})
 	registerStop(s, m)
+	s.Handle(api.MethodAgentAttach, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.AgentAttachParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "agent.attach needs params like {\"ticket\": \"ticket-1\", \"service\": \"api\"}"}
+		}
+		return m.Attach(ctx, p)
+	})
 	s.Handle(api.MethodGateList, func(ctx context.Context, params json.RawMessage) (any, error) {
 		var p api.GateListParams
 		if err := json.Unmarshal(params, &p); err != nil {
