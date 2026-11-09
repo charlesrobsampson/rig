@@ -522,7 +522,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 47 · Push mode: PR
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/47-push-pr` · Depends: 46
 - Read: `manifest.md` §5
 - Build: `pr` mode pushes the branch and opens a PR through `gh` (injectable runner) with a body generated from `plan.md` and the diff stat; records the PR URL in `state.json`; idempotent if a PR exists.
