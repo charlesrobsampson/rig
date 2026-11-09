@@ -448,7 +448,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 40 · Agent in container
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/40-agent-container` · Depends: 04, 31, 37
 - Read: `docs/spikes/04-agent-container.md` (all of it: overlay image, CA certs, git decision, auth), `docs/spikes/03-tmux.md` §4 (hook events from inside a container), `manifest.md` §4, `docs/formats.md` §7
 - Build: with `sandbox: container` (default), an agent container (`rig-<ticket>-<service>-agent`, per the topology in formats §7 as confirmed by spike 04) mounts the service's checkout at `/work` (clone kind: plus the main repo's object store read-only at its real host path via `ObjectsMounts()`; never the main `.git`, hooks, or config) and joins the ticket network, the harness command runs inside it, and the pane attaches via exec; auth is provided the way spike 04 decided; `sandbox: host` keeps the old path with a loud warning at start; no git push credentials enter the container.
