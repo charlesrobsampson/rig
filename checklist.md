@@ -580,7 +580,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 52 · Contract watcher and pending flag
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/52-contract-watch` · Depends: 16, 51
 - Read: `manifest.md` §3 (contract)
 - Build: daemon watches `contract.md` (fs events with a debounce on the injected clock), detects new proposals, sets "contract change pending" in `state.json`, emits an event, and shows it in `rig list`; also flags direct edits to `## Agreed` by an agent as a violation.
