@@ -109,3 +109,14 @@ func TestAPhaseSurvivesAReload(t *testing.T) {
 		}
 	}
 }
+
+func TestPhaseIndex(t *testing.T) {
+	for i, p := range lifecycle {
+		if got := state.PhaseIndex(p); got != i {
+			t.Errorf("PhaseIndex(%s) = %d, want %d", p, got, i)
+		}
+	}
+	if got := state.PhaseIndex("daydream"); got != -1 {
+		t.Errorf("PhaseIndex(unknown) = %d, want -1", got)
+	}
+}

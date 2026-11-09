@@ -227,3 +227,29 @@ func TestTicketStopHandlerErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestGateHandlerErrors(t *testing.T) {
+	dir := filepath.Join(testkit.RealTempDir(t), "tickets")
+	lc := lifecycle.New(lifecycle.Options{Dir: dir, States: state.NewManager(testkit.NewFakeClock(epoch))})
+	h := start(t, func(s *daemon.Server) { daemon.RegisterLifecycleHandlers(s, lc) })
+	c := dial(t, h.opts.SocketPath)
+	c.hello(t)
+	for name, tt := range map[string]struct {
+		method string
+		params any
+		code   api.ErrorCode
+	}{
+		"list on an unknown ticket":    {api.MethodGateList, api.GateListParams{ID: "nope"}, api.CodeNotFound},
+		"approve on an unknown ticket": {api.MethodGateApprove, api.GateApproveParams{ID: "nope", Gate: domain.GatePlanApproval}, api.CodeNotFound},
+		"list with bad params":         {api.MethodGateList, "oops", api.CodeInvalid},
+		"approve with bad params":      {api.MethodGateApprove, "oops", api.CodeInvalid},
+		"approve with no gate":         {api.MethodGateApprove, map[string]string{"id": "x"}, api.CodeInvalid},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var apiErr *api.Error
+			if err := c.call(t, tt.method, tt.params).Err(); !errors.As(err, &apiErr) || apiErr.Code != tt.code {
+				t.Errorf("error = %v, want code %s", err, tt.code)
+			}
+		})
+	}
+}

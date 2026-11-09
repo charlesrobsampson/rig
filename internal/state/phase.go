@@ -47,3 +47,6 @@ func NextPhase(p domain.Phase) (domain.Phase, bool) {
 	}
 	return lifecycle[i+1], true
 }
+
+// PhaseIndex is p's position in the lifecycle (plan is 0), or -1 for an unknown phase.
+func PhaseIndex(p domain.Phase) int { return slices.Index(lifecycle, p) }

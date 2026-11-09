@@ -61,7 +61,8 @@ func RegisterTicketCreateHandler(s *Server, c *registry.Creator, bus *events.Bus
 	})
 }
 
-// RegisterLifecycleHandlers serves ticket.start and ticket.stop.
+// RegisterLifecycleHandlers serves ticket.start, ticket.stop, gate.list and gate.approve.
+// gate.approve is a human action: it must never be exposed to agents.
 func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 	s.Handle(api.MethodTicketStart, func(ctx context.Context, params json.RawMessage) (any, error) {
 		var p api.TicketStartParams
@@ -71,6 +72,20 @@ func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 		return m.Start(ctx, p)
 	})
 	registerStop(s, m)
+	s.Handle(api.MethodGateList, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.GateListParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "gate.list needs params like {\"id\": \"ticket-1\"}"}
+		}
+		return m.Gates(ctx, p)
+	})
+	s.Handle(api.MethodGateApprove, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.GateApproveParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "gate.approve needs params like {\"id\": \"ticket-1\", \"gate\": \"plan_approval\"}"}
+		}
+		return m.Approve(ctx, p)
+	})
 }
 
 func registerStop(s *Server, m *lifecycle.Manager) {
