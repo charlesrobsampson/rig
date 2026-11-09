@@ -113,7 +113,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		RepoCheck:    func(path string) error { return git.CheckRepo(context.Background(), path) },
 		BranchPrefix: g.Defaults.BranchPrefix,
 	}), bus)
-	daemon.RegisterLifecycleHandlers(srv, lifecycle.New(lifecycle.Options{Dir: g.TicketsDir(), States: states, Global: g, Bus: bus}))
+	daemon.RegisterLifecycleHandlers(srv, lifecycle.New(lifecycle.Options{Dir: g.TicketsDir(), States: states, Global: g, Bus: bus, Clock: clk}))
 
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
