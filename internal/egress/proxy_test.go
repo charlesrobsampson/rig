@@ -343,3 +343,94 @@ func TestPolicyValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestForwardsParseAndFormat(t *testing.T) {
+	good, err := egress.ParseForwards(" 41000=web:8080, 41001=api:3000 ,")
+	if err != nil || len(good) != 2 || good[0].ListenPort != 41000 || good[0].Target != "web:8080" || good[1].Target != "api:3000" {
+		t.Fatalf("ParseForwards = %+v, %v", good, err)
+	}
+	if got := egress.FormatForwards(good); got != "41000=web:8080,41001=api:3000" {
+		t.Errorf("FormatForwards = %q", got)
+	}
+	if none, err := egress.ParseForwards(""); err != nil || len(none) != 0 {
+		t.Errorf("empty = %v, %v", none, err)
+	}
+	for _, bad := range []string{"web:8080", "x=web:8080", "0=web:8080", "70000=web:8080", "41000=web", "41000=:8080", "41000=web:x", "41000=web:0", "41000=a:1,41000=b:2"} {
+		if _, err := egress.ParseForwards(bad); err == nil {
+			t.Errorf("ParseForwards(%q) was accepted", bad)
+		}
+	}
+}
+
+func TestAForwardRelaysInwardToItsTargetOnly(t *testing.T) {
+	targetPort := echoServer(t)
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Skip(err)
+	}
+	var dialed []string
+	var mu sync.Mutex
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		egress.ServeForward(ctx, egress.Forward{ListenPort: 1, Target: fmt.Sprintf("service:%d", targetPort)}, l,
+			func(c context.Context, network, address string) (net.Conn, error) {
+				mu.Lock()
+				dialed = append(dialed, address)
+				mu.Unlock()
+				return (&net.Dialer{}).DialContext(c, network, fmt.Sprintf("127.0.0.1:%d", targetPort))
+			}, nil)
+		close(done)
+	}()
+
+	conn, err := net.Dial("tcp", l.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	conn.Write([]byte("hello service"))
+	got := make([]byte, len("hello service"))
+	if _, err := io.ReadFull(conn, got); err != nil || string(got) != "hello service" {
+		t.Errorf("echo = %q, %v", got, err)
+	}
+	conn.Close()
+	mu.Lock()
+	if len(dialed) != 1 || dialed[0] != fmt.Sprintf("service:%d", targetPort) {
+		t.Errorf("dialed %v: only the configured target may ever be dialed", dialed)
+	}
+	mu.Unlock()
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Error("ServeForward did not stop when its context ended")
+	}
+}
+
+func TestAForwardToAnUnreachableTargetClosesTheConnectionAndLogsIt(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Skip(err)
+	}
+	log := &logbook{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go egress.ServeForward(ctx, egress.Forward{ListenPort: 1, Target: "service:1"}, l,
+		func(context.Context, string, string) (net.Conn, error) { return nil, fmt.Errorf("no route") }, log.add)
+	conn, err := net.Dial("tcp", l.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	if n, _ := conn.Read(make([]byte, 1)); n != 0 {
+		t.Error("data came back from a target that could not be reached")
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for len(log.all()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if e := log.all(); len(e) != 1 || e[0].Action != "forward-failed" || e[0].Host != "service:1" {
+		t.Errorf("log = %+v", e)
+	}
+}

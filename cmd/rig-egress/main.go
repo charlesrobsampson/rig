@@ -1,12 +1,14 @@
 // Command rig-egress is the allowlist proxy that runs in a ticket's proxy container. It
 // is built static for linux and embedded in the rig binary (task build:egress); rig
 // configures it entirely through the environment: ALLOW_HOSTS (comma list of names or
-// *.suffix), ALLOW_PORTS (default 443), LISTEN (default :3128).
+// *.suffix), ALLOW_PORTS (default 443), LISTEN (default :3128), and FORWARD
+// (port=service:port pairs that carry published ports inbound to services).
 package main
 
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -36,6 +38,20 @@ func run() int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
+	forwards, err := egress.ParseForwards(os.Getenv("FORWARD"))
+	if err != nil {
+		logf(egress.Entry{TS: time.Now().UTC(), Action: "fatal", Reason: err.Error()})
+		return 2
+	}
+	for _, f := range forwards {
+		l, err := net.Listen("tcp", ":"+strconv.Itoa(f.ListenPort))
+		if err != nil {
+			logf(egress.Entry{TS: time.Now().UTC(), Action: "fatal", Reason: err.Error()})
+			return 1
+		}
+		logf(egress.Entry{TS: time.Now().UTC(), Action: "forward", Host: f.Target, Reason: "port " + strconv.Itoa(f.ListenPort)})
+		go egress.ServeForward(ctx, f, l, nil, logf)
+	}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 3*time.Second)
