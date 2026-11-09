@@ -725,7 +725,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 61 · Summarizer interface and Ollama backend
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/61-summarizer` · Depends: 09, 18
 - Read: `manifest.md` §7 (summaries)
 - Build: `Summarizer` interface with `none` (default) and `ollama`; background job summarizes diff + plan/tasks, cached by content hash; always stored beside raw diff stats; failures never block anything.
