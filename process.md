@@ -13,6 +13,7 @@ All project scripts run through [Task](https://taskfile.dev) via `Taskfile.yml` 
 | Task | Does |
 |---|---|
 | `task build` | build `./rig` |
+| `task build:fakeagent` | build `bin/fakeagent`, the scripted stand-in agent for integration tests |
 | `task test` | default tests (offline, no tags) |
 | `task test:race` | default tests with `-race` |
 | `task test:integration -- <pkgs>` | tests tagged `integration` (real tmux/Herdr); default `./...` |
