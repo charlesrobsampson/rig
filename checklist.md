@@ -364,7 +364,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 32 · Message injection
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/32-inject` · Depends: 03, 31
 - Read: `docs/spikes/03-tmux.md`, `manifest.md` §3 (contract change protocol)
 - Build: `agent.message` API + `rig msg <id> <service> "<text>"` implementing the injection rules in `docs/spikes/03-tmux.md` §3: refuse (or hold in rig) when state is `blocked` or the pane is dead, wait for `ready` before the first injection, send text then a separate Enter after a short pause, use bracketed paste for multi-line/large text, prefix with `[rig]`; records each message in the ticket log.
