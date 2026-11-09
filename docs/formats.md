@@ -141,7 +141,7 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 | `contract.list`, `contract.accept`, `contract.reject` | contract proposals |
 | `review.diff` | per-service diff and stat |
 | `push.run` | runs the push step of a ticket in the push phase. Params `{id, service?}`; result `{summary, services[{service, mode, status, skipped?, pushed, ref?, sha?, pr_url?, note?, error?}], done}`. A service that fails is in the result with `error` (not an API error); services already pushed are skipped on a rerun; `done` is true when every service is pushed and the ticket moved to `done` |
-| `tests.render` | rendered manual tests |
+| `tests.render` | `{ticket}` -> `{preamble?, steps[{id, title, body, done}], signed_off}`: manual-tests.md with placeholders filled from live state. `invalid` with `details[]` listing every unfillable placeholder (or bad step heading); `not_found` when the file does not exist |
 | `logs.stream` | container logs |
 | `events.subscribe` | event stream |
 | `reconcile.run` | drift report, optional fix |
@@ -203,6 +203,7 @@ errors: 400 invalid_user
 - Each step is a level-3 heading `### <step-id>: <title>` (id: `^[a-z0-9-]+$`, unique) followed by free markdown, usually with fenced shell blocks.
 - Placeholders (rendered at read time): `{{<service>.url}}` (host URL), `{{<service>.port}}` (host port), `{{<service>.internal_url}}`, `{{<dependency>.host}}`, `{{ticket.id}}`. Unknown placeholders are errors listing every offender.
 - Step completion is stored in `state.json` `manual_tests.steps[<step-id>]`, not in the file.
+- A `### ` heading inside a fenced code block is text, not a step. Placeholders may appear anywhere (preamble, titles, bodies, code blocks), with optional spaces inside the braces (`{{ api.url }}`). `{{<service>.url}}` and `.port` need the service to be running (they are its host port); `.internal_url` needs `internal_port`. Anything else is reported, all offenders at once, including `{{...}}` text that is not a placeholder; the file is never rendered partially.
 
 ## 13. Harness prompt contract
 - The launch prompt is assembled from: ticket title, current phase, `plan.md`, `tasks.md`, `contract.md` (multi-service only), and the rules for that phase. It never includes secret values.
