@@ -343,6 +343,28 @@ func (f *FakeDocker) RemoveNetwork(ctx context.Context, nameOrID string) error {
 	return nil
 }
 
+func (f *FakeDocker) ConnectNetwork(ctx context.Context, container, network string, aliases []string) error {
+	unlock, err := f.begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	c := f.find(container)
+	if c == nil {
+		return fmt.Errorf("%w: container %s", docker.ErrNotFound, container)
+	}
+	n := f.findNet(network)
+	if n == nil {
+		return fmt.Errorf("%w: network %s", docker.ErrNotFound, network)
+	}
+	if _, on := c.info.Networks[n.info.Name]; on {
+		return fmt.Errorf("%w: %s is already on network %s", docker.ErrExists, c.info.Name, n.info.Name)
+	}
+	c.info.Networks[n.info.Name] = docker.ContainerNetwork{Aliases: append([]string{c.info.Name}, aliases...)}
+	c.ip[n.info.Name] = fmt.Sprintf("10.%d.0.%d", n.num, 100+len(c.ip)+f.nextCtr)
+	return nil
+}
+
 func (f *FakeDocker) BuildImage(ctx context.Context, spec docker.BuildSpec) error {
 	unlock, err := f.begin(ctx)
 	if err != nil {
