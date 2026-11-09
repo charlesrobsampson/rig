@@ -570,7 +570,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 51 · `contract.md` template and parser
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/51-contract-parser` · Depends: 20
 - Read: `manifest.md` §3 (contract), `docs/formats.md` §11
 - Build: `internal/contract` following formats §11 exactly (proposal heading regex, `**What:**`/`**Why:**`/`**Rejected:**` lines, fenced `endpoint`/`schema` blocks); template with `## Agreed`, `## Proposed changes`, `## Changelog`; parser for proposed-change entries (id, author service, what, why, status); created by `rig new` for tickets with 2+ services.
