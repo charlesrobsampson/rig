@@ -1,0 +1,43 @@
+{
+  "title": "Contract: user dashboard",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/api/v1/dashboard",
+      "status": 200,
+      "summary": "build the dashboard for a user",
+      "request": {
+        "locale?": "string",
+        "user_id": "string"
+      },
+      "response": {
+        "generated": "integer",
+        "user_id": "string",
+        "widgets": [
+          "Widget"
+        ]
+      },
+      "errors": [
+        {
+          "status": 400,
+          "code": "invalid_user"
+        }
+      ],
+      "line": 6
+    }
+  ],
+  "schemas": [
+    {
+      "name": "Widget",
+      "shape": {
+        "id": "integer",
+        "label": "string",
+        "tags?": [
+          "string"
+        ]
+      },
+      "line": 14
+    }
+  ],
+  "problems": []
+}

@@ -835,13 +835,19 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Manual check (set the cap to 1 and try starting a second ticket) is for you; so is seeing a real cost: start a ticket with a real Claude Code agent and watch `rig list` (this depends on Claude Code calling the status line, which it does in interactive sessions).
 
 ### 68 · Contract test helper
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/68-contract-tests` · Depends: 54
 - Read: `manifest.md` §3 (contract tests)
 - Build: optional helper that extracts machine-readable endpoint/schema blocks from `contract.md` and exposes them to service test suites (e.g. emits an OpenAPI fragment); document usage.
 - Tests: extraction of fenced blocks; invalid block reported with a line number; no blocks yields an empty result.
 - Manual check: a service test fails when it diverges from the contract.
+- Notes:
+  - Block format (the existing `endpoint`/`schema` fences, now specified; docs/formats.md §11 and docs/contract-tests.md): an endpoint block is `METHOD /path` then `summary:`, `status:` (default 200), `request:`, `response:`, `errors:` (`400 invalid_user, 404`; the line may repeat); a schema block is a name then a JSON shape. Shapes are JSON examples whose strings name types (string, integer, number, boolean, object, array, null) or a schema (`$ref`); `key?` is optional; other strings are string examples. Request/response values may span lines.
+  - `contract.Doc.Spec()` parses the blocks (agreed section only; proposals' blocks are ignored until accepted) and reports every malformed block with its 1-based file line: not an HTTP method, bad path, unknown field, bad JSON, bad status or error, bad/duplicate schema name, duplicate endpoint, empty block. A bad block is left out, never half used, and never hides the good ones; no blocks gives an empty spec and no problems. `Spec.OpenAPI()` renders OpenAPI 3.0.3 (path parameters, request body, success and error responses, shared schemas), as JSON or YAML with stable key order.
+  - CLI: `rig contract check [ticket|--file f]` (exit 0 ok, 2 malformed) and `rig contract export [ticket|--file f] [--format openapi|openapi-json|json] [-o file]`. `--file` needs no daemon, so a service's own CI can run it. Problems print as `file:line: message` and nothing is written (exit 2), so a build cannot run against a half-read contract.
+  - `examples/contract-test/`: a contract, its exported `contract.json`, a toy handler and a test that checks the handler's real response against the documented shape. Mutation-checked: renaming a field in the handler fails the test with `response.generated: missing`. rig's own tests fail if the committed `contract.json` goes stale.
+  - Manual check (a service test fails when it diverges from the contract) is for you with a real service: export the ticket's contract and write the test following docs/contract-tests.md.
 
 ### 69 · Linux check
 - [ ] Done
