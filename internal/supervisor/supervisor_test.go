@@ -418,3 +418,104 @@ func TestRunStopsWhenCancelled(t *testing.T) {
 		t.Fatal("Run did not stop after its context was cancelled")
 	}
 }
+
+// eventsFile is where a container agent's hooks write.
+func (f *fixture) eventsFile(ticket, service string) string {
+	f.t.Helper()
+	path := supervisor.EventsFile(f.dir, ticket, service)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		f.t.Fatal(err)
+	}
+	return path
+}
+
+func appendTo(t *testing.T, path, text string) {
+	t.Helper()
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	file.WriteString(text)
+}
+
+func TestAContainerAgentsHookEventsComeFromItsEventsFile(t *testing.T) {
+	f := newFixture(t)
+	f.launch("demo", "api")
+	file := f.eventsFile("demo", "api")
+
+	appendTo(t, file, "ready\nworking\n")
+	f.poll()
+	if got := f.agentState("demo", "api"); got != domain.AgentWorking {
+		t.Errorf("state = %s, want working (the last line)", got)
+	}
+	if ch := f.changes(); len(ch) != 1 || ch[0].State != domain.AgentWorking {
+		t.Errorf("first sight of a file must not replay its history: %+v", ch)
+	}
+
+	appendTo(t, file, "blocked\n")
+	f.poll()
+	if got := f.agentState("demo", "api"); got != domain.AgentBlocked {
+		t.Errorf("state = %s, want blocked", got)
+	}
+	appendTo(t, file, "idle\nworking\nblocked\n")
+	f.poll()
+	ch := f.changes()
+	var states []domain.AgentState
+	for _, c := range ch {
+		states = append(states, c.State)
+	}
+	if len(states) < 2 || states[len(states)-1] != domain.AgentBlocked {
+		t.Errorf("events = %v, want the new lines applied in order, ending blocked", states)
+	}
+
+	f.poll()
+	f.poll()
+	if more := f.changes(); len(more) != 0 {
+		t.Errorf("lines were processed again: %+v", more)
+	}
+}
+
+func TestAPartialLineWaitsForItsNewline(t *testing.T) {
+	f := newFixture(t)
+	f.launch("demo", "api")
+	file := f.eventsFile("demo", "api")
+	appendTo(t, file, "idle\nwork")
+	f.poll()
+	if got := f.agentState("demo", "api"); got != domain.AgentIdle {
+		t.Errorf("state = %s, want idle (the half-written word must wait)", got)
+	}
+	appendTo(t, file, "ing\n")
+	f.poll()
+	if got := f.agentState("demo", "api"); got != domain.AgentWorking {
+		t.Errorf("state = %s, want working once the line is complete", got)
+	}
+}
+
+func TestGarbageAndATruncatedEventsFile(t *testing.T) {
+	f := newFixture(t)
+	f.launch("demo", "api")
+	file := f.eventsFile("demo", "api")
+	appendTo(t, file, "working\n")
+	f.poll()
+	appendTo(t, file, "rm -rf /\n\nsleeping\n$(id)\n")
+	f.poll()
+	if got := f.agentState("demo", "api"); got != domain.AgentWorking {
+		t.Errorf("state = %s; lines that are not states must be ignored", got)
+	}
+
+	os.WriteFile(file, []byte("idle\n"), 0o600) // a new agent run starts a fresh file
+	f.poll()
+	if got := f.agentState("demo", "api"); got != domain.AgentIdle {
+		t.Errorf("state = %s, want idle after the file was truncated", got)
+	}
+}
+
+func TestAMissingEventsFileIsFine(t *testing.T) {
+	f := newFixture(t)
+	f.launch("demo", "api")
+	f.poll()
+	if got := f.agentState("demo", "api"); got != domain.AgentUnknown {
+		t.Errorf("state = %s", got)
+	}
+}
