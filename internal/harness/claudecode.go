@@ -178,6 +178,12 @@ func Prompt(r Request) (string, error) {
 			b.WriteString("- " + rule + "\n")
 		}
 	}
+	if !beforeImplement(r.Phase) {
+		b.WriteString("\n## manual-tests.md\n")
+		for _, rule := range manualTestsRules {
+			b.WriteString("- " + rule + "\n")
+		}
+	}
 
 	artifacts := []string{"plan.md", "tasks.md"}
 	if len(r.Ticket.Services) > 1 {
@@ -201,7 +207,6 @@ var commonRules = []string{
 	"Never edit state.json, ticket.yaml, or the \"## Agreed\" section of contract.md.",
 	"To change an agreed contract, append a proposal under \"## Proposed changes\" in contract.md; a human accepts it.",
 	"Request phase transitions; never assume them. Gates are approved by a human only.",
-	"Write manual-tests.md with {{service.url}}-style placeholders during or after implement.",
 }
 
 var phaseRules = map[domain.Phase][]string{
@@ -217,4 +222,17 @@ func firstNonEmpty(a, b string) string {
 		return a
 	}
 	return b
+}
+
+// beforeImplement is true while there is nothing to test by hand yet.
+func beforeImplement(p domain.Phase) bool { return p == domain.PhasePlan || p == "" }
+
+// manualTestsRules tell the agent how to write the file a human follows to check the
+// result by hand. Addresses are placeholders because only the running ticket knows its
+// ports (docs/formats.md §12).
+var manualTestsRules = []string{
+	"Keep manual-tests.md (in the ticket directory) up to date as you build: steps a human can follow to check the result by hand.",
+	"Each step is a heading `### <id>: <title>` (the id uses lowercase letters, digits and dashes and is unique), followed by what to do and, where it helps, shell commands in code blocks.",
+	"Never write host addresses or ports. Use placeholders: {{<service>.url}}, {{<service>.port}} and {{<service>.internal_url}} for your services, {{<dependency>.host}} for a database or other sidecar, {{ticket.id}}; rig fills them in from the running ticket.",
+	"Use only those placeholders: an unknown one makes the whole file unreadable for the human.",
 }
