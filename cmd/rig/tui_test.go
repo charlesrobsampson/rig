@@ -231,3 +231,51 @@ func TestTheTUIPushesAReadyTicket(t *testing.T) {
 		t.Errorf("the branch did not reach the remote: %q", out)
 	}
 }
+
+func TestTheManualTabUsesLivePortsAndKeepsStepsInStateJSON(t *testing.T) {
+	home, d := ticketWithRunningService(t)
+	os.WriteFile(filepath.Join(home, "tickets", "demo", "manual-tests.md"), []byte("### health: health\n```sh\ncurl {{svc1.url}}/healthz\n```\n\n### other: other\ntext\n"), 0o600)
+	ctx := context.Background()
+	src := source(d)
+
+	res, err := src.Manual(ctx, "demo")
+	if err != nil || len(res.Steps) != 2 || !strings.Contains(res.Steps[0].Body, "http://localhost:41") || strings.Contains(res.Steps[0].Body, "{{") {
+		t.Fatalf("manual = %+v, %v", res, err)
+	}
+	if err := src.SetStep(ctx, "demo", "health", true); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(home, "tickets", "demo", "state.json"))
+	if !strings.Contains(string(raw), `"health": true`) {
+		t.Errorf("state.json does not record the step:\n%s", raw)
+	}
+	if res, _ := src.Manual(ctx, "demo"); !res.Steps[0].Done || res.Steps[1].Done {
+		t.Errorf("after ticking: %+v", res.Steps)
+	}
+	if err := src.SetStep(ctx, "demo", "nope", true); err == nil {
+		t.Error("an unknown step was ticked")
+	}
+
+	// signing off in the plan phase is refused (the daemon says why)
+	var apiErr *api.Error
+	if err := src.SignOff(ctx, "demo", false); !errors.As(err, &apiErr) || apiErr.Code != api.CodeConflict {
+		t.Errorf("sign-off in plan = %v", err)
+	}
+	if _, err := src.Manual(ctx, "ghost"); !errors.Is(err, tui.ErrMissing) {
+		t.Errorf("an unknown ticket: %v", err)
+	}
+}
+
+func TestTheManualTabReportsABrokenFileWithEveryProblem(t *testing.T) {
+	home, d, repo := newEnv(t)
+	newTicket(t, d, "demo", repo)
+	os.WriteFile(filepath.Join(home, "tickets", "demo", "manual-tests.md"), []byte("### a: x\n{{nope.url}} {{other.port}}\n"), 0o600)
+	_, err := source(d).Manual(context.Background(), "demo")
+	if err == nil || errors.Is(err, tui.ErrMissing) || !strings.Contains(err.Error(), "nope") || !strings.Contains(err.Error(), "other") {
+		t.Errorf("error = %v, want every unknown placeholder named", err)
+	}
+	os.Remove(filepath.Join(home, "tickets", "demo", "manual-tests.md"))
+	if _, err := source(d).Manual(context.Background(), "demo"); !errors.Is(err, tui.ErrMissing) {
+		t.Errorf("no file: %v", err)
+	}
+}

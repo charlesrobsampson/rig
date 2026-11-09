@@ -184,3 +184,24 @@ func (s daemonSource) AttachCommand(ctx context.Context, ticket, service string)
 	}
 	return res.Command, nil
 }
+
+// Manual is the ticket's manual tests with live addresses filled in.
+func (s daemonSource) Manual(ctx context.Context, ticket string) (api.TestsRenderResult, error) {
+	var res api.TestsRenderResult
+	if err := s.call(ctx, api.MethodTestsRender, api.TestsRenderParams{Ticket: ticket}, &res); err != nil {
+		var apiErr *api.Error
+		if errors.As(err, &apiErr) && apiErr.Code == api.CodeInvalid && len(apiErr.Details) > 0 {
+			return res, fmt.Errorf("%s: %s", apiErr.Message, strings.Join(apiErr.Details, "; "))
+		}
+		return res, missingOr(err)
+	}
+	return res, nil
+}
+
+func (s daemonSource) SetStep(ctx context.Context, ticket, step string, done bool) error {
+	return s.call(ctx, api.MethodTestsStep, api.TestsStepParams{Ticket: ticket, Step: step, Done: done}, nil)
+}
+
+func (s daemonSource) SignOff(ctx context.Context, ticket string, override bool) error {
+	return s.call(ctx, api.MethodTestsSignoff, api.TestsSignoffParams{Ticket: ticket, Override: override}, nil)
+}

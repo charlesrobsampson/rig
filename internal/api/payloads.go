@@ -442,3 +442,35 @@ type TicketFileResult struct {
 	Name    string `json:"name"`
 	Content string `json:"content"`
 }
+
+// TestsStepParams ticks a manual-test step off (Done) or back on again. The step id
+// must be one of the steps in the ticket's manual-tests.md.
+type TestsStepParams struct {
+	Ticket string `json:"ticket"`
+	Step   string `json:"step"`
+	Done   bool   `json:"done"`
+}
+
+// TestsStepResult echoes the step. SignedOff is false after unticking a step of a
+// ticket that had been signed off: the sign-off no longer holds.
+type TestsStepResult struct {
+	Step      string `json:"step"`
+	Done      bool   `json:"done"`
+	SignedOff bool   `json:"signed_off"`
+}
+
+// TestsSignoffParams signs off the manual tests (a human action). Every step must be
+// ticked unless Override is set, which signs off anyway.
+type TestsSignoffParams struct {
+	Ticket   string `json:"ticket"`
+	Override bool   `json:"override,omitempty"`
+}
+
+// TestsSignoffResult says what was recorded. Approved is true when the manual_test_signoff
+// gate was approved by this sign-off (it is not, when no service requires that gate).
+// Unchecked lists the steps that were not ticked, for an override.
+type TestsSignoffResult struct {
+	SignedOff bool     `json:"signed_off"`
+	Approved  bool     `json:"approved"`
+	Unchecked []string `json:"unchecked,omitempty"`
+}

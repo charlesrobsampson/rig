@@ -105,18 +105,20 @@ func TestTabsSwitchLoadOnceAndWrap(t *testing.T) {
 	if v := m.View(); !strings.Contains(v, "[logs]") || !strings.Contains(v, "started") {
 		t.Errorf("logs tab:\n%s", v)
 	}
+	step("tab") // manual
 	step("tab") // wraps to plan
 	if m.det.tab != TabPlan {
 		t.Errorf("tab = %v after wrapping", m.det.tab)
 	}
 	m, cmd := send(m, tea.KeyMsg{Type: tea.KeyShiftTab})
 	m, _ = run(t, m, cmd)
-	if m.det.tab != TabLogs {
-		t.Errorf("shift+tab from plan = %v, want logs", m.det.tab)
+	if m.det.tab != TabManual {
+		t.Errorf("shift+tab from plan = %v, want manual", m.det.tab)
 	}
 	before := len(src.reads)
 	step("1")
 	step("5")
+	step("6")
 	if len(src.reads) != before {
 		t.Errorf("tabs already loaded were read again: %v", src.reads[before:])
 	}

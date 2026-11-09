@@ -690,13 +690,18 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Manual check (drive a ticket from plan to done entirely in the TUI, real attach) is for you.
 
 ### 59 · Manual-test view
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/59-tui-manual` · Depends: 57, 50
 - Read: `manifest.md` §7
 - Build: rendered manual-tests tab with copyable code blocks, per-step state stored in `state.json` `manual_tests.steps` (formats §5), and a "sign off" action that sets `signed_off` and records the `manual_test_signoff` approval.
 - Tests: step toggle persists across restart; sign-off requires every step checked or an explicit override; rendering uses live ports.
 - Manual check: complete a manual test pass in the TUI.
+- Notes:
+  - Backend (needed for this task, not in 50): `tests.step` and `tests.signoff` (formats.md). Steps live in `state.json` `manual_tests.steps`; sign-off needs the test phase and every step ticked (or `override`; no steps also needs the override), records `manual_tests.signed_off` plus a `manual_test_signoff` approval when some service requires the gate, and publishes `gate.approved`. Unticking after a sign-off withdraws both. CLI: `rig tests <id> --done|--undone <step>`, `--sign-off [--override]`.
+  - TUI: a sixth tab, `manual` (key `6`), showing "n/m steps done" and the preamble, one line per step with the selected step expanded (live ports already filled in by the daemon). `j/k` select, `space`/`enter` tick or untick, `y` copies the selected step's fenced code blocks to the clipboard (OSC 52 by default, `Options.Copy` seam), `S` signs off (asks first; if the daemon says steps are not done, shows which and offers "Sign off anyway?"). Broken manual-tests.md shows every problem the daemon listed; a missing file says the agent writes it in the test phase.
+  - `doneMsg.offer` generalizes the stop-force offer, so stop and sign-off share one mechanism.
+  - Manual check (complete a manual test pass in the TUI) is for you. OSC 52 clipboard support depends on your terminal (Herdr/tmux may need passthrough enabled).
 
 ### 60 · Live updates
 - [ ] Done

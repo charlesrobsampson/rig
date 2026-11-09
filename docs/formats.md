@@ -147,6 +147,8 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 | `contract.ack` | `{ticket}` -> `{}`: clears `state.contract.violation` once a human has reviewed a direct edit; `conflict` when there is none |
 | `review.diff` | per-service diff and stat |
 | `push.run` | runs the push step of a ticket in the push phase. Params `{id, service?}`; result `{summary, services[{service, mode, status, skipped?, pushed, ref?, sha?, pr_url?, note?, error?}], done}`. A service that fails is in the result with `error` (not an API error); services already pushed are skipped on a rerun; `done` is true when every service is pushed and the ticket moved to `done` |
+| `tests.step` | `{ticket, step, done}` -> `{step, done, signed_off}`: ticks a manual-test step on or off in `state.json` `manual_tests.steps`; `not_found` for a step id not in manual-tests.md. Unticking a step of a signed-off ticket withdraws the sign-off and its `manual_test_signoff` approval |
+| `tests.signoff` | `{ticket, override?}` -> `{signed_off, approved, unchecked?[]}`: human action. Only in the `test` phase (`conflict` otherwise); `blocked` with `step not done: <id>` details while steps are not ticked (or there are no steps) unless `override`; sets `manual_tests.signed_off` and approves `manual_test_signoff` when some service requires it (publishes `gate.approved`). Idempotent |
 | `tests.render` | `{ticket}` -> `{preamble?, steps[{id, title, body, done}], signed_off}`: manual-tests.md with placeholders filled from live state. `invalid` with `details[]` listing every unfillable placeholder (or bad step heading); `not_found` when the file does not exist |
 | `logs.stream` | container logs |
 | `events.subscribe` | event stream |

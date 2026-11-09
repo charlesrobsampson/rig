@@ -28,12 +28,14 @@ type fakeSource struct {
 
 	// acts records every action the TUI asked for, as "name args"; actErr fails the
 	// action with that name; the rest is what the actions answer.
-	acts      []string
-	actErr    map[string]error
-	proposals []api.ContractProposal
-	attachCmd []string
-	pushRes   api.PushRunResult
-	stopErr   error // returned by a stop that is not forced
+	acts       []string
+	actErr     map[string]error
+	proposals  []api.ContractProposal
+	attachCmd  []string
+	pushRes    api.PushRunResult
+	stopErr    error // returned by a stop that is not forced
+	manual     *api.TestsRenderResult
+	signoffErr error // returned by a sign-off without override
 }
 
 func (f *fakeSource) act(name string, args ...any) error {
@@ -71,6 +73,34 @@ func (f *fakeSource) Proposals(context.Context, string) ([]api.ContractProposal,
 
 func (f *fakeSource) Resolve(_ context.Context, ticket, proposal string, accept bool, reason string) error {
 	return f.act("resolve", ticket, " ", proposal, fmt.Sprintf(" accept=%v reason=%q", accept, reason))
+}
+
+func (f *fakeSource) Manual(_ context.Context, ticket string) (api.TestsRenderResult, error) {
+	f.reads = append(f.reads, ticket+"/manual")
+	if f.manual == nil {
+		return api.TestsRenderResult{}, ErrMissing
+	}
+	return *f.manual, f.actErr["manual"]
+}
+
+func (f *fakeSource) SetStep(_ context.Context, ticket, step string, done bool) error {
+	err := f.act("step", ticket, " ", step, fmt.Sprintf(" done=%v", done))
+	if err == nil && f.manual != nil { // the daemon remembers it
+		for i := range f.manual.Steps {
+			if f.manual.Steps[i].ID == step {
+				f.manual.Steps[i].Done = done
+			}
+		}
+	}
+	return err
+}
+
+func (f *fakeSource) SignOff(_ context.Context, ticket string, override bool) error {
+	if !override && f.signoffErr != nil {
+		f.act("signoff", ticket, " override=false")
+		return f.signoffErr
+	}
+	return f.act("signoff", ticket, fmt.Sprintf(" override=%v", override))
 }
 
 func (f *fakeSource) AttachCommand(_ context.Context, ticket, service string) ([]string, error) {
