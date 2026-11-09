@@ -30,6 +30,14 @@ type Registry struct {
 	// pendingGate, when set, names the approval a ticket is waiting for (it needs the
 	// global policy, which the registry does not know).
 	pendingGate func(domain.Ticket, state.State) domain.Gate
+	// aiSummary, when set, supplies a ticket's language-model summary.
+	aiSummary func(id string) *api.SummaryInfo
+}
+
+// WithAISummary makes summaries carry the ticket's language-model summary, if any.
+func (r *Registry) WithAISummary(f func(id string) *api.SummaryInfo) *Registry {
+	r.aiSummary = f
+	return r
 }
 
 // WithPendingGate makes summaries carry the gate a human has yet to approve.
@@ -143,6 +151,9 @@ func (r *Registry) load(id string) api.TicketGetResult {
 			}
 			res.Summary.Services = append(res.Summary.Services, summary)
 		}
+	}
+	if r.aiSummary != nil {
+		res.Summary.AISummary = r.aiSummary(id)
 	}
 	res.Summary.Error = strings.Join(problems, "; ")
 	return res

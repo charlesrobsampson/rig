@@ -314,3 +314,28 @@ func TestFileReadsOnlyTheTicketsLifecycleFiles(t *testing.T) {
 		t.Errorf("a bad ticket id = %v, want a validation error", err)
 	}
 }
+
+func TestSummariesCarryTheAISummaryWhenOneIsConfigured(t *testing.T) {
+	f := newFixture(t)
+	f.writeYAML("alpha", yaml("alpha", "A", "api"))
+	f.writeState("alpha", state.State{})
+	if got := f.list(); got[0].AISummary != nil {
+		t.Errorf("without a source the summary = %+v", got[0].AISummary)
+	}
+	f.reg.WithAISummary(func(id string) *api.SummaryInfo {
+		if id == "alpha" {
+			return &api.SummaryInfo{Text: "- fine", Backend: "ollama"}
+		}
+		return nil
+	})
+	f.writeYAML("beta", yaml("beta", "B", "api"))
+	f.writeState("beta", state.State{})
+	got := f.list()
+	if got[0].AISummary == nil || got[0].AISummary.Text != "- fine" || got[1].AISummary != nil {
+		t.Errorf("summaries = %+v / %+v", got[0].AISummary, got[1].AISummary)
+	}
+	one, _ := f.reg.Get("alpha")
+	if one.Summary.AISummary == nil {
+		t.Error("ticket.get lacks the summary")
+	}
+}

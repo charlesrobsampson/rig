@@ -115,10 +115,13 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	bus := events.NewBus(clk, 0)
 	daemon.RegisterEventHandlers(srv, bus)
 	states := state.NewManager(clk)
-	daemon.RegisterTicketHandlers(srv, registry.New(g.TicketsDir(), states).WithPendingGate(func(t domain.Ticket, st state.State) domain.Gate {
+	reg := registry.New(g.TicketsDir(), states).WithPendingGate(func(t domain.Ticket, st state.State) domain.Gate {
 		gate, _ := gates.Awaiting(g, t, st)
 		return gate
-	}))
+	})
+	summaries := newSummaryService(g, bus, clk, logger)
+	reg.WithAISummary(summaries.Info)
+	daemon.RegisterTicketHandlers(srv, reg)
 	daemon.RegisterTicketCreateHandler(srv, registry.NewCreator(registry.CreatorOptions{
 		Dir:          g.TicketsDir(),
 		States:       states,
@@ -145,24 +148,27 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Logger: logger, Interval: time.Second})
 	injector := inject.New(inject.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Readiness: sup, Clock: clk})
 	notifier := &contractnotify.Notifier{Dir: g.TicketsDir(), Sender: injector, Logger: logger}
-	daemon.RegisterLifecycleHandlers(srv, lifecycle.New(lifecycle.Options{
+	lc := lifecycle.New(lifecycle.Options{
 		Dir: g.TicketsDir(), States: states, Global: g, Bus: bus, Clock: clk,
 		Backend: backend, BackendName: g.Defaults.TerminalBackend, RigBinary: rigBinary, AgentEnv: agentEnv, Docker: dk, Secrets: secretValues(g, a.deps.keychain), GH: a.deps.gh,
 		OnContractResolved: notifier.Resolved,
-	}))
+	})
+	daemon.RegisterLifecycleHandlers(srv, lc)
+	summaries.SetInputs(summaryInputs{lc: lc, reg: reg})
 	daemon.RegisterAgentHandlers(srv, sup)
 	daemon.RegisterMessageHandler(srv, injector)
 
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	supCtx, stopSup := context.WithCancel(ctx)
-	supDone, watchDone, contractDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	supDone, watchDone, contractDone, summaryDone := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
 	go func() { sup.Run(supCtx); close(supDone) }()
 	cw := contractwatch.New(contractwatch.Options{Dir: g.TicketsDir(), States: states, Bus: bus, Clock: clk, Logger: logger, OnProposal: notifier.NewProposal})
 	go func() { cw.Run(supCtx); close(contractDone) }()
+	go func() { summaries.Run(supCtx); close(summaryDone) }()
 	watcher := &egress.Watcher{Docker: dk, Bus: bus, Clock: clk, Logger: logger}
 	go func() { watcher.Run(supCtx); close(watchDone) }()
-	defer func() { stopSup(); <-supDone; <-watchDone; <-contractDone }()
+	defer func() { stopSup(); <-supDone; <-watchDone; <-contractDone; <-summaryDone }()
 	return srv.Serve(ctx)
 }
 

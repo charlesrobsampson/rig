@@ -22,6 +22,7 @@ const (
 	EventContractViolation EventType = "contract.violation"
 	EventContractResolved  EventType = "contract.resolved"
 	EventEgressDenied      EventType = "egress.denied"
+	EventSummaryUpdated    EventType = "summary.updated"
 	EventError             EventType = "error"
 	// EventSubscribed is the first item of every events.subscribe stream: the
 	// subscription is live, so nothing published after it can be missed.
@@ -87,6 +88,12 @@ type ContractViolationData struct {
 type ContractResolvedData struct {
 	Proposal string `json:"proposal"`
 	Outcome  string `json:"outcome"` // accepted or rejected
+}
+
+// SummaryUpdatedData says a ticket has a new (or newly failed) language-model summary.
+type SummaryUpdatedData struct {
+	Backend string `json:"backend"`
+	Error   string `json:"error,omitempty"`
 }
 
 type EgressDeniedData struct {

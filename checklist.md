@@ -724,13 +724,20 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 ## Phase 10: Summaries, sources, orchestration
 
 ### 61 · Summarizer interface and Ollama backend
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/61-summarizer` · Depends: 09, 18
 - Read: `manifest.md` §7 (summaries)
 - Build: `Summarizer` interface with `none` (default) and `ollama`; background job summarizes diff + plan/tasks, cached by content hash; always stored beside raw diff stats; failures never block anything.
 - Tests (`httptest` fake Ollama): summary cached; unchanged content not re-requested; backend error leaves the previous summary and records the error; `none` returns nothing. One extra test against real Ollama behind the `llm` tag, run with `task test:llm` (skips if unreachable).
 - Manual check: with Ollama running, `rig list --summaries` shows one.
+- Notes:
+  - `internal/summary`: `Summarizer` interface (`Name`, `Model`, `Remote`, `Summarize`), `None` (default; sends and says nothing) and `Ollama` (`POST /api/generate`, non-streaming, temperature 0.2; missing model gets an `ollama pull` hint; remote when the endpoint is not this machine). `claude` is a recognised provider that is not built yet (task 62); a config that cannot be built logs a warning and turns summaries off instead of stopping the daemon. `summarizer.model` is now required (config validation) for ollama.
+  - Job (`Service`): every 30s walks the tickets and, per ticket, gathers plan.md, tasks.md and the checkouts' diffs (`summaryInputs` in cmd/rig, using `rig review`'s own code path, so only lifecycle files and diffs are ever read); content hash identical to the last summary = no request; a failure keeps the previous text, records the error, and backs off 30s doubling to 30m for that same content (new content retries at once); one request at a time with a timeout; shutting down is not a failure; none never gathers anything.
+  - Storage: the runtime store (`store.json`), under the ticket id's record's `summary` field, other fields untouched; never in the ticket's files. Stats (files, +added, -deleted) are stored with the text and always returned with it. `summary.updated` event published on success and on failure.
+  - API: `TicketSummary.ai_summary` {text, backend, model, remote, at, files, added, deleted, error} (omitted when none); `rig list --summaries` prints each under the table labelled "advisory", with backend, REMOTE marker, stats and any stale/failed note; `rig list --json` carries it. formats.md updated.
+  - Real Ollama test behind the `llm` tag (`task test:llm`) skips when no server answers or no model is installed: this machine runs Ollama 0.40 with no models pulled, so it skipped here.
+  - Manual check (with Ollama running and a model pulled, `summarizer: {provider: ollama, model: ...}` in the config, `rig list --summaries`) is for you.
 
 ### 62 · Claude summarizer and dashboard integration
 - [ ] Done

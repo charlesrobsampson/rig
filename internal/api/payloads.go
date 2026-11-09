@@ -31,7 +31,10 @@ type TicketSummary struct {
 	// PendingGate is the approval a human still has to give to move the ticket out of
 	// its current phase; empty when none is waiting.
 	PendingGate domain.Gate `json:"pending_gate,omitempty"`
-	Error       string      `json:"error,omitempty"`
+	// AISummary is the language model's note on the ticket, when a summarizer is
+	// configured and has produced one. It is advisory.
+	AISummary *SummaryInfo `json:"ai_summary,omitempty"`
+	Error     string       `json:"error,omitempty"`
 }
 
 type ServiceSummary struct {
@@ -473,4 +476,21 @@ type TestsSignoffResult struct {
 	SignedOff bool     `json:"signed_off"`
 	Approved  bool     `json:"approved"`
 	Unchecked []string `json:"unchecked,omitempty"`
+}
+
+// SummaryInfo is a ticket's language-model summary, with the raw diff stats it was made
+// from beside it (the summary never replaces them).
+type SummaryInfo struct {
+	Text    string `json:"text,omitempty"`
+	Backend string `json:"backend"` // ollama or claude
+	Model   string `json:"model,omitempty"`
+	Remote  bool   `json:"remote"` // the content was sent off this machine
+	// At is when Text was generated.
+	At      *time.Time `json:"at,omitempty"`
+	Files   int        `json:"files"`
+	Added   int        `json:"added"`
+	Deleted int        `json:"deleted"`
+	// Error is the last failure to refresh the summary; Text, when present, is the
+	// previous one.
+	Error string `json:"error,omitempty"`
 }
