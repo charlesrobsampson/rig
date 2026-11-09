@@ -354,7 +354,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 31 · Start launches agents; `rig attach`
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/31-start-agents` · Depends: 21, 29, 30
 - Read: `manifest.md` §6 (CLI), §7
 - Build: `rig start` also spawns one agent pane per service via the harness and backend (`sandbox: host` for now); `rig attach <id> [service]` jumps to the pane; `rig list` shows agent state; `rig stop` closes panes before removing checkouts.
