@@ -286,3 +286,33 @@ func TestAnAgentThatSeesTheTicketFilesElsewhereGetsThatPath(t *testing.T) {
 		t.Error("the prompt is still built from the files rig reads on the host")
 	}
 }
+
+func TestTheManualTestsInstructionAppearsOnlyFromImplementOn(t *testing.T) {
+	dir := ticketDir(t, artifacts)
+	for _, phase := range []domain.Phase{domain.PhasePlan, domain.PhaseImplement, domain.PhaseTest, domain.PhaseReview, domain.PhasePush, domain.PhaseDone} {
+		t.Run(string(phase), func(t *testing.T) {
+			prompt := promptOf(launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: phase, TicketDir: dir, Dir: "/w"}))
+			has := strings.Contains(prompt, "## manual-tests.md")
+			want := phase != domain.PhasePlan
+			if has != want {
+				t.Errorf("manual-tests.md instruction present = %v, want %v for phase %s", has, want, phase)
+			}
+			if !want && strings.Contains(prompt, "manual-tests.md") {
+				t.Errorf("the plan phase prompt mentions manual-tests.md:\n%s", prompt)
+			}
+		})
+	}
+}
+
+func TestTheManualTestsInstructionTeachesTheFormatAndEveryPlaceholder(t *testing.T) {
+	prompt := promptOf(launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhaseTest, TicketDir: ticketDir(t, artifacts), Dir: "/w"}))
+	for _, want := range []string{
+		"### <id>: <title>", "lowercase letters, digits and dashes", "Never write host addresses or ports",
+		"{{<service>.url}}", "{{<service>.port}}", "{{<service>.internal_url}}", "{{<dependency>.host}}", "{{ticket.id}}",
+		"an unknown one makes the whole file unreadable",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("the instruction lacks %q", want)
+		}
+	}
+}
