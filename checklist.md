@@ -236,7 +236,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 21 · Provisioning: `rig start` (checkouts)
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/21-start-checkouts` · Depends: 10, 11, 17, 17b, 20
 - Read: `manifest.md` §2, §7, `docs/formats.md` §3, §5, §7
 - Build: `rig start <id>` provisions one checkout per service at `<ticket>/<service>` on the configured branch, choosing the kind from the resolved sandbox (`container` → shared clone, `host` → worktree), records `checkout: {kind, path}` and provisioning status in `state.json`, idempotent on re-run, rolls back checkouts created in this call if a later service fails.
