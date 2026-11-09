@@ -59,7 +59,7 @@ func provisionWorktree(ctx context.Context, spec Spec) (Checkout, error) {
 			return nil, err
 		}
 		if holder != "" {
-			return nil, fmt.Errorf("branch %s is already checked out at %s", spec.Branch, holder)
+			return nil, matched(ErrBranchInUse, "branch %s is already checked out at %s", spec.Branch, holder)
 		}
 		if _, err := git.Run(ctx, spec.Repo, "worktree", "add", spec.Path, spec.Branch); err != nil {
 			return nil, err

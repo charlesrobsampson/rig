@@ -12,6 +12,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/daemon"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/events"
+	"github.com/charlesrobsampson/rig/internal/lifecycle"
 	"github.com/charlesrobsampson/rig/internal/registry"
 	"github.com/charlesrobsampson/rig/internal/state"
 	"github.com/charlesrobsampson/rig/internal/testkit"
@@ -173,5 +174,33 @@ func TestTicketNewErrors(t *testing.T) {
 	case ev := <-sub.Events():
 		t.Errorf("a failed create published %s", ev.Type)
 	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestTicketStartHandlerErrors(t *testing.T) {
+	dir := filepath.Join(testkit.RealTempDir(t), "tickets")
+	mgr := state.NewManager(testkit.NewFakeClock(epoch))
+	lc := lifecycle.New(lifecycle.Options{Dir: dir, States: mgr})
+	h := start(t, func(s *daemon.Server) { daemon.RegisterLifecycleHandlers(s, lc) })
+	c := dial(t, h.opts.SocketPath)
+	c.hello(t)
+
+	tests := []struct {
+		name   string
+		params any
+		code   api.ErrorCode
+	}{
+		{"an unknown ticket", api.TicketStartParams{ID: "nope"}, api.CodeNotFound},
+		{"an invalid id", api.TicketStartParams{ID: "../etc"}, api.CodeInvalid},
+		{"params that are not an object", "oops", api.CodeInvalid},
+		{"no params", nil, api.CodeInvalid},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var apiErr *api.Error
+			if err := c.call(t, api.MethodTicketStart, tt.params).Err(); !errors.As(err, &apiErr) || apiErr.Code != tt.code {
+				t.Errorf("error = %v, want code %s", err, tt.code)
+			}
+		})
 	}
 }

@@ -70,3 +70,25 @@ type TicketNewResult struct {
 	// Path is the new ticket directory.
 	Path string `json:"path"`
 }
+
+// TicketStartParams provisions a ticket's checkouts. Sandbox, when set, overrides the
+// sandbox the ticket and global config would choose for every service.
+type TicketStartParams struct {
+	ID      string         `json:"id"`
+	Sandbox domain.Sandbox `json:"sandbox,omitempty"`
+}
+
+type TicketStartResult struct {
+	Summary   TicketSummary  `json:"summary"`
+	Checkouts []CheckoutInfo `json:"checkouts"`
+}
+
+// CheckoutInfo says where a service's code lives. Created is false when the checkout
+// already existed (starting is idempotent).
+type CheckoutInfo struct {
+	Service string              `json:"service"`
+	Kind    domain.CheckoutKind `json:"kind"`
+	Path    string              `json:"path"`
+	Branch  string              `json:"branch"`
+	Created bool                `json:"created"`
+}
