@@ -28,6 +28,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/inject"
 	"github.com/charlesrobsampson/rig/internal/lifecycle"
+	"github.com/charlesrobsampson/rig/internal/reconcile"
 	"github.com/charlesrobsampson/rig/internal/registry"
 	"github.com/charlesrobsampson/rig/internal/secrets"
 	"github.com/charlesrobsampson/rig/internal/state"
@@ -118,6 +119,13 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		gate, _ := gates.Awaiting(g, t, st)
 		return gate
 	})
+	var reconciler *reconcile.Reconciler // set below, once the lifecycle manager exists
+	reg.WithDrift(func(id string) []string {
+		if reconciler == nil {
+			return nil
+		}
+		return reconciler.Drift(id)
+	})
 	summaries := newSummaryService(g, secretValues(g, a.deps.keychain), bus, clk, logger)
 	reg.WithAISummary(summaries.Info)
 	daemon.RegisterTicketHandlers(srv, reg)
@@ -154,20 +162,30 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	})
 	daemon.RegisterLifecycleHandlers(srv, lc)
 	summaries.SetInputs(summaryInputs{lc: lc, reg: reg})
+	reconciler = reconcile.New(reconcile.Options{Dir: g.TicketsDir(), States: states, Docker: dk, Backend: backend, Bus: bus, Clock: clk, Logger: logger, Busy: lc.Busy})
+	daemon.RegisterReconcileHandler(srv, reconciler)
 	daemon.RegisterAgentHandlers(srv, sup)
 	daemon.RegisterMessageHandler(srv, injector)
 
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	supCtx, stopSup := context.WithCancel(ctx)
-	supDone, watchDone, contractDone, summaryDone := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
+	supDone, watchDone, contractDone, summaryDone, reconcileDone := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
 	go func() { sup.Run(supCtx); close(supDone) }()
 	cw := contractwatch.New(contractwatch.Options{Dir: g.TicketsDir(), States: states, Bus: bus, Clock: clk, Logger: logger, OnProposal: notifier.NewProposal})
 	go func() { cw.Run(supCtx); close(contractDone) }()
 	go func() { summaries.Run(supCtx); close(summaryDone) }()
+	go func() { reconciler.Run(supCtx); close(reconcileDone) }()
 	watcher := &egress.Watcher{Docker: dk, Bus: bus, Clock: clk, Logger: logger}
 	go func() { watcher.Run(supCtx); close(watchDone) }()
-	defer func() { stopSup(); <-supDone; <-watchDone; <-contractDone; <-summaryDone }()
+	defer func() {
+		stopSup()
+		<-supDone
+		<-watchDone
+		<-contractDone
+		<-summaryDone
+		<-reconcileDone
+	}()
 	return srv.Serve(ctx)
 }
 

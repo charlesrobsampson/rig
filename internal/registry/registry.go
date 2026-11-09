@@ -32,6 +32,14 @@ type Registry struct {
 	pendingGate func(domain.Ticket, state.State) domain.Gate
 	// aiSummary, when set, supplies a ticket's language-model summary.
 	aiSummary func(id string) *api.SummaryInfo
+	// drift, when set, supplies how a ticket's reality differs from its state.
+	drift func(id string) []string
+}
+
+// WithDrift makes summaries carry the drift last found for each ticket.
+func (r *Registry) WithDrift(f func(id string) []string) *Registry {
+	r.drift = f
+	return r
 }
 
 // WithAISummary makes summaries carry the ticket's language-model summary, if any.
@@ -154,6 +162,9 @@ func (r *Registry) load(id string) api.TicketGetResult {
 	}
 	if r.aiSummary != nil {
 		res.Summary.AISummary = r.aiSummary(id)
+	}
+	if r.drift != nil {
+		res.Summary.Drift = r.drift(id)
 	}
 	res.Summary.Error = strings.Join(problems, "; ")
 	return res

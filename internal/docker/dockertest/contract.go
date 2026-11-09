@@ -158,6 +158,9 @@ func Run(t *testing.T, newSubject func(t *testing.T) Subject) {
 			if other, _ := e.Docker.ListNetworks(ctx, map[string]string{docker.LabelTicket: "no-such-ticket"}); hasNetwork(other, n.ID) {
 				t.Error("a label that does not match listed the network")
 			}
+			if any, _ := e.Docker.ListNetworks(ctx, map[string]string{docker.LabelTicket: ""}); !hasNetwork(any, n.ID) {
+				t.Error("an empty label value should match any value")
+			}
 			if err := e.Docker.RemoveNetwork(ctx, n.Name); err != nil {
 				t.Fatal(err)
 			}
@@ -222,6 +225,12 @@ func Run(t *testing.T, newSubject func(t *testing.T) Subject) {
 			listed, err := e.Docker.ListContainers(ctx, map[string]string{docker.LabelTicket: "t1", docker.LabelService: "api"})
 			if err != nil || !hasContainer(listed, c.ID) {
 				t.Errorf("list by label = %+v, %v", listed, err)
+			}
+			if any, err := e.Docker.ListContainers(ctx, map[string]string{docker.LabelTicket: ""}); err != nil || !hasContainer(any, c.ID) {
+				t.Errorf("an empty label value should match any value: %+v, %v", any, err)
+			}
+			if none, _ := e.Docker.ListContainers(ctx, map[string]string{"rig.no-such-label": ""}); hasContainer(none, c.ID) {
+				t.Error("a label the container does not carry matched")
 			}
 
 			if err := e.Docker.RemoveContainer(ctx, c.ID, false); !errors.Is(err, docker.ErrInUse) {

@@ -62,7 +62,8 @@ type Docker interface {
 	// Networks are referred to by name or id.
 	CreateNetwork(ctx context.Context, spec NetworkSpec) (NetworkInfo, error)
 	InspectNetwork(ctx context.Context, nameOrID string) (NetworkInfo, error)
-	// ListNetworks returns the networks carrying every given label (key=value).
+	// ListNetworks returns the networks carrying every given label (key=value; an empty
+	// value matches any value).
 	ListNetworks(ctx context.Context, labels map[string]string) ([]NetworkInfo, error)
 	// RemoveNetwork fails with ErrInUse while containers are attached.
 	RemoveNetwork(ctx context.Context, nameOrID string) error
@@ -87,6 +88,8 @@ type Docker interface {
 	RemoveContainer(ctx context.Context, nameOrID string, force bool) error
 	InspectContainer(ctx context.Context, nameOrID string) (ContainerInfo, error)
 	// ListContainers returns every container (running or not) carrying every given label.
+	// A label with an empty value matches any value, so {LabelTicket: ""} lists every
+	// container rig made.
 	ListContainers(ctx context.Context, labels map[string]string) ([]ContainerInfo, error)
 
 	// Exec runs a command to completion inside a running container.

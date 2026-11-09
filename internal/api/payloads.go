@@ -34,7 +34,11 @@ type TicketSummary struct {
 	// AISummary is the language model's note on the ticket, when a summarizer is
 	// configured and has produced one. It is advisory.
 	AISummary *SummaryInfo `json:"ai_summary,omitempty"`
-	Error     string       `json:"error,omitempty"`
+	// Drift lists, one line each, how reality differs from state.json for this ticket
+	// (a container that should be running is gone, a checkout directory is missing).
+	// Rig marks drift; it never guesses a repair.
+	Drift []string `json:"drift,omitempty"`
+	Error string   `json:"error,omitempty"`
 }
 
 type ServiceSummary struct {
@@ -508,4 +512,33 @@ type ContractProposeParams struct {
 // ContractProposeResult names the new proposal.
 type ContractProposeResult struct {
 	Proposal string `json:"proposal"`
+}
+
+// ReconcileParams asks the daemon to compare state.json with what is really there. With
+// Fix it also removes orphans: rig-labelled containers and networks that belong to no
+// ticket, or to a ticket that is stopped. Nothing else is ever touched.
+type ReconcileParams struct {
+	Fix bool `json:"fix,omitempty"`
+}
+
+// DriftItem is one difference between state.json and reality.
+type DriftItem struct {
+	Ticket  string `json:"ticket"`
+	Service string `json:"service,omitempty"`
+	// Kind is one of: checkout_missing, service_container_missing,
+	// dependency_container_missing, agent_container_missing, agent_pane_missing,
+	// network_missing, orphan_container, orphan_network.
+	Kind   string `json:"kind"`
+	Detail string `json:"detail"`
+	// Fixable is true for orphans, which `reconcile --fix` removes.
+	Fixable bool `json:"fixable,omitempty"`
+}
+
+// ReconcileResult is the drift found, and with Fix what was removed and what failed.
+// Notes say what could not be checked (Docker unreachable, no terminal backend).
+type ReconcileResult struct {
+	Drift    []DriftItem `json:"drift"`
+	Fixed    []string    `json:"fixed,omitempty"`
+	Failures []string    `json:"failures,omitempty"`
+	Notes    []string    `json:"notes,omitempty"`
 }

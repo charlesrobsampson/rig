@@ -102,7 +102,8 @@ func TestAPhaseEventUpdatesTheRowAtOnceAndRereadsForTheGate(t *testing.T) {
 
 func TestEventsThatChangeASummaryTriggerOneRead(t *testing.T) {
 	for _, typ := range []api.EventType{api.EventTicketCreated, api.EventTicketStarted, api.EventTicketStopped, api.EventServiceStatus,
-		api.EventGateApproved, api.EventContractPending, api.EventContractResolved, api.EventContractViolation} {
+		api.EventGateApproved, api.EventContractPending, api.EventContractResolved, api.EventContractViolation,
+		api.EventReconciled, api.EventSummaryUpdated} {
 		m, _ := liveModel(t)
 		_, cmd := send(m, eventsMsg{[]api.Event{event(t, typ, "alpha", "", api.EmptyData{})}})
 		if cmd == nil {

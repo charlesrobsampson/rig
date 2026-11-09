@@ -46,6 +46,7 @@ func TestEveryNeedRendersItsMarker(t *testing.T) {
 		want []string
 	}{
 		{"blocked agent", api.TicketSummary{ID: "t", Services: []api.ServiceSummary{svc("api", domain.AgentBlocked, 0)}}, []string{"BLOCKED", "! api"}},
+		{"drift", api.TicketSummary{ID: "t", Drift: []string{"x"}}, []string{"DRIFT"}},
 		{"gate", api.TicketSummary{ID: "t", PendingGate: domain.GateReviewApproval}, []string{"APPROVE review_approval"}},
 		{"contract change", api.TicketSummary{ID: "t", ContractPending: true}, []string{"CONTRACT CHANGE"}},
 		{"contract edited", api.TicketSummary{ID: "t", ContractViolation: true}, []string{"CONTRACT EDITED"}},
