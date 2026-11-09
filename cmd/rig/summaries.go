@@ -12,6 +12,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/registry"
 	"github.com/charlesrobsampson/rig/internal/store"
 	"github.com/charlesrobsampson/rig/internal/summary"
+	"github.com/charlesrobsampson/rig/internal/ticket"
 )
 
 // summaryService builds the background summary job from the config. Anything that keeps
@@ -87,4 +88,26 @@ func (s summaryInputs) Gather(ctx context.Context, ticket string) (summary.Input
 		in.Diffs = append(in.Diffs, sd)
 	}
 	return in, nil
+}
+
+// jiraTokenName is the secret holding the Jira credential.
+const jiraTokenName = "JIRA_API_TOKEN"
+
+// ticketSources are the places `rig new --from` can read tickets from: the sources that
+// need nothing, plus Jira (which says what to configure when it is not set up).
+func ticketSources(g config.Global, secret func(names []string) (map[string]string, error), doer ticket.HTTPDoer) *ticket.Registry {
+	reg := ticket.DefaultRegistry()
+	reg.Register("jira", ticket.Jira{
+		BaseURL: g.Jira.BaseURL,
+		Email:   g.Jira.Email,
+		HTTP:    doer,
+		Token: func() (string, error) {
+			values, err := secret([]string{jiraTokenName})
+			if err != nil {
+				return "", err
+			}
+			return values[jiraTokenName], nil
+		},
+	})
+	return reg
 }

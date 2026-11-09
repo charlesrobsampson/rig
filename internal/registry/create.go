@@ -117,7 +117,7 @@ func (c *Creator) seed(ctx context.Context, p api.TicketNewParams) (ticket.Seed,
 	switch {
 	case errors.Is(err, ticket.ErrNotFound):
 		return ticket.Seed{}, source, &api.Error{Code: api.CodeNotFound, Message: err.Error()}
-	case errors.Is(err, ticket.ErrUnknownSource), errors.Is(err, ticket.ErrUnusable):
+	case errors.Is(err, ticket.ErrUnknownSource), errors.Is(err, ticket.ErrUnusable), errors.Is(err, ticket.ErrNotConfigured):
 		return ticket.Seed{}, source, &api.Error{Code: api.CodeInvalid, Message: err.Error()}
 	case err != nil:
 		return ticket.Seed{}, source, &api.Error{Code: api.CodeUnavailable, Message: err.Error()}

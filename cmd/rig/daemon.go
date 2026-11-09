@@ -33,7 +33,6 @@ import (
 	"github.com/charlesrobsampson/rig/internal/state"
 	"github.com/charlesrobsampson/rig/internal/supervisor"
 	"github.com/charlesrobsampson/rig/internal/terminal/backends"
-	"github.com/charlesrobsampson/rig/internal/ticket"
 )
 
 func (a *app) global() (config.Global, error) {
@@ -125,7 +124,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	daemon.RegisterTicketCreateHandler(srv, registry.NewCreator(registry.CreatorOptions{
 		Dir:          g.TicketsDir(),
 		States:       states,
-		Sources:      ticket.DefaultRegistry(),
+		Sources:      ticketSources(g, secretValues(g, a.deps.keychain), a.deps.jiraHTTP),
 		RepoCheck:    func(path string) error { return git.CheckRepo(context.Background(), path) },
 		BranchPrefix: g.Defaults.BranchPrefix,
 	}), bus)

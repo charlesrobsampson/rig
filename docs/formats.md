@@ -24,6 +24,11 @@ The exact shapes that every part of rig shares. `manifest.md` says *what* and *w
 | daemon log | `<rig home>/rigd.log` | |
 | runtime cache store | `<rig home>/store.json` | |
 
+### Ticket sources (`rig new --from type:ref`)
+- `manual` needs nothing. `jira:PROJ-412` reads one issue with `GET <jira.base_url>/rest/api/2/issue/PROJ-412?fields=summary,description` and nothing else: rig never writes to Jira. The ticket id is the lowercased key (`proj-412`); the title is the issue summary; the description (Jira wiki markup) is converted to Markdown into `plan.md`; the issue URL goes into the plan. `source: {type: jira, key: PROJ-412}` is recorded in `ticket.yaml`.
+- Config: `"jira": {"base_url": "https://acme.atlassian.net", "email": "me@acme.com"}`. With `email` the credential is an Atlassian Cloud API token sent with basic auth; without it, a Server/Data Center personal access token sent as a bearer token. The credential is the `JIRA_API_TOKEN` secret (Keychain, then `.env`), looked up per request and never written to the config, ticket files, logs or errors. `base_url` must be https (http only for this machine).
+- Errors: unknown or invisible issue `not_found`; a malformed key or a missing `jira.base_url` `invalid`; a rejected credential, a missing secret or a Jira outage `unavailable`.
+
 ## 3. Ticket directory
 ```text
 <rig home>/tickets/<id>/
