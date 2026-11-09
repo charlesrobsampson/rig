@@ -836,7 +836,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 68 · Contract test helper
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/68-contract-tests` · Depends: 54
 - Read: `manifest.md` §3 (contract tests)
 - Build: optional helper that extracts machine-readable endpoint/schema blocks from `contract.md` and exposes them to service test suites (e.g. emits an OpenAPI fragment); document usage.
