@@ -148,3 +148,30 @@ type GateApproveParams struct {
 	Gate    domain.Gate `json:"gate"`
 	Service string      `json:"service,omitempty"`
 }
+
+// PhaseSetParams is a human moving a ticket to another phase. Moving backward needs a
+// Reason.
+type PhaseSetParams struct {
+	ID     string       `json:"id"`
+	To     domain.Phase `json:"to"`
+	Reason string       `json:"reason,omitempty"`
+}
+
+// TransitionRequestParams is an agent asking for the same move. Service names the
+// service whose agent is asking. The rules are exactly the human's.
+type TransitionRequestParams struct {
+	ID      string       `json:"id"`
+	Service string       `json:"service"`
+	To      domain.Phase `json:"to"`
+	Reason  string       `json:"reason,omitempty"`
+}
+
+// TransitionResult describes the move that was made.
+type TransitionResult struct {
+	Summary TicketSummary `json:"summary"`
+	From    domain.Phase  `json:"from"`
+	To      domain.Phase  `json:"to"`
+	By      string        `json:"by"`
+	Reason  string        `json:"reason"`
+	At      time.Time     `json:"at"`
+}
