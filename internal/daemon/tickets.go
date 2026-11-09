@@ -61,8 +61,9 @@ func RegisterTicketCreateHandler(s *Server, c *registry.Creator, bus *events.Bus
 	})
 }
 
-// RegisterLifecycleHandlers serves ticket.start, ticket.stop, gate.list and gate.approve.
-// gate.approve is a human action: it must never be exposed to agents.
+// RegisterLifecycleHandlers serves ticket.start, ticket.stop, gate.list, gate.approve,
+// phase.set and transition.request. gate.approve and phase.set are human actions and
+// must never be exposed to agents; transition.request is the agents' way to ask.
 func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 	s.Handle(api.MethodTicketStart, func(ctx context.Context, params json.RawMessage) (any, error) {
 		var p api.TicketStartParams
@@ -85,6 +86,20 @@ func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 			return nil, &api.Error{Code: api.CodeInvalid, Message: "gate.approve needs params like {\"id\": \"ticket-1\", \"gate\": \"plan_approval\"}"}
 		}
 		return m.Approve(ctx, p)
+	})
+	s.Handle(api.MethodPhaseSet, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.PhaseSetParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "phase.set needs params like {\"id\": \"ticket-1\", \"to\": \"implement\"}"}
+		}
+		return m.SetPhase(ctx, p)
+	})
+	s.Handle(api.MethodTransitionRequest, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.TransitionRequestParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "transition.request needs params like {\"id\": \"ticket-1\", \"service\": \"api\", \"to\": \"test\"}"}
+		}
+		return m.RequestTransition(ctx, p)
 	})
 }
 

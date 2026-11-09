@@ -253,3 +253,30 @@ func TestGateHandlerErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestPhaseHandlerErrors(t *testing.T) {
+	dir := filepath.Join(testkit.RealTempDir(t), "tickets")
+	lc := lifecycle.New(lifecycle.Options{Dir: dir, States: state.NewManager(testkit.NewFakeClock(epoch))})
+	h := start(t, func(s *daemon.Server) { daemon.RegisterLifecycleHandlers(s, lc) })
+	c := dial(t, h.opts.SocketPath)
+	c.hello(t)
+	for name, tt := range map[string]struct {
+		method string
+		params any
+		code   api.ErrorCode
+	}{
+		"set on an unknown ticket":        {api.MethodPhaseSet, api.PhaseSetParams{ID: "nope", To: domain.PhaseImplement}, api.CodeNotFound},
+		"request on an unknown ticket":    {api.MethodTransitionRequest, api.TransitionRequestParams{ID: "nope", Service: "api", To: domain.PhaseImplement}, api.CodeNotFound},
+		"a request without a service":     {api.MethodTransitionRequest, api.TransitionRequestParams{ID: "nope", To: domain.PhaseImplement}, api.CodeInvalid},
+		"set with bad params":             {api.MethodPhaseSet, "oops", api.CodeInvalid},
+		"a request with bad params":       {api.MethodTransitionRequest, "oops", api.CodeInvalid},
+		"set with an unknown phase value": {api.MethodPhaseSet, map[string]string{"id": "x", "to": "daydream"}, api.CodeInvalid},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var apiErr *api.Error
+			if err := c.call(t, tt.method, tt.params).Err(); !errors.As(err, &apiErr) || apiErr.Code != tt.code {
+				t.Errorf("error = %v, want code %s", err, tt.code)
+			}
+		})
+	}
+}
