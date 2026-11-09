@@ -93,6 +93,22 @@ type TicketStartResult struct {
 	Agents []AgentInfo `json:"agents,omitempty"`
 	// Network is the ticket's Docker network; nil when the ticket needs no Docker.
 	Network *NetworkInfo `json:"network,omitempty"`
+	// Containers says, per service that runs in Docker, how its container went.
+	Containers []ServiceContainerInfo `json:"containers,omitempty"`
+}
+
+// ServiceContainerInfo is the outcome of running one service's container. Running is
+// false with Note when nothing needed doing (already running) and with Error when it
+// failed (build, start, or health); Error then ends with the container's last log lines.
+type ServiceContainerInfo struct {
+	Service  string `json:"service"`
+	Name     string `json:"name,omitempty"`
+	ID       string `json:"id,omitempty"`
+	HostPort int    `json:"host_port,omitempty"`
+	URL      string `json:"url,omitempty"`
+	Running  bool   `json:"running"`
+	Note     string `json:"note,omitempty"`
+	Error    string `json:"error,omitempty"`
 }
 
 // NetworkInfo names a ticket's Docker networks. Egress is set only in internal mode.

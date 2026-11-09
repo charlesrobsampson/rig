@@ -11,11 +11,13 @@ import (
 	"path/filepath"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/clock"
 	"github.com/charlesrobsampson/rig/internal/config"
 	"github.com/charlesrobsampson/rig/internal/docker"
+	"github.com/charlesrobsampson/rig/internal/docker/ports"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/events"
 	"github.com/charlesrobsampson/rig/internal/git"
@@ -45,11 +47,23 @@ type Options struct {
 	// Docker runs the ticket's networks and containers. Without it, starting only
 	// provisions checkouts (and agents on the host).
 	Docker docker.Docker
+	// HealthProbe says whether a URL answers (a service's healthcheck); nil means an
+	// HTTP GET that accepts any status below 400.
+	HealthProbe func(ctx context.Context, url string) bool
+	// ServiceStartTimeout is how long a service has to become healthy (default 60s);
+	// HealthPoll is how often it is checked (default 500ms); Settle is how long a
+	// service without a healthcheck must stay up to count as started (default 2s).
+	ServiceStartTimeout time.Duration
+	HealthPoll          time.Duration
+	Settle              time.Duration
+	// StopGrace is how long a stopping container gets before it is killed (default 10s).
+	StopGrace time.Duration
 }
 
 type Manager struct {
-	opts Options
-	reg  *registry.Registry
+	opts  Options
+	reg   *registry.Registry
+	ports *ports.Allocator
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex
@@ -59,7 +73,15 @@ func New(o Options) *Manager {
 	if o.Clock == nil {
 		o.Clock = clock.Real()
 	}
-	return &Manager{opts: o, reg: registry.New(o.Dir, o.States), locks: map[string]*sync.Mutex{}}
+	m := &Manager{opts: o, reg: registry.New(o.Dir, o.States), locks: map[string]*sync.Mutex{}}
+	if o.Docker != nil {
+		min, max := o.Global.Docker.PortRange.Min, o.Global.Docker.PortRange.Max
+		if min == 0 && max == 0 { // a Global built without the defaults
+			min, max = 41000, 41999
+		}
+		m.ports = ports.New(ports.Options{Dir: o.Dir, States: o.States, Min: min, Max: max, Probe: m.portUsable})
+	}
+	return m
 }
 
 // lock serializes operations on one ticket, so two starts never provision the same
@@ -156,17 +178,21 @@ func (m *Manager) Start(ctx context.Context, p api.TicketStartParams) (api.Ticke
 		m.publish(api.EventTicketStarted, p.ID, "", api.EmptyData{})
 	}
 
+	if err := m.validateServices(l, infos); err != nil {
+		return api.TicketStartResult{}, err
+	}
 	netInfo, err := m.provisionNetworks(ctx, l, p.Sandbox)
 	if err != nil {
 		return api.TicketStartResult{}, err
 	}
+	containers := m.startServices(ctx, l, infos, netInfo)
 	agents := m.launchAgents(ctx, l, infos, p.Sandbox)
 
 	res, err := m.reg.Get(p.ID)
 	if err != nil {
 		return api.TicketStartResult{}, err
 	}
-	return api.TicketStartResult{Summary: res.Summary, Checkouts: infos, Agents: agents, Network: netInfo}, nil
+	return api.TicketStartResult{Summary: res.Summary, Checkouts: infos, Agents: agents, Network: netInfo, Containers: containers}, nil
 }
 
 func kindFor(s domain.Sandbox) domain.CheckoutKind {

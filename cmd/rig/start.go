@@ -67,7 +67,14 @@ working directory, environment) each service would get. Secret values are never 
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "\nnetwork %s (%s)\n", n.Name, mode)
 			}
-			return printAgents(cmd.OutOrStdout(), res.Agents)
+			failedServices := printContainers(cmd.OutOrStdout(), res.Containers)
+			if err := printAgents(cmd.OutOrStdout(), res.Agents); err != nil {
+				return err
+			}
+			if failedServices > 0 {
+				return fmt.Errorf("%d service(s) did not start; fix the problem and run start again", failedServices)
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&sandbox, "sandbox", "", "override the sandbox for every service: container or host")
@@ -125,4 +132,34 @@ func printAgents(w io.Writer, agents []api.AgentInfo) error {
 		return fmt.Errorf("%d agent(s) did not start; fix the problem and run start again", failed)
 	}
 	return nil
+}
+
+// printContainers reports each service container and returns how many failed.
+func printContainers(w io.Writer, containers []api.ServiceContainerInfo) int {
+	if len(containers) == 0 {
+		return 0
+	}
+	fmt.Fprintln(w)
+	failed := 0
+	for _, c := range containers {
+		switch {
+		case c.Error != "":
+			failed++
+			fmt.Fprintf(w, "service %s: failed: %s\n", c.Service, c.Error)
+		case c.Running && c.URL != "":
+			fmt.Fprintf(w, "service %s: %s at %s\n", c.Service, runningWord(c), c.URL)
+		case c.Running:
+			fmt.Fprintf(w, "service %s: %s\n", c.Service, runningWord(c))
+		default:
+			fmt.Fprintf(w, "service %s: %s\n", c.Service, c.Note)
+		}
+	}
+	return failed
+}
+
+func runningWord(c api.ServiceContainerInfo) string {
+	if c.Note != "" {
+		return c.Note
+	}
+	return "running"
 }

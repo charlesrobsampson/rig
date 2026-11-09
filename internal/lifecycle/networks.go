@@ -14,14 +14,14 @@ import (
 )
 
 // needsDocker is true when anything in the ticket runs in Docker: a container-sandbox
-// agent, a dependency, or a service with something to run or build. A ticket that is
+// agent, a dependency, or a service with a Dockerfile. A ticket that is
 // entirely host work must not require Docker to be installed.
 func (m *Manager) needsDocker(t domain.Ticket, sandbox domain.Sandbox) bool {
 	if len(t.Dependencies) > 0 {
 		return true
 	}
 	for _, svc := range t.Services {
-		if policy.Resolve(m.opts.Global, t, svc, policy.Flags{Sandbox: sandbox}).Sandbox == domain.SandboxContainer || svc.Start != "" || svc.Build.Dockerfile != "" {
+		if policy.Resolve(m.opts.Global, t, svc, policy.Flags{Sandbox: sandbox}).Sandbox == domain.SandboxContainer || svc.Build.Dockerfile != "" {
 			return true
 		}
 	}
