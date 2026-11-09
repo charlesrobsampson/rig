@@ -206,7 +206,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 18 · Git: dirty check, import, and remove (both checkout kinds)
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/18-git-dirty` · Depends: 17, 17b
 - Read: `manifest.md` §7, `docs/formats.md` §7
 - Build: for both kinds, `IsDirty` (uncommitted, untracked, and commits ahead of base reported separately; clone checks use the hardened runner), `Import(force)` (clone: `git fetch <clone> branch:branch` into the main repo, refusing a non-fast-forward unless `force`; worktree: no-op since the branch already lives in the main repo), and `Remove(force)` (clone: delete the directory; worktree: `git worktree remove` + prune). Remove never deletes a clone whose branch has not been imported unless `force`. Branches are always kept.
