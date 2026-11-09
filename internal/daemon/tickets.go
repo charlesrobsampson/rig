@@ -9,6 +9,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/events"
 	"github.com/charlesrobsampson/rig/internal/lifecycle"
+	"github.com/charlesrobsampson/rig/internal/reconcile"
 	"github.com/charlesrobsampson/rig/internal/registry"
 )
 
@@ -59,6 +60,20 @@ func RegisterTicketHandlers(s *Server, r *registry.Registry) {
 			return nil, err
 		}
 		return api.TicketFileResult{Name: p.Name, Content: content}, nil
+	})
+}
+
+// RegisterReconcileHandler serves reconcile.run: compare state.json with reality, and
+// with fix remove orphaned rig containers and networks. It never changes state.json.
+func RegisterReconcileHandler(s *Server, r *reconcile.Reconciler) {
+	s.Handle(api.MethodReconcileRun, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.ReconcileParams
+		if len(params) > 0 && string(params) != "null" {
+			if err := json.Unmarshal(params, &p); err != nil {
+				return nil, &api.Error{Code: api.CodeInvalid, Message: "reconcile.run needs params like {\"fix\": false}"}
+			}
+		}
+		return r.Reconcile(ctx, p.Fix)
 	})
 }
 

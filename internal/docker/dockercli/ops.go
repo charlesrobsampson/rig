@@ -36,6 +36,10 @@ func sortedKeys(m map[string]string) []string {
 func filterArgs(labels map[string]string) []string {
 	var args []string
 	for _, k := range sortedKeys(labels) {
+		if labels[k] == "" { // a bare key matches the label with any value
+			args = append(args, "--filter", "label="+k)
+			continue
+		}
 		args = append(args, "--filter", "label="+k+"="+labels[k])
 	}
 	return args

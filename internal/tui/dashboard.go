@@ -21,6 +21,7 @@ const (
 	NeedContractViolation                 // the agreed contract was edited outside rig
 	NeedContractChange                    // a proposed contract change awaits a decision
 	NeedError                             // the ticket's files or a service are broken
+	NeedDrift                             // what exists no longer matches state.json
 	NeedGate                              // an approval stands between the ticket and its next phase
 )
 
@@ -35,6 +36,8 @@ func (n Need) Marker() string {
 		return "CONTRACT CHANGE"
 	case NeedError:
 		return "ERROR"
+	case NeedDrift:
+		return "DRIFT"
 	case NeedGate:
 		return "APPROVE"
 	}
@@ -62,6 +65,9 @@ func Needs(t api.TicketSummary) []Need {
 	}
 	if failed {
 		out = append(out, NeedError)
+	}
+	if len(t.Drift) > 0 {
+		out = append(out, NeedDrift)
 	}
 	if t.PendingGate != "" {
 		out = append(out, NeedGate)

@@ -141,7 +141,7 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 | `hello`, `status` | handshake; daemon version, pid, uptime |
 | `config.get` | effective global config |
 | `ticket.file` | `{ticket, name}` -> `{name, content}`: one of the ticket's lifecycle files, `name` one of `plan.md`, `tasks.md`, `contract.md`, `manual-tests.md` (anything else, including paths and `state.json`, is `invalid`); `not_found` when the ticket or the file does not exist (contract.md exists only for multi-service tickets) |
-| `ticket.list`, `ticket.get`, `ticket.rescan` | read tickets; a summary carries `pending_gate` (the approval a human still owes to leave the ticket's current phase, omitted when none) beside `contract_pending` and `contract_violation`, and `ai_summary` `{text?, backend, model?, remote, at?, files, added, deleted, error?}` when a summarizer is configured and has produced (or failed to produce) a summary; it is advisory, always accompanied by its diff stats, and `remote` is true when the content was sent off this machine |
+| `ticket.list`, `ticket.get`, `ticket.rescan` | read tickets; a summary carries `pending_gate` (the approval a human still owes to leave the ticket's current phase, omitted when none) beside `contract_pending` and `contract_violation`, `drift` (lines from the last reconcile pass, omitted when none), and `ai_summary` `{text?, backend, model?, remote, at?, files, added, deleted, error?}` when a summarizer is configured and has produced (or failed to produce) a summary; it is advisory, always accompanied by its diff stats, and `remote` is true when the content was sent off this machine |
 | `ticket.new`, `ticket.start`, `ticket.stop` | create / provision / teardown (`start` params: `sandbox`, `dry_run`; the result also carries `network`, `containers[]`, `dependencies[]`, `warnings[]`; the result also carries `agents[]` of `{service, pane_id, launched, note, error}` (one agent per host-sandbox service); a dry run provisions nothing and returns `launches[]` of `{service, harness, dir, command, env}` with secret values as `<secret NAME>`; `stop` params: `force`, `keep_checkouts`; its result lists `services[]` (checkout imported/removed) and `resources[]`, the Docker containers and networks removed; stopping an already stopped ticket succeeds with nothing in either; a stop that cannot finish fails with the cause's code and `details[]` naming what failed and what remains, and keeps the checkouts) |
 | `gate.list`, `gate.approve` | pending gates / approve |
 | `phase.set`, `transition.request` | human move / agent request |
@@ -160,7 +160,7 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 | `tests.render` | `{ticket}` -> `{preamble?, steps[{id, title, body, done}], signed_off}`: manual-tests.md with placeholders filled from live state. `invalid` with `details[]` listing every unfillable placeholder (or bad step heading); `not_found` when the file does not exist |
 | `logs.stream` | container logs |
 | `events.subscribe` | event stream |
-| `reconcile.run` | drift report, optional fix |
+| `reconcile.run` | `{fix?}` -> `{drift[{ticket, service?, kind, detail, fixable?}], fixed?[], failures?[], notes?[]}`: compares state.json with reality (recorded checkouts, service/dependency/agent containers, networks and agent terminal panes) and lists every difference as drift, never repairing by guessing. Kinds: `checkout_missing`, `service_container_missing`, `dependency_container_missing`, `agent_container_missing`, `agent_pane_missing`, `network_missing`, `orphan_container`, `orphan_network`. Orphans (rig-labelled objects whose ticket does not exist, which are not in their ticket's definition, or whose ticket is stopped) are the only `fixable` drift; with `fix` they are removed (containers, then networks) and listed in `fixed`. Objects without rig's `rig.ticket` label are never listed or touched; a ticket with a start or stop under way, or whose files cannot be read, is skipped. `notes` say what could not be checked (Docker or the terminal backend unreachable) |
 | `daemon.stop` | graceful shutdown |
 
 New methods may be added by later tasks following the same envelope. Method payload types (`ticket.list`, `ticket.get`, `status`, and later ones) are defined in `internal/api`, whose JSON field names are the reference; this file fixes the envelope, error codes, method names, and events.
@@ -178,6 +178,7 @@ Envelope: `{"type":"phase.changed","ticket":"ticket-412","service":"","at":"..."
 | `contract.pending` | `{"proposal":"P-backend-1"}` |
 | `contract.violation` | `{"detail"}` (agreed section edited directly) |
 | `contract.resolved` | `{"proposal","outcome":"accepted|rejected"}` |
+| `reconcile.done` | `{"drift","fixed"}`: a reconcile pass found a different set of drift, or fixed something |
 | `summary.updated` | `{"backend","error"?}`: a ticket's language-model summary was refreshed (or failed to refresh) |
 | `egress.denied` | `{"host","port","reason"}` (proxy refused a connection) |
 | `error` | `{"message"}` |

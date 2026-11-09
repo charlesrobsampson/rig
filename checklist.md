@@ -805,13 +805,20 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 ## Phase 11: Hardening and release
 
 ### 66 · Daemon restart reconciliation
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/66-reconcile` · Depends: 44, 30
 - Read: `manifest.md` §7 (recovery)
 - Build: on daemon start, reconcile `state.json` against real containers (by labels), checkouts, and panes; mark drift (missing, orphaned) and expose it in `rig list`; `rig reconcile --fix` removes orphans after confirmation.
 - Tests (fakes): clean state yields no drift; killed container shows as missing; orphan container found by label; `--fix` removes only rig-labeled orphans; agents keep running across a daemon restart.
 - Manual check: kill the daemon mid-ticket, restart, and see nothing lost.
+- Notes:
+  - `internal/reconcile`: one pass compares state.json with reality. Drift kinds: checkout missing (for provisioned/running/error services), service, dependency and agent containers missing or not running, agent pane gone or ended, network missing. Nothing is repaired or rewritten by guessing, and state.json is never changed; the findings are only reported. The pass runs when the daemon starts, every minute (`Run`), and on demand (`reconcile.run`); the last findings feed `TicketSummary.drift` (cheap, so `rig list` and the TUI show them) and a `reconcile.done` event fires when the set changes. What cannot be checked (Docker or the terminal backend down) is a note, not an assumption.
+  - Orphans = containers/networks that carry rig's `rig.ticket` label but belong to nothing: no such ticket, not a service/dependency of their ticket, or a stopped ticket's leftovers. Only these are `fixable`. Safety: objects without the label are never even listed; a ticket whose files cannot be read is never judged; a ticket with a start/stop under way (`lifecycle.Manager.Busy`, a non-blocking lock probe) is skipped, so a container a start has created but not yet recorded is not removed. `--fix` removes containers (forced) then networks, and reports what failed.
+  - Needed `ListContainers`/`ListNetworks` to accept "label present with any value" (empty value): implemented in the real client (`--filter label=key`), the fake, and added to the shared contract suite; verified against real Docker (`go test -tags docker ./internal/docker/dockercli` passes).
+  - CLI: `rig reconcile` prints a table of drift (and how many orphans `--fix` would remove); `rig reconcile --fix` lists the orphans and asks `Remove N orphan(s)? [y/N]` unless `--yes`; `rig list` shows `(drift: N, see rig reconcile)` and `--json` the lines. The TUI shows a DRIFT marker (ranked between errors and pending approvals) and refreshes on `reconcile.done`.
+  - Agents across a restart: panes and containers belong to the terminal backend and Docker, not the daemon; a test stops the daemon, restarts it, and shows `rig list --json`, state.json (apart from the timestamp) and the agent's pane are unchanged with no drift.
+  - Manual check (kill the daemon mid-ticket, restart, see nothing lost) is for you: `rig start` a ticket with a real agent, `kill` the daemon, run any `rig` command to restart it, and `rig reconcile`.
 
 ### 67 · Limits and cost readout
 - [ ] Done

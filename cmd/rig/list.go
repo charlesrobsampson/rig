@@ -111,6 +111,9 @@ func writeTicketTable(w io.Writer, tickets []api.TicketSummary) {
 		if t.ContractViolation {
 			phase += " (contract edited outside rig)"
 		}
+		if len(t.Drift) > 0 {
+			phase += fmt.Sprintf(" (drift: %d, see rig reconcile)", len(t.Drift))
+		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", t.ID, phase, serviceCell(t.Services), portsCell(t.Services), titleCell(t))
 	}
 	tw.Flush()

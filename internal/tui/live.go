@@ -126,7 +126,7 @@ func (m *Model) applyEvents(events []api.Event) (refresh, openChanged bool) {
 			refresh = true // the pending gate follows the phase, and only the daemon knows it
 			openChanged = openChanged || touchesOpen
 		case api.EventTicketCreated, api.EventTicketStarted, api.EventTicketStopped, api.EventServiceStatus,
-			api.EventGateApproved, api.EventContractPending, api.EventContractResolved, api.EventContractViolation:
+			api.EventGateApproved, api.EventContractPending, api.EventContractResolved, api.EventContractViolation, api.EventReconciled, api.EventSummaryUpdated:
 			refresh = true
 			openChanged = openChanged || touchesOpen
 		}

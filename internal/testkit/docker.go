@@ -259,7 +259,8 @@ func copyLabels(in map[string]string) map[string]string {
 
 func hasLabels(have, want map[string]string) bool {
 	for k, v := range want {
-		if have[k] != v {
+		got, present := have[k]
+		if !present || (v != "" && got != v) { // an empty wanted value matches any value
 			return false
 		}
 	}

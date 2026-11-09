@@ -113,6 +113,23 @@ func (m *Manager) lock(id string) (unlock func()) {
 	return l.Unlock
 }
 
+// Busy reports whether an operation on the ticket is under way (a start or a stop part
+// way through creating or removing things). Anything that compares the ticket with what
+// exists must leave a busy ticket alone: what it sees is not yet, or no longer, recorded.
+func (m *Manager) Busy(id string) bool {
+	m.mu.Lock()
+	l, ok := m.locks[id]
+	m.mu.Unlock()
+	if !ok {
+		return false
+	}
+	if l.TryLock() {
+		l.Unlock()
+		return false
+	}
+	return true
+}
+
 func invalid(format string, args ...any) *api.Error {
 	return &api.Error{Code: api.CodeInvalid, Message: fmt.Sprintf(format, args...)}
 }
