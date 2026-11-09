@@ -851,7 +851,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 69 · Linux check
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/69-linux` · Depends: 66
 - Read: `process.md` §4
 - Build: run the suite on Linux (CI or container), fix path/socket/permission assumptions, document differences (Keychain → secret-tool or `.env`).
