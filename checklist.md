@@ -259,13 +259,14 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 ## Phase 3: Lifecycle state machine
 
 ### 23 · Phase machine
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/23-phase-machine` · Depends: 07, 11
 - Read: `manifest.md` §3, `docs/formats.md` §5–6
 - Build: in `internal/state`, the transition rules from formats §6 (one step forward, backward to any earlier phase, `done` terminal), pure `CanTransition(from, to)`, persistence of phase via the state writer from task 11.
 - Tests: table of every phase pair; backward moves allowed to any earlier phase except from `done`; skipping forward refused; same-phase transition is an error; state survives reload.
 - Manual check: none.
+- Notes: in `internal/state` (`phase.go`): `state.CanTransition(from, to) error` (pure; checks only the order, not gates, reasons, or who is asking: forward exactly one step, backward to any earlier phase, `done` terminal, same-phase and unknown phases refused, each with a message saying why, e.g. `a ticket moves forward one step at a time: plan goes to implement, not test`), `state.IsBackward(from, to) bool` (backward moves need a reason, task 25), `state.NextPhase(p) (domain.Phase, bool)`. The rule is checked exhaustively over all 36 phase pairs plus named cases. Persisting a phase is just `Manager.Update` (tested: moving forward and back survives reloads); the transition log, gates, reasons, and events are tasks 24 and 25, which should call `CanTransition` inside the same `Update` so the check and the write are atomic.
 
 ### 24 · Gates and `rig approve`
 - [ ] Done
