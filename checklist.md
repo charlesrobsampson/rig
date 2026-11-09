@@ -428,7 +428,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 38 · Dependencies (sidecars)
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/38-dependencies` · Depends: 37
 - Read: `manifest.md` §5 (`dependencies`)
 - Build: start `dependencies:` containers on the ticket network before services (e.g. postgres), wait for their health, resolve by name inside the network, tear down with the ticket.
