@@ -150,3 +150,21 @@ func TestNewErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestNewCreatesAContractForMultiServiceTicketsOnly(t *testing.T) {
+	home, d, repo := newEnv(t)
+	other := testkit.NewRepo(t)
+	if _, stderr, code := rig(t, d, "new", "--id", "solo", "--title", "One", "--service", "api="+repo.Dir); code != 0 {
+		t.Fatalf("solo: %q", stderr)
+	}
+	if _, stderr, code := rig(t, d, "new", "--id", "duo", "--title", "Two", "--service", "api="+repo.Dir, "--service", "web="+other.Dir); code != 0 {
+		t.Fatalf("duo: %q", stderr)
+	}
+	if _, err := os.Stat(filepath.Join(home, "tickets", "solo", "contract.md")); !os.IsNotExist(err) {
+		t.Errorf("a single-service ticket got a contract: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(home, "tickets", "duo", "contract.md"))
+	if err != nil || !strings.Contains(string(raw), "# Contract: duo") || !strings.Contains(string(raw), "## Proposed changes") {
+		t.Errorf("duo's contract: %v\n%s", err, raw)
+	}
+}
