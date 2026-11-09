@@ -458,7 +458,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 41 · Secrets
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/41-secrets` · Depends: 08
 - Read: `manifest.md` §4, §5
 - Build: resolve names listed in `secrets` and the secret names of the selected auth profile (service profile > ticket profile > `auth.default`) from macOS Keychain or a `.env` reference path (injectable resolver); reject a `host_login` profile when `sandbox: container`; missing secret fails start with the name; values never written to the ticket dir, logs, or `--json` output.
