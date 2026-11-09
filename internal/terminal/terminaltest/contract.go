@@ -247,7 +247,8 @@ func Run(t *testing.T, newSubject func(t *testing.T) Subject) {
 			}
 			id := mustSpawn(t, s, sp)
 			out := waitForOutput(t, s, id, "env=hello-env")
-			if !strings.Contains(out, "cwd="+dir) {
+			// Panes hard-wrap long lines, so compare without line breaks.
+			if !strings.Contains(strings.ReplaceAll(out, "\n", ""), "cwd="+dir) {
 				t.Errorf("the pane did not start in %s:\n%s", dir, out)
 			}
 		})
