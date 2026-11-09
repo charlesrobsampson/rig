@@ -624,7 +624,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 55 · TUI skeleton
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/55-tui-skeleton` · Depends: 16, 15
 - Read: `manifest.md` §1, §6
 - Build: Bubble Tea app opened by bare `rig` (prints `list` output when stdout is not a terminal): root model, layout, keymap, status bar, help overlay, daemon connection with reconnect and a "daemon not running" state.
