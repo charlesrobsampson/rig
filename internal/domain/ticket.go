@@ -9,7 +9,7 @@ type Ticket struct {
 	Source       Source            `json:"source" yaml:"source"`
 	Services     []Service         `json:"services" yaml:"services"`
 	Dependencies []Dependency      `json:"dependencies,omitempty" yaml:"dependencies,omitempty"`
-	Docker       Docker            `json:"docker" yaml:"docker"`
+	Docker       Docker            `json:"docker" yaml:"docker,omitempty"`
 	Sandbox      Sandbox           `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
 	Env          map[string]string `json:"env,omitempty" yaml:"env,omitempty"`
 	Secrets      []string          `json:"secrets,omitempty" yaml:"secrets,omitempty"`

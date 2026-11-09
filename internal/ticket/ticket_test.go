@@ -130,8 +130,8 @@ func TestRegistry(t *testing.T) {
 		r.Register("zeta", &stubSource{})
 		r.Register("alpha", &stubSource{})
 		_, err := r.Fetch(ctx, "jira", "PROJ-1")
-		if err == nil || !strings.Contains(err.Error(), "jira") || !strings.Contains(err.Error(), "alpha, manual, zeta") {
-			t.Errorf("error = %v, want one naming jira and the known types, sorted", err)
+		if err == nil || !strings.Contains(err.Error(), "jira") || !strings.Contains(err.Error(), "alpha, manual, zeta") || !errors.Is(err, ticket.ErrUnknownSource) {
+			t.Errorf("error = %v, want ErrUnknownSource naming jira and the known types, sorted", err)
 		}
 	})
 
@@ -159,8 +159,8 @@ func TestRegistry(t *testing.T) {
 	t.Run("a seed that cannot become a ticket is rejected", func(t *testing.T) {
 		r := ticket.NewRegistry()
 		r.Register("jira", &stubSource{seed: ticket.Seed{ID: "!!!", Title: "x"}})
-		if _, err := r.Fetch(ctx, "jira", "x"); err == nil {
-			t.Error("expected an error for an id that sanitizes to nothing")
+		if _, err := r.Fetch(ctx, "jira", "x"); !errors.Is(err, ticket.ErrUnusable) {
+			t.Errorf("error = %v, want ErrUnusable for an id that sanitizes to nothing", err)
 		}
 		r.Register("github", &stubSource{seed: ticket.Seed{ID: "gh-1"}})
 		if _, err := r.Fetch(ctx, "github", "x"); err == nil || !strings.Contains(err.Error(), "title") {
