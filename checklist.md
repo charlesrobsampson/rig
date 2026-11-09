@@ -270,7 +270,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 24 · Gates and `rig approve`
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/24-gates` · Depends: 10, 23
 - Read: `manifest.md` §3 (gates), §5 (policy), `docs/formats.md` §5–6
 - Build: gate model per formats §6 (`plan_approval`: plan→implement; `manual_test_signoff`: test→review; `review_approval`: review→push); approvals stored in `state.json` per formats §5; resolver uses per-service policy (a ticket transitions only when every service's required gates are satisfied); `rig approve <id> <gate> [--service]`, `rig gates <id>` shows pending gates.
