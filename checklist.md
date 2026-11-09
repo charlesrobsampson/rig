@@ -388,7 +388,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 34 · Real Docker client
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/34-docker-client` · Depends: 33
 - Read: `manifest.md` §4
 - Build: Docker SDK implementation passing the contract suite under the `docker` tag; clear error when the daemon isn't reachable; labels on every object (`rig.ticket=<id>`, `rig.service=<name>`) so cleanup and reconciliation can find them.
