@@ -294,7 +294,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 26 · TerminalBackend interface, fake, contract suite
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/26-terminal-iface` · Depends: 02, 03, 06
 - Read: `docs/spikes/02-herdr.md`, `docs/spikes/03-tmux.md`, `manifest.md` §6, §7
 - Build: `internal/terminal` interface sized from the spikes (spawn pane with cwd/cmd/env, list, state as liveness + exit status + optional heuristic (not the authoritative agent state; see spike 03 §2), send input, close, attach command); `testkit` fake backend with scriptable agent states and recorded input; a shared contract test suite that any implementation can run.
