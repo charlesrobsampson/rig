@@ -378,7 +378,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 33 · Docker interface and fake
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/33-docker-iface` · Depends: 06
 - Read: `manifest.md` §4
 - Build: `internal/docker` interface (networks create/remove/inspect; image build; container create/start/stop/remove/exec/logs/inspect/health; port bindings); `testkit` fake Docker with real in-memory behavior (name collisions, network membership and DNS by service name, port conflicts, container logs, health flips); shared contract suite.
