@@ -27,7 +27,10 @@ var hooks = []struct{ event, matcher, state string }{
 	{"SessionEnd", "", "exited"},
 }
 
-func settings(hookCommand string) (string, error) {
+// settings is the JSON given to `claude --settings`: the hooks that report state and, if
+// costCommand is set, a status line command that receives Claude Code's status JSON (which
+// carries the session's cost) and reports it.
+func settings(hookCommand, costCommand string) (string, error) {
 	type hook struct {
 		Type    string `json:"type"`
 		Command string `json:"command"`
@@ -40,7 +43,11 @@ func settings(hookCommand string) (string, error) {
 	for _, h := range hooks {
 		events[h.event] = []group{{Matcher: h.matcher, Hooks: []hook{{Type: "command", Command: hookCommand + " " + h.state}}}}
 	}
-	b, err := json.Marshal(map[string]any{"hooks": events})
+	out := map[string]any{"hooks": events}
+	if costCommand != "" {
+		out["statusLine"] = map[string]string{"type": "command", "command": costCommand}
+	}
+	b, err := json.Marshal(out)
 	return string(b), err
 }
 
@@ -61,7 +68,7 @@ func (c ClaudeCode) Command(r Request) (Launch, error) {
 	if hookCommand == "" {
 		hookCommand = "rig agent-event"
 	}
-	settingsJSON, err := settings(hookCommand)
+	settingsJSON, err := settings(hookCommand, r.CostCommand)
 	if err != nil {
 		return Launch{}, err
 	}

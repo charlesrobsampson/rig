@@ -18,6 +18,7 @@ const (
 	EventPhaseChanged      EventType = "phase.changed"
 	EventGateApproved      EventType = "gate.approved"
 	EventAgentState        EventType = "agent.state"
+	EventAgentCost         EventType = "agent.cost"
 	EventContractPending   EventType = "contract.pending"
 	EventContractViolation EventType = "contract.violation"
 	EventContractResolved  EventType = "contract.resolved"
@@ -76,6 +77,12 @@ type GateApprovedData struct {
 type AgentStateData struct {
 	State    domain.AgentState `json:"state"`
 	Previous domain.AgentState `json:"previous,omitempty"`
+}
+
+// AgentCostData is an agent's new running cost, published when it changes by at least a
+// cent (the harness reports far more often than that).
+type AgentCostData struct {
+	USD float64 `json:"usd"`
 }
 
 type ContractPendingData struct {

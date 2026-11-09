@@ -180,15 +180,15 @@ func (d *dashboard) view(w, h int) string {
 	if len(d.rows) == 0 {
 		return "no tickets yet — create one with: rig new"
 	}
-	cells := make([][5]string, len(d.rows))
-	widths := [5]int{len("TICKET"), len("PHASE"), len("AGENTS"), len("PORTS"), len("NEEDS")}
+	cells := make([][6]string, len(d.rows))
+	widths := [6]int{len("TICKET"), len("PHASE"), len("AGENTS"), len("PORTS"), len("COST"), len("NEEDS")}
 	for i, t := range d.rows {
-		cells[i] = [5]string{t.ID, phaseCell(t), agentsCell(t), portsCell(t), needsCell(t)}
+		cells[i] = [6]string{t.ID, phaseCell(t), agentsCell(t), portsCell(t), costCell(t), needsCell(t)}
 		for c, s := range cells[i] {
 			widths[c] = max(widths[c], len([]rune(s)))
 		}
 	}
-	line := func(sel bool, c [5]string, title string) string {
+	line := func(sel bool, c [6]string, title string) string {
 		prefix := "  "
 		if sel {
 			prefix = "> "
@@ -201,7 +201,7 @@ func (d *dashboard) view(w, h int) string {
 		b.WriteString(title)
 		return strings.TrimRight(b.String(), " ")
 	}
-	out := []string{line(false, [5]string{"TICKET", "PHASE", "AGENTS", "PORTS", "NEEDS"}, "TITLE")}
+	out := []string{line(false, [6]string{"TICKET", "PHASE", "AGENTS", "PORTS", "COST", "NEEDS"}, "TITLE")}
 
 	pane := d.summaryPane(w, h)
 	visible := h - 1 - len(pane)
@@ -317,6 +317,21 @@ func portsCell(t api.TicketSummary) string {
 		return "-"
 	}
 	return strings.Join(ports, ",")
+}
+
+// costCell is what the ticket's agents have spent, summed, or "-" when no harness has
+// reported a cost (an unreported cost is not shown as $0.00).
+func costCell(t api.TicketSummary) string {
+	total, any := 0.0, false
+	for _, s := range t.Services {
+		if s.CostUSD != nil {
+			total, any = total+*s.CostUSD, true
+		}
+	}
+	if !any {
+		return "-"
+	}
+	return fmt.Sprintf("$%.2f", total)
 }
 
 // needsCell lists the markers; a pending gate names the gate.

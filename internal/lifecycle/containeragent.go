@@ -105,6 +105,7 @@ func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domai
 	// Hooks inside the container cannot reach the daemon; they append to a file the
 	// daemon watches (docs/spikes/04-agent-container.md §5).
 	req.HookCommand = `sh -c 'echo "$1" >> ` + agentEventsDir + "/" + eventsFile + `' rig-event`
+	req.CostCommand = containerCostCommand(agentEventsDir + "/" + eventsFile)
 	launch, err := h.Command(req)
 	if err != nil {
 		return agentLaunch{}, err
@@ -201,4 +202,15 @@ func (m *Manager) removeAgentContainers(ctx context.Context, id string, t domain
 		}
 	}
 	return errors.Join(failures...)
+}
+
+// containerCostCommand is the status line command of a container agent. The agent cannot
+// reach the daemon and has no rig binary, so it appends "cost <usd>" to the events file
+// the supervisor reads, pulling the number out of Claude Code's status JSON with sed. It
+// prints nothing and writes nothing when the status has no cost.
+func containerCostCommand(eventsPath string) string {
+	// the group adds the final newline tr removed, so sed's output is a complete line on
+	// every sed (some keep a missing final newline missing, and the supervisor only reads
+	// complete lines)
+	return `sh -c '{ tr -d "\n"; echo; } | sed -n "s/.*\"total_cost_usd\": *\([0-9.eE+-][0-9.eE+-]*\).*/cost \1/p" >> ` + eventsPath + `' rig-cost`
 }

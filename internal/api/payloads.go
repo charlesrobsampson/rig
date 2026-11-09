@@ -45,7 +45,10 @@ type ServiceSummary struct {
 	Name       string               `json:"name"`
 	Status     domain.ServiceStatus `json:"status,omitempty"`
 	AgentState domain.AgentState    `json:"agent_state,omitempty"`
-	HostPort   int                  `json:"host_port,omitempty"`
+	// CostUSD is what the agent's harness reports having spent this session. It is
+	// absent, not zero, when the harness does not report cost.
+	CostUSD  *float64 `json:"cost_usd,omitempty"`
+	HostPort int      `json:"host_port,omitempty"`
 }
 
 type TicketGetParams struct {
@@ -272,7 +275,10 @@ type TransitionResult struct {
 type AgentEventParams struct {
 	Ticket  string `json:"ticket"`
 	Service string `json:"service"`
-	State   string `json:"state"`
+	// State is ready, working, blocked, idle or exited, or "cost": the harness's
+	// running total for this agent session, in CostUSD.
+	State   string   `json:"state"`
+	CostUSD *float64 `json:"cost_usd,omitempty"`
 }
 
 // AgentMessageParams types Text into a service's running agent, as if a human had

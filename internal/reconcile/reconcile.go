@@ -289,7 +289,7 @@ func orphanReason(tickets map[string]facts, ticket string, labels map[string]str
 			return fmt.Sprintf("ticket %q has no dependency %q", ticket, dep)
 		}
 	}
-	if !inUse(f.state) {
+	if !f.state.InUse() {
 		return fmt.Sprintf("ticket %q is stopped", ticket)
 	}
 	return ""
@@ -307,29 +307,6 @@ func hasService(t domain.Ticket, name string) bool {
 func hasDependency(t domain.Ticket, name string) bool {
 	for _, d := range t.Dependencies {
 		if d.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
-// inUse reports whether state.json says the ticket has running things: it has been
-// started and not stopped since.
-func inUse(st state.State) bool {
-	if st.Network.Name != "" || st.EgressNetwork != nil {
-		return true
-	}
-	for _, ss := range st.Services {
-		switch ss.Status {
-		case domain.ServiceProvisioned, domain.ServiceRunning, domain.ServiceError:
-			return true
-		}
-		if ss.ContainerID != "" || ss.Agent.PaneID != "" || ss.Agent.ContainerID != "" {
-			return true
-		}
-	}
-	for _, ds := range st.Dependencies {
-		if ds.ContainerID != "" {
 			return true
 		}
 	}

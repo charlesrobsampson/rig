@@ -117,6 +117,11 @@ func (m *Model) applyEvents(events []api.Event) (refresh, openChanged bool) {
 			if !m.setAgentState(ev.Ticket, ev.Service, d.State) {
 				refresh = true // a ticket or service we have not seen
 			}
+		case api.EventAgentCost:
+			var d api.AgentCostData
+			if ev.DecodeData(&d) != nil || !m.setCost(ev.Ticket, ev.Service, d.USD) {
+				refresh = true
+			}
 		case api.EventPhaseChanged:
 			var d api.PhaseChangedData
 			if ev.DecodeData(&d) != nil || !m.setPhase(ev.Ticket, d.To) {
@@ -142,6 +147,21 @@ func (m *Model) setAgentState(ticket, service string, state domain.AgentState) b
 		for j := range m.tickets[i].Services {
 			if m.tickets[i].Services[j].Name == service {
 				m.tickets[i].Services[j].AgentState = state
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (m *Model) setCost(ticket, service string, usd float64) bool {
+	for i := range m.tickets {
+		if m.tickets[i].ID != ticket {
+			continue
+		}
+		for j := range m.tickets[i].Services {
+			if m.tickets[i].Services[j].Name == service {
+				m.tickets[i].Services[j].CostUSD = &usd
 				return true
 			}
 		}

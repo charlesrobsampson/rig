@@ -71,6 +71,15 @@ type Agent struct {
 	PaneID      string            `json:"pane_id"`
 	State       domain.AgentState `json:"state"`
 	ContainerID string            `json:"container_id"`
+	// Cost is what the agent's harness last reported spending. It is absent (nil) when
+	// the harness does not report cost, never a made-up zero.
+	Cost *Cost `json:"cost,omitempty"`
+}
+
+// Cost is a harness's own running total for one agent session, in US dollars.
+type Cost struct {
+	USD float64   `json:"usd"`
+	At  time.Time `json:"at"`
 }
 
 type Push struct {
@@ -135,4 +144,30 @@ func (s *ServiceState) UnmarshalJSON(data []byte) error {
 func (s ServiceState) MarshalJSON() ([]byte, error) {
 	type plain ServiceState
 	return marshalWithUnknown(plain(s), s.unknown)
+}
+
+// Active counts against the limit on active tickets: it is in use and not done.
+func (s State) Active() bool { return s.Phase != domain.PhaseDone && s.InUse() }
+
+// InUse reports whether the ticket has anything running or provisioned, according to
+// this state: it has been started and not stopped since (done or not).
+func (s State) InUse() bool {
+	if s.Network.Name != "" || s.EgressNetwork != nil {
+		return true
+	}
+	for _, ss := range s.Services {
+		switch ss.Status {
+		case domain.ServiceProvisioned, domain.ServiceRunning, domain.ServiceError:
+			return true
+		}
+		if ss.ContainerID != "" || ss.Agent.PaneID != "" || ss.Agent.ContainerID != "" {
+			return true
+		}
+	}
+	for _, ds := range s.Dependencies {
+		if ds.ContainerID != "" {
+			return true
+		}
+	}
+	return false
 }
