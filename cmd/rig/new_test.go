@@ -138,7 +138,7 @@ func TestNewErrors(t *testing.T) {
 		{"too many arguments", []string{"new", "a", "b", "--service", "api=" + repo.Dir}, 2, "arg"},
 		{"an existing ticket", []string{"new", "--id", "taken", "--title", "T", "--service", "api=" + repo.Dir}, 1, "already exists"},
 		{"a directory that is not a git repository", []string{"new", "--id", "x", "--title", "T", "--service", "api=" + notRepo}, 2, "not a git repository"},
-		{"an unknown ticket source", []string{"new", "--from", "jira:PROJ-1", "--service", "api=" + repo.Dir}, 2, "known: manual"},
+		{"an unknown ticket source", []string{"new", "--from", "linear:ENG-1", "--service", "api=" + repo.Dir}, 2, "known: jira, manual"},
 		{"a malformed --from", []string{"new", "--from", "nonsense", "--service", "api=" + repo.Dir}, 2, "type:ref"},
 	}
 	for _, tt := range tests {
