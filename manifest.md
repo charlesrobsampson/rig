@@ -182,6 +182,7 @@ rig/
 │   ├── events/     # in-process event bus feeding events.subscribe streams
 │   ├── domain/     # shared types: Ticket, Service, Policy, enums, id validation
 │   ├── fsutil/     # atomic file writes and cross-process locks
+│   ├── lifecycle/  # start/stop of a ticket: provisions checkouts, records state, emits events
 │   ├── git/        # checkout provisioning (clone/worktree), dirty checks, import, push/PR
 │   ├── harness/    # agent launchers
 │   ├── registry/   # reads tickets (ticket.yaml + state.json) for list/get
@@ -204,7 +205,7 @@ rig/
 ### CLI
 * `rig` open TUI (auto-starts daemon)
 * `rig new` create ticket (manual or `--from jira:PROJ-412`)
-* `rig start|stop <id>` provision / teardown
+* `rig start <id> [--sandbox host|container]` provision checkouts (stop comes later)
 * `rig list` tickets, phase, status, ports
 * `rig attach <id> [service]` jump into agent terminal
 * `rig approve <id> <gate>` pass a gate
