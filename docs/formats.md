@@ -33,9 +33,10 @@ The exact shapes that every part of rig shares. `manifest.md` says *what* and *w
 ├── tasks.md           # agent; GitHub checkboxes `- [ ]` / `- [x]`, progress = counted boxes
 ├── manual-tests.md    # agent-written; see §10
 ├── contract.md        # multi-service tickets only; see §9
+├── messages.jsonl     # rig-written log of messages typed into agents (`rig msg`): {at, service, from, text, delivered, reason?}
 └── <service path>/    # checkout (default `./<service name>`): isolated shared clone in container mode, git worktree in host mode
 ```
-`state.json` is the only file rig writes besides stubs created by `rig new`. Agents must never edit `state.json` or `ticket.yaml`. `store.json` is a rebuildable cache (see manifest §1, principle 4).
+`state.json` is the only file rig rewrites; it also appends to `messages.jsonl` and creates the stubs of `rig new`. Agents must never edit `state.json` or `ticket.yaml`. `store.json` is a rebuildable cache (see manifest §1, principle 4).
 
 ## 4. `ticket.yaml`
 Shape per manifest §5, plus:
@@ -130,7 +131,7 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 | `ticket.new`, `ticket.start`, `ticket.stop` | create / provision / teardown (`start` params: `sandbox`, `dry_run`; the result also carries `agents[]` of `{service, pane_id, launched, note, error}` (one agent per host-sandbox service); a dry run provisions nothing and returns `launches[]` of `{service, harness, dir, command, env}` with secret values as `<secret NAME>`; `stop` params: `force`, `keep_checkouts`) |
 | `gate.list`, `gate.approve` | pending gates / approve |
 | `phase.set`, `transition.request` | human move / agent request |
-| `agent.attach`, `agent.message` | returns attach command / injects text (`agent.attach` params `{ticket, service?}` (service optional when the ticket has one), result `{service, command[]}`; errors `not_found`, `not_running` when no agent is running) |
+| `agent.attach`, `agent.message` | returns attach command / injects text (`agent.message` params `{ticket, service, text}`, result `{service, sent}`; errors `blocked` when the agent waits on a permission prompt (nothing typed), `not_running`, `unavailable` if the agent is not ready in time; `agent.attach` params `{ticket, service?}` (service optional when the ticket has one), result `{service, command[]}`; errors `not_found`, `not_running` when no agent is running) |
 | `agent.event` | agent hook reports a state (`ready\|working\|blocked\|idle\|exited`) for a ticket/service |
 | `contract.list`, `contract.accept`, `contract.reject` | contract proposals |
 | `review.diff` | per-service diff and stat |

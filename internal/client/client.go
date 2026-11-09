@@ -259,6 +259,11 @@ func (c *Client) fail(ctx context.Context, err error) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
 	}
+	// The socket deadline is the context's, and it can fire a moment before the
+	// context itself reports being expired.
+	if deadline, ok := ctx.Deadline(); ok && errors.Is(err, os.ErrDeadlineExceeded) && !time.Now().Before(deadline.Add(-50*time.Millisecond)) {
+		return context.DeadlineExceeded
+	}
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) {
 		return &api.Error{Code: api.CodeNotRunning, Message: "daemon connection lost"}
 	}
