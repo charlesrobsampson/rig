@@ -379,3 +379,47 @@ type TestsStep struct {
 	Body  string `json:"body"`
 	Done  bool   `json:"done"`
 }
+
+// ContractListParams asks for a ticket's contract proposals.
+type ContractListParams struct {
+	Ticket string `json:"ticket"`
+}
+
+// ContractProposal is one proposed change to the contract.
+type ContractProposal struct {
+	ID       string `json:"id"`
+	From     string `json:"from"`
+	Status   string `json:"status"` // open, accepted or rejected
+	What     string `json:"what"`
+	Why      string `json:"why"`
+	Rejected string `json:"rejected,omitempty"`
+}
+
+// ContractListResult lists the proposals, oldest first, and any problems found in the
+// file (a malformed proposal heading, say). Violation is set while the agreed section
+// has been edited directly and nobody has acknowledged it.
+type ContractListResult struct {
+	Ticket    string             `json:"ticket"`
+	Proposals []ContractProposal `json:"proposals"`
+	Problems  []string           `json:"problems,omitempty"`
+	Violation string             `json:"violation,omitempty"`
+}
+
+// ContractResolveParams accepts or rejects one open proposal (a human action). Reason
+// is required to reject.
+type ContractResolveParams struct {
+	Ticket   string `json:"ticket"`
+	Proposal string `json:"proposal"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// ContractResolveResult says what the proposal became.
+type ContractResolveResult struct {
+	Proposal string `json:"proposal"`
+	Outcome  string `json:"outcome"` // accepted or rejected
+}
+
+// ContractAckParams clears the direct-edit violation once a human has looked at it.
+type ContractAckParams struct {
+	Ticket string `json:"ticket"`
+}

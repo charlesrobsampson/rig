@@ -341,3 +341,42 @@ func TestTheTemplateAlonePutsNothingPending(t *testing.T) {
 	}
 	_ = withProposals
 }
+
+func TestOnProposalIsCalledOncePerNewOpenProposalOnly(t *testing.T) {
+	f := newFixture(t)
+	var got []string
+	w := contractwatch.New(contractwatch.Options{Dir: f.dir, States: f.states, Bus: f.bus, Clock: f.clock, Interval: 100 * time.Millisecond, Debounce: 500 * time.Millisecond,
+		OnProposal: func(ticket string, p contract.Proposal) { got = append(got, ticket+"/"+p.ID+"/"+p.From) }})
+	f.ticket("demo", domain.PhasePlan)
+	f.settle(w)
+	f.write("demo", contractWith("demo", "", proposal("api", 1, "open"), proposal("web", 1, "accepted")))
+	f.settle(w)
+	f.write("demo", contractWith("demo", "", proposal("api", 1, "open"), proposal("web", 1, "accepted"), proposal("web", 2, "open")))
+	f.settle(w)
+	if strings.Join(got, ",") != "demo/P-api-1/api,demo/P-web-2/web" {
+		t.Errorf("callbacks = %v; a proposal that arrives already resolved is not news", got)
+	}
+}
+
+func TestAProposalResolvedThroughRigIsNotReannouncedByTheWatcher(t *testing.T) {
+	f := newFixture(t)
+	f.ticket("demo", domain.PhasePlan)
+	f.write("demo", contractWith("demo", "", proposal("api", 1, "open"), proposal("api", 2, "open")))
+	f.settle(f.w)
+	f.events()
+
+	// rig resolves P-api-1 itself (and records that), then the file changes
+	statePath := filepath.Join(f.dir, "demo", "state.json")
+	f.states.Update(statePath, func(s *state.State) error { s.Contract.Resolved = []string{"P-api-1"}; return nil })
+	f.write("demo", contractWith("demo", "", proposal("api", 1, "accepted"), proposal("api", 2, "accepted")))
+	f.settle(f.w)
+	var resolved []string
+	for _, ev := range f.events() {
+		if ev.Type == api.EventContractResolved {
+			resolved = append(resolved, ev.Data["proposal"].(string))
+		}
+	}
+	if strings.Join(resolved, ",") != "P-api-2" {
+		t.Errorf("resolved events = %v; P-api-1 was published by rig, only P-api-2 (edited by hand) is the watcher's", resolved)
+	}
+}

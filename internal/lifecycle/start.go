@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/charlesrobsampson/rig/internal/contract"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -65,6 +66,9 @@ type Options struct {
 	EgressBinary egress.BinaryFinder
 	// StopGrace is how long a stopping container gets before it is killed (default 10s).
 	StopGrace time.Duration
+	// OnContractResolved is called after a human accepts or rejects a proposal (the
+	// daemon uses it to tell the agents); reason is the rejection reason.
+	OnContractResolved func(ticket string, p contract.Proposal, outcome, reason string)
 }
 
 type Manager struct {

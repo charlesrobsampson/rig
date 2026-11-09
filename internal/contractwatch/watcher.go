@@ -32,6 +32,8 @@ type Options struct {
 	Logger   *slog.Logger
 	Interval time.Duration // between looks at the files (default 1s)
 	Debounce time.Duration // how long a file must stay unchanged before it is read (default 500ms)
+	// OnProposal is called once for each new open proposal, after its event is published.
+	OnProposal func(ticket string, p contract.Proposal)
 }
 
 type Watcher struct {
@@ -130,7 +132,7 @@ func (w *Watcher) process(id, path string, t *watched) {
 	doc := contract.Parse(string(raw))
 	statePath := filepath.Join(w.opts.Dir, id, "state.json")
 
-	var announce []string
+	var announce []contract.Proposal
 	var violation string
 	var resolved []api.ContractResolvedData
 	err = w.opts.States.Update(statePath, func(st *state.State) error {
@@ -141,10 +143,10 @@ func (w *Watcher) process(id, path string, t *watched) {
 			if !slices.Contains(st.Contract.Seen, p.ID) {
 				st.Contract.Seen = append(st.Contract.Seen, p.ID)
 				if p.Status == contract.Open {
-					announce = append(announce, p.ID)
+					announce = append(announce, p)
 				}
 			}
-			if prev, known := t.statuses[p.ID]; known && prev == contract.Open && p.Status != contract.Open {
+			if prev, known := t.statuses[p.ID]; known && prev == contract.Open && p.Status != contract.Open && !slices.Contains(st.Contract.Resolved, p.ID) {
 				resolved = append(resolved, api.ContractResolvedData{Proposal: p.ID, Outcome: string(p.Status)})
 			}
 		}
@@ -175,8 +177,11 @@ func (w *Watcher) process(id, path string, t *watched) {
 		t.statuses[p.ID] = p.Status
 	}
 	t.read = true
-	for _, pid := range announce {
-		w.publish(api.EventContractPending, id, api.ContractPendingData{Proposal: pid})
+	for _, p := range announce {
+		w.publish(api.EventContractPending, id, api.ContractPendingData{Proposal: p.ID})
+		if w.opts.OnProposal != nil {
+			w.opts.OnProposal(id, p)
+		}
 	}
 	for _, r := range resolved {
 		w.publish(api.EventContractResolved, id, r)

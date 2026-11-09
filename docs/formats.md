@@ -91,7 +91,7 @@ Shape per manifest §5, plus:
 - `services[].status`: `pending | provisioned | running | stopped | error`.
 - `agent.state` / `AgentState`: `working | blocked | idle | unknown | exited`.
 - `push.status`: `pending | done | failed`.
-- `contract.pending` is true while some proposal is open; `agreed_hash` is the hash of the agreed section as rig last knew it to be right (set from the template when the ticket is created; follows edits freely during the `plan` phase); `seen` lists the proposal ids already announced; `violation` is non-empty after the agreed section was edited directly once the plan phase is over, and stays until it is resolved.
+- `contract.pending` is true while some proposal is open; `agreed_hash` is the hash of the agreed section as rig last knew it to be right (set from the template when the ticket is created; follows edits freely during the `plan` phase); `seen` lists the proposal ids already announced; `resolved` lists proposals resolved through rig (their `contract.resolved` event was already published, so the file watcher skips them); `violation` is non-empty after the agreed section was edited directly once the plan phase is over, and stays until it is resolved.
 - `egress_network` is present only in `network_mode: internal` (the proxy's outward network); absent otherwise.
 - Writes are atomic (temp file + rename) and serialized per ticket.
 
@@ -139,7 +139,10 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 | `agent.attach`, `agent.message` | returns attach command / injects text (`agent.message` params `{ticket, service, text}`, result `{service, sent}`; errors `blocked` when the agent waits on a permission prompt (nothing typed), `not_running`, `unavailable` if the agent is not ready in time; `agent.attach` params `{ticket, service?}` (service optional when the ticket has one), result `{service, command[]}`; errors `not_found`, `not_running` when no agent is running) |
 | `push.run` | `{id, service?}`: runs the push step of a ticket in the push phase; result `{summary, services[{service, mode, status, skipped?, pushed, ref?, sha?, pr_url?, note?, error?}], done}` (a failed service is in the result with `error`, not an API error; `done` when every service is pushed and the ticket moved to `done`) |
 | `agent.event` | agent hook reports a state (`ready\|working\|blocked\|idle\|exited`) for a ticket/service |
-| `contract.list`, `contract.accept`, `contract.reject` | contract proposals |
+| `contract.list` | `{ticket}` -> `{ticket, proposals[{id, from, status, what, why, rejected?}], problems?[], violation?}`; `not_found` without a contract.md |
+| `contract.accept` | `{ticket, proposal}` -> `{proposal, outcome: "accepted"}`: human action. Merges the proposal into the agreed section (as a `####` entry), marks it accepted, appends a changelog line, publishes `contract.resolved` and types a notice into every agent. `not_found` for an unknown id, `conflict` when it is not open |
+| `contract.reject` | `{ticket, proposal, reason}` -> `{proposal, outcome: "rejected"}`: human action; `reason` required (`invalid` without). Records `**Rejected:** <reason>` under the proposal and in the changelog; the proposer is told the reason |
+| `contract.ack` | `{ticket}` -> `{}`: clears `state.contract.violation` once a human has reviewed a direct edit; `conflict` when there is none |
 | `review.diff` | per-service diff and stat |
 | `push.run` | runs the push step of a ticket in the push phase. Params `{id, service?}`; result `{summary, services[{service, mode, status, skipped?, pushed, ref?, sha?, pr_url?, note?, error?}], done}`. A service that fails is in the result with `error` (not an API error); services already pushed are skipped on a rerun; `done` is true when every service is pushed and the ticket moved to `done` |
 | `tests.render` | `{ticket}` -> `{preamble?, steps[{id, title, body, done}], signed_off}`: manual-tests.md with placeholders filled from live state. `invalid` with `details[]` listing every unfillable placeholder (or bad step heading); `not_found` when the file does not exist |
