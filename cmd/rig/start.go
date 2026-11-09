@@ -67,6 +67,7 @@ working directory, environment) each service would get. Secret values are never 
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "\nnetwork %s (%s)\n", n.Name, mode)
 			}
+			printDependencies(cmd.OutOrStdout(), res.Dependencies)
 			failedServices := printContainers(cmd.OutOrStdout(), res.Containers)
 			if err := printAgents(cmd.OutOrStdout(), res.Agents); err != nil {
 				return err
@@ -162,4 +163,14 @@ func runningWord(c api.ServiceContainerInfo) string {
 		return c.Note
 	}
 	return "running"
+}
+
+func printDependencies(w io.Writer, deps []api.ServiceContainerInfo) {
+	if len(deps) == 0 {
+		return
+	}
+	fmt.Fprintln(w)
+	for _, d := range deps {
+		fmt.Fprintf(w, "dependency %s: %s\n", d.Service, runningWord(d))
+	}
 }
