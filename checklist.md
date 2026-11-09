@@ -556,7 +556,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 50 · `rig tests` and agent prompt
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/50-rig-tests` · Depends: 29, 49
 - Read: `manifest.md` §7
 - Build: `rig tests <id>` prints the rendered instructions; harness prompt gains instructions to write `manual-tests.md` with placeholders during the `test` phase.
