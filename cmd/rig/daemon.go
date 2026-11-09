@@ -23,6 +23,8 @@ import (
 	"github.com/charlesrobsampson/rig/internal/lifecycle"
 	"github.com/charlesrobsampson/rig/internal/registry"
 	"github.com/charlesrobsampson/rig/internal/state"
+	"github.com/charlesrobsampson/rig/internal/supervisor"
+	"github.com/charlesrobsampson/rig/internal/terminal/backends"
 	"github.com/charlesrobsampson/rig/internal/ticket"
 )
 
@@ -115,8 +117,19 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	}), bus)
 	daemon.RegisterLifecycleHandlers(srv, lifecycle.New(lifecycle.Options{Dir: g.TicketsDir(), States: states, Global: g, Bus: bus, Clock: clk}))
 
+	backend, err := backends.New(g.Defaults.TerminalBackend)
+	if err != nil {
+		return err
+	}
+	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Logger: logger})
+	daemon.RegisterAgentHandlers(srv, sup)
+
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	supCtx, stopSup := context.WithCancel(ctx)
+	supDone := make(chan struct{})
+	go func() { sup.Run(supCtx); close(supDone) }()
+	defer func() { stopSup(); <-supDone }()
 	return srv.Serve(ctx)
 }
 
