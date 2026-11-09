@@ -11,6 +11,11 @@ tasks:
     cmds:
       - go build -ldflags "-X main.version={{.VERSION}}" -o {{.BIN}} ./cmd/rig
 
+  build:fakeagent:
+    desc: Build bin/fakeagent, the scriptable stand-in for an agent used in integration tests
+    cmds:
+      - go build -o bin/fakeagent ./tools/fakeagent
+
   test:
     desc: Default tests (offline, no build tags)
     cmds:
@@ -67,4 +72,4 @@ tasks:
     desc: Remove build output
     cmds:
       - rm -f {{.BIN}}
-      - rm -rf dist
+      - rm -rf dist bin

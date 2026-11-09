@@ -1,6 +1,7 @@
 # build output
 /rig
 /dist/
+/bin/
 
 # OS / editor
 .DS_Store
