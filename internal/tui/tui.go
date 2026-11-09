@@ -29,6 +29,7 @@ type Source interface {
 	// there is nothing to diff yet); Logs is the recent output of its containers.
 	Diff(ctx context.Context, ticket string) (string, error)
 	Logs(ctx context.Context, ticket string) (string, error)
+	Actions
 }
 
 type Options struct {
@@ -40,6 +41,9 @@ type Options struct {
 	// RefreshEvery is how often the open ticket's current tab is looked at again, so
 	// it follows an agent editing the files (default 2s).
 	RefreshEvery time.Duration
+	// Exec runs a program with the TUI suspended (attaching to an agent); nil means
+	// tea.ExecProcess. done turns its exit into the message the model waits for.
+	Exec func(argv []string, done func(error) tea.Msg) tea.Cmd
 }
 
 // Messages. They are exported only to the package's own tests.
@@ -81,6 +85,10 @@ type Model struct {
 	dash      *dashboard
 	det       *detail // the open ticket, nil on the dashboard
 	openGen   int
+
+	modal     *modal // a question awaiting an answer
+	status    string // the last outcome, shown in the status bar until the next key
+	statusErr bool
 }
 
 func New(o Options) Model {
@@ -150,6 +158,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(m.loadTab(m.det.tab), m.refreshTick())
 
+	case doneMsg:
+		return m.onDone(msg)
+
+	case proposalsMsg:
+		return m.onProposals(msg)
+
+	case attachMsg:
+		return m.onAttach(msg)
+
+	case execDoneMsg:
+		return m.onExecDone(msg)
+
 	case retryMsg:
 		m.retrying = false
 		if m.connected {
@@ -161,10 +181,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
+	if msg.String() == "ctrl+c" {
 		m.quitting = true
 		return m, tea.Quit
+	}
+	if m.modal != nil {
+		next, cmd := m.modalKey(msg)
+		return next, cmd
+	}
+	m.status, m.statusErr = "", false // an outcome stays until the next key
+	switch msg.String() {
 	case "esc":
 		if m.help {
 			m.help = false
@@ -176,6 +202,11 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.help {
 		return m, nil // the overlay swallows everything else until it is closed
+	}
+	if m.connected {
+		if next, cmd, handled := m.action(msg.String()); handled {
+			return next, cmd
+		}
 	}
 	if m.det != nil {
 		return m.detailKey(msg)
@@ -299,6 +330,13 @@ var Keys = []struct{ Key, Help string }{
 	{"esc", "back from a ticket"},
 	{"tab/1-5", "next tab / jump to a tab (plan, tasks, contract, diff, logs)"},
 	{"pgup/pgdn", "scroll a page; g/G top/bottom"},
+	{"a", "approve the gate the ticket is waiting on (asks first)"},
+	{"v", "move the ticket to review (asks first)"},
+	{"p", "push the ticket (asks first)"},
+	{"x", "stop the ticket (asks first; offers to force when work would be lost)"},
+	{"t", "attach to a service's agent terminal; come back when it exits"},
+	{"m", "type a message into an agent"},
+	{"c / C", "accept / reject a proposed contract change"},
 	{"r", "refresh now"},
 	{"q", "quit"},
 	{"ctrl+c", "quit from anywhere"},
@@ -348,6 +386,16 @@ func (m Model) header(w int) string {
 func (m Model) statusBar(w int) string {
 	var s string
 	switch {
+	case m.modal != nil:
+		s = m.modal.prompt
+		if !m.modal.confirm {
+			s += " " + string(m.modal.input) + "█"
+		}
+	case m.status != "":
+		s = m.status
+		if m.statusErr {
+			s = "error: " + s
+		}
 	case !m.loaded:
 		s = "connecting…"
 	case !m.connected:
