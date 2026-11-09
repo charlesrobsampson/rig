@@ -691,7 +691,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 59 · Manual-test view
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/59-tui-manual` · Depends: 57, 50
 - Read: `manifest.md` §7
 - Build: rendered manual-tests tab with copyable code blocks, per-step state stored in `state.json` `manual_tests.steps` (formats §5), and a "sign off" action that sets `signed_off` and records the `manual_test_signoff` approval.
