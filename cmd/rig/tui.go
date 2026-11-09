@@ -205,3 +205,53 @@ func (s daemonSource) SetStep(ctx context.Context, ticket, step string, done boo
 func (s daemonSource) SignOff(ctx context.Context, ticket string, override bool) error {
 	return s.call(ctx, api.MethodTestsSignoff, api.TestsSignoffParams{Ticket: ticket, Override: override}, nil)
 }
+
+// Subscribe opens the daemon's event stream and returns once the daemon says it is
+// live. The channel closes when the stream ends: the daemon went away, or it dropped
+// this client for being too slow.
+func (s daemonSource) Subscribe(ctx context.Context) (<-chan api.Event, error) {
+	c, err := s.a.connect(ctx, true)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan api.Event, 64)
+	ready := make(chan error, 1)
+	go func() {
+		defer c.Close()
+		defer close(out)
+		live := false
+		err := c.Stream(ctx, api.MethodEventsSubscribe, nil, func(raw json.RawMessage) error {
+			var ev api.Event
+			if err := json.Unmarshal(raw, &ev); err != nil {
+				return err
+			}
+			if ev.Type == api.EventSubscribed {
+				live = true
+				ready <- nil
+				return nil
+			}
+			select {
+			case out <- ev:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
+		if !live {
+			if err == nil {
+				err = errors.New("the daemon closed the event stream before it was live")
+			}
+			ready <- err
+		}
+	}()
+	select {
+	case err := <-ready:
+		if err != nil {
+			return nil, err
+		}
+		return out, nil
+	case <-ctx.Done():
+		c.Close()
+		return nil, ctx.Err()
+	}
+}

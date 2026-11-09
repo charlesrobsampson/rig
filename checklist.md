@@ -704,13 +704,20 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Manual check (complete a manual test pass in the TUI) is for you. OSC 52 clipboard support depends on your terminal (Herdr/tmux may need passthrough enabled).
 
 ### 60 · Live updates
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/60-tui-live` · Depends: 16, 56
 - Read: `manifest.md` §6
 - Build: TUI subscribes to the event stream and updates views without polling; reconnect with resubscribe and full refresh.
 - Tests (fake event source): agent state event updates the light; phase event updates the row; dropped subscription triggers refresh; event burst doesn't block rendering.
 - Manual check: change state from another terminal and see the TUI update.
+- Notes:
+  - `tui.Pump` (live.go) owns the subscription: it calls `Subscriber.Subscribe`, sends `subscribedMsg` when live, `eventsMsg` per burst (events already waiting are grouped, at most 256 per message), and `droppedMsg` when the stream ends or cannot be made, resubscribing at once (spaced by the retry delay when attempts fail or a stream dies immediately, so it never spins). `Run` starts it with `p.Send`, so the model has no blocking commands and every behavior is a plain message in tests.
+  - Model: `subscribedMsg` -> read the fleet (covers anything missed before the subscription existed) and show "· live"; `droppedMsg` -> not live, read the fleet at once (daemon gone shows the down state, which the pump's retries recover from). `agent.state` and `phase.changed` update the row in place and re-sort immediately; ticket/service/gate/contract events trigger a fleet read; unknown or undecodable events fall back to a read or are ignored. Reads are one at a time: events arriving during a read mark it dirty and cost one more read, not one per event. Events for the open ticket also reload the current tab.
+  - The open-ticket tab timer from task 57 stays (there is no file-change event); the fleet itself no longer polls.
+  - `daemonSource.Subscribe` wraps `events.subscribe`, returning once the daemon's "subscribed" marker arrives; cancelling closes the channel. Tested against the in-process daemon (event received, pump end to end).
+  - Mutation-checked: read coalescing and the no-spin guard.
+  - Manual check (change state from another terminal) is for you: e.g. `rig approve`/`rig phase` in one terminal while the TUI is open in another.
 
 ---
 
