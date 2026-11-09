@@ -22,6 +22,7 @@ type Global struct {
 	Limits     Limits     `json:"limits"`
 	Paths      Paths      `json:"paths"`
 	Auth       Auth       `json:"auth"`
+	Secrets    Secrets    `json:"secrets"`
 	Docker     Docker     `json:"docker"`
 	Egress     Egress     `json:"egress"`
 }
@@ -62,6 +63,13 @@ type AuthProfile struct {
 	Type    domain.AuthType   `json:"type"`
 	Secrets []string          `json:"secrets,omitempty"`
 	Env     map[string]string `json:"env,omitempty"`
+}
+
+// Secrets says where secret values come from: the macOS Keychain (generic passwords of
+// service KeychainService, account = the secret's name) first, then the EnvFile.
+type Secrets struct {
+	KeychainService string `json:"keychain_service"`
+	EnvFile         string `json:"env_file,omitempty"`
 }
 
 type Docker struct {
@@ -120,10 +128,11 @@ func defaultGlobal(userHome string) Global {
 				Push:  domain.PushPolicy{Mode: domain.PushPR},
 			},
 		},
-		Limits: Limits{MaxActiveTickets: 8},
-		Paths:  Paths{Home: filepath.Join(userHome, ".rig")},
-		Egress: Egress{DefaultAllow: []string{"api.anthropic.com"}, DefaultPorts: []int{443}},
-		Docker: Docker{PortRange: PortRange{Min: 41000, Max: 41999}, AgentBase: "debian:bookworm-slim", ClaudeVersion: "latest"},
+		Limits:  Limits{MaxActiveTickets: 8},
+		Paths:   Paths{Home: filepath.Join(userHome, ".rig")},
+		Egress:  Egress{DefaultAllow: []string{"api.anthropic.com"}, DefaultPorts: []int{443}},
+		Secrets: Secrets{KeychainService: "rig"},
+		Docker:  Docker{PortRange: PortRange{Min: 41000, Max: 41999}, AgentBase: "debian:bookworm-slim", ClaudeVersion: "latest"},
 	}
 }
 
@@ -168,6 +177,7 @@ func LoadGlobal(opts GlobalOptions) (Global, error) {
 		g.Paths.Home = rigHome
 	}
 	g.Paths.Home = expandHome(g.Paths.Home, home)
+	g.Secrets.EnvFile = expandHome(g.Secrets.EnvFile, home)
 	for i, c := range g.Docker.ExtraCACerts {
 		g.Docker.ExtraCACerts[i] = expandHome(c, home)
 	}
@@ -257,6 +267,12 @@ func validateGlobal(g Global) []string {
 	}
 	if r := g.Docker.PortRange; r.Min < 1024 || r.Max > 65535 || r.Min > r.Max {
 		add("docker.port_range: %d-%d must be within 1024-65535 with min <= max", r.Min, r.Max)
+	}
+	if g.Secrets.KeychainService == "" {
+		add("secrets.keychain_service: required")
+	}
+	if g.Secrets.EnvFile != "" && !filepath.IsAbs(g.Secrets.EnvFile) {
+		add("secrets.env_file: %q must be an absolute path", g.Secrets.EnvFile)
 	}
 	if g.Docker.AgentBase == "" {
 		add("docker.agent_base: an image name is required")
