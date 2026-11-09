@@ -785,7 +785,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 65 · MCP server
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/65-mcp` · Depends: 32, 53, 25
 - Read: `manifest.md` §6 (agent-as-orchestrator)
 - Build: `rig mcp` stdio MCP server wrapping the daemon API: list tickets, get status, read artifacts, send message, request transition, propose contract change. No approval tools: gates stay human-only. Docs for pointing a supervising agent at it.
