@@ -304,7 +304,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 26b · Fake agent
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/26b-fakeagent` · Depends: 26
 - Read: `process.md` §4, `manifest.md` §3, §7
 - Build: `internal/testkit/fakeagent`, a small Go program (buildable to a binary for real-backend tests, importable in-process for fakes) that executes a script file: `write <path> <content>`, `commit <msg>`, `append-proposal <text>`, `state working|blocked|idle` (via the mechanism the backend detects), `wait-input` (records received input to a file), `exit <code>`. Used by later tasks wherever an agent's behavior matters.
