@@ -105,10 +105,11 @@ func TestNoneSaysNothingAndSendsNothing(t *testing.T) {
 
 func TestNewRejectsWhatItCannotBuild(t *testing.T) {
 	for name, c := range map[string]config.Summarizer{
-		"ollama without a model": {Provider: "ollama"},
-		"a bad endpoint":         {Provider: "ollama", Model: "m", Endpoint: "not a url"},
-		"a file endpoint":        {Provider: "ollama", Model: "m", Endpoint: "file:///etc/passwd"},
-		"an unknown provider":    {Provider: "magic"},
+		"ollama without a model":      {Provider: "ollama"},
+		"a bad endpoint":              {Provider: "ollama", Model: "m", Endpoint: "not a url"},
+		"a file endpoint":             {Provider: "ollama", Model: "m", Endpoint: "file:///etc/passwd"},
+		"an unknown provider":         {Provider: "magic"},
+		"claude without a key source": {Provider: "claude"},
 	} {
 		if _, err := summary.New(c, summary.ProviderOptions{}); err == nil {
 			t.Errorf("%s was accepted", name)

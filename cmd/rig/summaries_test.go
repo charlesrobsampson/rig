@@ -102,19 +102,40 @@ func TestTheDaemonGathersOnlyTheTicketsOwnContent(t *testing.T) {
 
 func TestADaemonWithoutASummarizerRunsNoJob(t *testing.T) {
 	g := config.Global{}
-	s := newSummaryService(g, nil, clock.Real(), slogDiscard())
+	s := newSummaryService(g, nil, nil, clock.Real(), slogDiscard())
 	if s.Enabled() {
 		t.Error("summaries are on with no provider")
 	}
 	g.Summarizer = config.Summarizer{Provider: "ollama"} // no model: cannot be built
-	if s := newSummaryService(g, nil, clock.Real(), slogDiscard()); s.Enabled() {
+	if s := newSummaryService(g, nil, nil, clock.Real(), slogDiscard()); s.Enabled() {
 		t.Error("a misconfigured summarizer turned summaries on")
 	}
 	g.Summarizer = config.Summarizer{Provider: "ollama", Model: "m"}
 	g.Paths.Home = t.TempDir()
-	if s := newSummaryService(g, nil, clock.Real(), slogDiscard()); !s.Enabled() {
+	if s := newSummaryService(g, nil, nil, clock.Real(), slogDiscard()); !s.Enabled() {
 		t.Error("a valid ollama config did not enable summaries")
 	}
 }
 
 func slogDiscard() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+
+func TestTheClaudeSummarizerFindsItsKeyThroughTheSecretsResolver(t *testing.T) {
+	g := config.Global{Summarizer: config.Summarizer{Provider: "claude"}}
+	g.Paths.Home = t.TempDir()
+	var asked [][]string
+	secret := func(names []string) (map[string]string, error) {
+		asked = append(asked, names)
+		return map[string]string{"ANTHROPIC_API_KEY": "sk-test"}, nil
+	}
+	if s := newSummaryService(g, secret, nil, clock.Real(), slogDiscard()); !s.Enabled() {
+		t.Fatal("claude with a resolver did not enable summaries")
+	}
+	key, err := anthropicKey(secret)()
+	if err != nil || key != "sk-test" || len(asked) != 1 || asked[0][0] != "ANTHROPIC_API_KEY" {
+		t.Errorf("key %q, err %v, asked %v", key, err, asked)
+	}
+	// without a resolver the provider cannot be built, and the daemon carries on without summaries
+	if s := newSummaryService(g, nil, nil, clock.Real(), slogDiscard()); s.Enabled() {
+		t.Error("claude without a resolver enabled summaries")
+	}
+}

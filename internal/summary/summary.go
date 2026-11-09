@@ -138,7 +138,7 @@ func New(c config.Summarizer, opts ProviderOptions) (Summarizer, error) {
 	case "ollama":
 		return NewOllama(c.Endpoint, c.Model, opts)
 	case "claude":
-		return nil, fmt.Errorf("the claude summarizer is not available in this build yet")
+		return NewClaude(c.Endpoint, c.Model, opts)
 	}
 	return nil, fmt.Errorf("summarizer provider %q is not supported", c.Provider)
 }
@@ -149,6 +149,9 @@ type ProviderOptions struct {
 	HTTP HTTPDoer
 	// Timeout bounds one request (default 2 minutes).
 	Timeout time.Duration
+	// APIKey finds the claude provider's key whenever one is needed. It is never
+	// logged or put in an error.
+	APIKey func() (string, error)
 }
 
 // HTTPDoer is the part of *http.Client the providers use.

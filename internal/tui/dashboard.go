@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/domain"
 )
@@ -195,7 +197,8 @@ func (d *dashboard) view(w, h int) string {
 	}
 	out := []string{line(false, [5]string{"TICKET", "PHASE", "AGENTS", "PORTS", "NEEDS"}, "TITLE")}
 
-	visible := h - 1
+	pane := d.summaryPane(w, h)
+	visible := h - 1 - len(pane)
 	if visible < 1 {
 		visible = 1
 	}
@@ -215,7 +218,60 @@ func (d *dashboard) view(w, h int) string {
 		}
 		out = append(out, line(r == i, cells[r], title))
 	}
-	return strings.Join(out, "\n")
+	return strings.Join(append(out, pane...), "\n")
+}
+
+// maxSummaryLines bounds the summary pane's text.
+const maxSummaryLines = 5
+
+// summaryPane is the language-model summary of the selected ticket, drawn under the
+// table: labelled advisory, with the real diff stats it was made from beside it, and
+// marked REMOTE when the ticket's content was sent off this machine. It is left out when
+// the screen is too short to keep a useful table above it.
+func (d *dashboard) summaryPane(w, h int) []string {
+	t, ok := d.current()
+	if !ok || t.AISummary == nil || h < 14 {
+		return nil
+	}
+	s := t.AISummary
+	backend := s.Backend
+	if s.Model != "" {
+		backend += " " + s.Model
+	}
+	if s.Remote {
+		backend += " · REMOTE"
+	}
+	head := fmt.Sprintf("── summary (advisory) · %s · %d files +%d -%d ──", backend, s.Files, s.Added, s.Deleted)
+	lines := []string{ansi.Truncate(head, w, "…")}
+	var body []string
+	for _, l := range wrapLines(strings.TrimSpace(s.Text), w) {
+		if strings.TrimSpace(l) != "" {
+			body = append(body, l)
+		}
+	}
+	if len(body) > maxSummaryLines {
+		body = append(body[:maxSummaryLines-1], "…")
+	}
+	lines = append(lines, body...)
+	if s.Error != "" {
+		note := "summary refresh failed: "
+		if s.Text != "" {
+			note = "out of date, refresh failed: "
+		}
+		lines = append(lines, ansi.Truncate(note+s.Error, w, "…"))
+	}
+	return lines
+}
+
+// remoteSummaries names the backend when any ticket's summary was made by a model off
+// this machine, so the header can say so.
+func remoteSummaries(tickets []api.TicketSummary) (backend string, ok bool) {
+	for _, t := range tickets {
+		if t.AISummary != nil && t.AISummary.Remote {
+			return t.AISummary.Backend, true
+		}
+	}
+	return "", false
 }
 
 func pad(s string, w int) string {
