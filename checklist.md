@@ -770,7 +770,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 64 · GitHub issues ticket source
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/64-github-source` · Depends: 19, 41
 - Read: `manifest.md` §5
 - Build: `github` source (`--from github:owner/repo#123`), same shape as Jira.
