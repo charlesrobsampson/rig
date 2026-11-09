@@ -850,13 +850,18 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Manual check (a service test fails when it diverges from the contract) is for you with a real service: export the ticket's contract and write the test following docs/contract-tests.md.
 
 ### 69 · Linux check
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/69-linux` · Depends: 66
 - Read: `process.md` §4
 - Build: run the suite on Linux (CI or container), fix path/socket/permission assumptions, document differences (Keychain → secret-tool or `.env`).
 - Tests: default suite green on Linux; secrets resolver has a Linux implementation behind the same interface.
 - Manual check: on a Linux box, run a demo ticket end to end.
+- Notes:
+  - Linux run: new `tools/linuxtest` (`task test:linux [-- pkgs]`) cross-compiles every package's tests for Linux (arm64 here, amd64 on x86 Docker) and runs them in a `debian:bookworm-slim` container with git, as uid 1000, repository mounted read-only, `/tmp` a tmpfs: no Go toolchain in the container, works from macOS. First run: all 41 packages passed with no code changes needed (including cmd/rig, lifecycle, the TUI, the daemon, git-backed tests and the real `sh`/`sed` cost command). `GOOS=linux GOARCH=amd64 go vet ./...` and a build of `cmd/rig` are also clean.
+  - Secrets: `secrets.SecretTool` (`secret-tool lookup service <svc> account <name>`) is the Linux counterpart of the Keychain behind the same `Source` interface; `platformStore` in the daemon picks Keychain on macOS and SecretTool on Linux (anything else: `.env` only). Not installed, no D-Bus/keyring (headless), or exit 1 with nothing to say are "not found", so the `.env` fallback works on servers; any other failure is an error naming secret-tool's first stderr line, never stdout. Tests use a runner seam (no real secret-tool) plus a resolver test showing the Secret Service first, `.env` second and the headless fall-through. A test-injected runner always speaks the Keychain protocol on every platform, so the suite is identical everywhere.
+  - Docs: `docs/linux.md` (secret-tool setup, `.env` for servers, Docker notes (agents run as your uid/gid already), tmux/Herdr, paths and the 108-byte socket limit, running the Linux suite). formats.md mentions the Linux store.
+  - Not done / for you: the manual check (run a demo ticket end to end on a real Linux box with real Docker and agents) was not possible here; also untried: rootless Docker and Podman, and Herdr on Linux.
 
 ### 70 · README, license, CI, release
 - [ ] Done

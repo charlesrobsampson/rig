@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -345,4 +346,21 @@ func TestNewFromGitHubErrorsMapToExitCodes(t *testing.T) {
 	run("a pull request", 200, `{"title":"T","pull_request":{"url":"x"}}`, "github:acme/api#9", 2, "is a pull request, not an issue")
 	run("a bad token", 401, `{}`, "github:acme/api#9", 4, "rejected the credentials")
 	run("a malformed reference", 200, `{}`, "github:nonsense", 2, "not a GitHub issue reference")
+}
+
+func TestThePlatformSecretStoreMatchesTheOperatingSystem(t *testing.T) {
+	asked := false
+	runner := func(context.Context, ...string) (string, string, int, error) { asked = true; return "v\n", "", 0, nil }
+	// a test runner always speaks the Keychain protocol, whatever the platform
+	if v, found, err := platformStore("rig", runner).Lookup(context.Background(), "X"); err != nil || !found || v != "v" || !asked {
+		t.Errorf("injected runner: %q %v %v %v", v, found, err, asked)
+	}
+	desc := platformStore("rig", nil).Describe()
+	want := "macOS Keychain"
+	if runtime.GOOS == "linux" {
+		want = "Secret Service"
+	}
+	if !strings.Contains(desc, want) {
+		t.Errorf("on %s the store describes itself as %q, want it to mention %q", runtime.GOOS, desc, want)
+	}
 }
