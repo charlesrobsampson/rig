@@ -39,12 +39,13 @@ type Allocator struct {
 
 func New(o Options) *Allocator {
 	if o.Probe == nil {
-		o.Probe = listenProbe
+		o.Probe = ListenProbe
 	}
 	return &Allocator{opts: o}
 }
 
-func listenProbe(port int) bool {
+// ListenProbe is the default Probe: a port is usable if nothing is listening on it.
+func ListenProbe(port int) bool {
 	l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 	if err != nil {
 		return false
