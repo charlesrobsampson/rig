@@ -673,7 +673,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 58 · TUI actions
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b7893019-4d34-49ee-8e94-32c09cddc9c4`
 - Branch: `task/58-tui-actions` · Depends: 57, 53, 48
 - Read: `manifest.md` §6 (CLI)
 - Build: keybindings for approve, attach (suspends TUI and restores), review, push, stop (with dirty confirmation), inject message, accept/reject contract change; all call the same API as the CLI.
