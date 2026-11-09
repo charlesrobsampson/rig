@@ -127,6 +127,9 @@ func TestTheBuildContextHasTheRecipeAndTheCertificates(t *testing.T) {
 	if spec.Labels["rig.role"] != "agent" || spec.Dockerfile != "" {
 		t.Errorf("spec = %+v", spec)
 	}
+	if strings.Index(recipe, "COPY certs/") > strings.Index(recipe, "apt-get install") {
+		t.Error("the certificates must be in place before packages are downloaded")
+	}
 	for _, want := range []string{"ARG BASE", "FROM ${BASE}", "apt-get", "apk add", "update-ca-certificates", "claude.ai/install.sh", "command -v claude", "ENV HOME=/home/agent", "WORKDIR /work", "ripgrep"} {
 		if !strings.Contains(recipe, want) {
 			t.Errorf("the recipe lacks %q", want)
@@ -148,10 +151,16 @@ func TestAMissingCertificateOrBaseOrFailedBuildIsAClearError(t *testing.T) {
 	if _, _, err := agentimage.New(d, "", nil).Ensure(ctx, ""); err == nil {
 		t.Error("an empty base was accepted")
 	}
-	d.OnBuild(func(docker.BuildSpec) error { return errors.New("apt-get failed: no route to host") })
+	d.OnBuild(func(docker.BuildSpec) error { return errors.New("apk: no such package") })
 	_, _, err := agentimage.New(d, "", nil).Ensure(ctx, "golang:1.24")
-	if err == nil || !strings.Contains(err.Error(), "golang:1.24") || !strings.Contains(err.Error(), "no route to host") {
-		t.Errorf("failed build: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "golang:1.24") || !strings.Contains(err.Error(), "no such package") || !strings.Contains(err.Error(), "docker.extra_ca_certs") {
+		t.Errorf("failed build without certificates: %v (want a hint about docker.extra_ca_certs)", err)
+	}
+	cert := filepath.Join(t.TempDir(), "ca.pem")
+	os.WriteFile(cert, []byte("CERT"), 0o600)
+	_, _, err = agentimage.New(d, "", []string{cert}).Ensure(ctx, "golang:1.24")
+	if err == nil || strings.Contains(err.Error(), "docker.extra_ca_certs") {
+		t.Errorf("failed build with certificates configured: %v (the hint would not help)", err)
 	}
 	d.Down(errors.New("daemon stopped"))
 	if _, _, err := agentimage.New(d, "", nil).Ensure(ctx, "golang:1.24"); !errors.Is(err, docker.ErrUnavailable) {
