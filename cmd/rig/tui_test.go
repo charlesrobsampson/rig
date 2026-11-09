@@ -3,11 +3,15 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/domain"
@@ -277,5 +281,67 @@ func TestTheManualTabReportsABrokenFileWithEveryProblem(t *testing.T) {
 	os.Remove(filepath.Join(home, "tickets", "demo", "manual-tests.md"))
 	if _, err := source(d).Manual(context.Background(), "demo"); !errors.Is(err, tui.ErrMissing) {
 		t.Errorf("no file: %v", err)
+	}
+}
+
+func TestTheTUIReceivesLiveEventsFromTheDaemon(t *testing.T) {
+	_, d, repo := newEnv(t)
+	newTicket(t, d, "first", repo)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch, err := source(d).Subscribe(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the subscription is live when Subscribe returns, so this cannot be missed
+	newTicket(t, d, "second", repo)
+	select {
+	case ev := <-ch:
+		if ev.Type != api.EventTicketCreated || ev.Ticket != "second" {
+			t.Errorf("event = %+v", ev)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no event arrived")
+	}
+	cancel()
+	select {
+	case _, ok := <-ch:
+		for ok { // drain whatever was queued; the channel must then close
+			_, ok = <-ch
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the channel did not close after cancelling")
+	}
+}
+
+func TestThePumpFeedsTheModelFromARealDaemon(t *testing.T) {
+	_, d, repo := newEnv(t)
+	newTicket(t, d, "first", repo)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	msgs := make(chan tea.Msg, 100)
+	go tui.Pump(ctx, source(d), func(m tea.Msg) { msgs <- m }, 50*time.Millisecond)
+
+	deadline := time.After(5 * time.Second)
+	live := false
+	for !live {
+		select {
+		case m := <-msgs:
+			live = fmt.Sprintf("%T", m) == "tui.subscribedMsg"
+		case <-deadline:
+			t.Fatal("the pump never reported the subscription live")
+		}
+	}
+	rig(t, d, "approve", "first", "plan_approval")
+	rig(t, d, "phase", "first", "implement")
+	for {
+		select {
+		case m := <-msgs:
+			if s := fmt.Sprintf("%+v", m); strings.Contains(s, "phase.changed") && strings.Contains(s, "first") {
+				return
+			}
+		case <-deadline:
+			t.Fatal("the phase event never reached the pump")
+		}
 	}
 }

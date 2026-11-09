@@ -29,6 +29,7 @@ type Source interface {
 	// there is nothing to diff yet); Logs is the recent output of its containers.
 	Diff(ctx context.Context, ticket string) (string, error)
 	Logs(ctx context.Context, ticket string) (string, error)
+	Subscriber
 	// Manual is the ticket's manual tests, rendered with live addresses (ErrMissing
 	// when the agent has not written them yet).
 	Manual(ctx context.Context, ticket string) (api.TestsRenderResult, error)
@@ -92,6 +93,9 @@ type Model struct {
 	dash      *dashboard
 	det       *detail // the open ticket, nil on the dashboard
 	openGen   int
+	live      bool // the event subscription is up
+	loading   bool // an event-driven refresh is in flight
+	dirty     bool // more events arrived while it was
 
 	modal     *modal // a question awaiting an answer
 	status    string // the last outcome, shown in the status bar until the next key
@@ -131,8 +135,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.key(msg)
 
+	case subscribedMsg:
+		m.live = true
+		return m.refresh()
+
+	case droppedMsg:
+		m.live = false
+		return m.refresh()
+
+	case eventsMsg:
+		refresh, openChanged := m.applyEvents(msg.events)
+		m.dash.set(m.tickets)
+		var cmds []tea.Cmd
+		if refresh {
+			var c tea.Cmd
+			m, c = m.refresh()
+			cmds = append(cmds, c)
+		}
+		if openChanged && m.det != nil {
+			cmds = append(cmds, m.loadTab(m.det.tab))
+		}
+		return m, tea.Batch(cmds...)
+
 	case loadedMsg:
 		m.loaded = true
+		m.loading = false
 		if msg.err != nil {
 			m.connected, m.err = false, msg.err.Error()
 			if m.retrying {
@@ -143,6 +170,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.connected, m.err, m.tickets = true, "", msg.tickets
 		m.dash.set(msg.tickets)
+		if m.dirty { // events came in while this read was under way
+			return m.refresh()
+		}
 		return m, nil
 
 	case tabLoadedMsg:
@@ -185,6 +215,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.load()
 	}
 	return m, nil
+}
+
+// refresh reads the fleet again, once at a time: a request that arrives while a read is
+// in flight is remembered and served when it finishes, so a burst costs one more read.
+func (m Model) refresh() (Model, tea.Cmd) {
+	if m.loading {
+		m.dirty = true
+		return m, nil
+	}
+	m.loading, m.dirty = true, false
+	return m, m.load()
 }
 
 func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -419,7 +460,11 @@ func (m Model) statusBar(w int) string {
 	case m.det != nil:
 		s = "esc back · tab switch · j/k scroll · r reload · ? help"
 	default:
-		s = fmt.Sprintf("connected · %d tickets · enter open · ? help · q quit", len(m.tickets))
+		live := ""
+		if m.live {
+			live = " · live"
+		}
+		s = fmt.Sprintf("connected%s · %d tickets · enter open · ? help · q quit", live, len(m.tickets))
 	}
 	return ansi.Truncate(s, w, "…")
 }
@@ -457,6 +502,12 @@ func fit(text string, w, h int) string {
 
 // Run shows the TUI until the user quits.
 func Run(ctx context.Context, o Options) error {
-	_, err := tea.NewProgram(New(o), tea.WithAltScreen(), tea.WithContext(ctx)).Run()
+	p := tea.NewProgram(New(o), tea.WithAltScreen(), tea.WithContext(ctx))
+	pumpCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	if o.Source != nil {
+		go Pump(pumpCtx, o.Source, p.Send, o.RetryEvery)
+	}
+	_, err := p.Run()
 	return err
 }

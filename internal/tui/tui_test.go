@@ -35,7 +35,23 @@ type fakeSource struct {
 	pushRes    api.PushRunResult
 	stopErr    error // returned by a stop that is not forced
 	manual     *api.TestsRenderResult
+	events     chan api.Event
+	subErr     error
+	subs       int
 	signoffErr error // returned by a sign-off without override
+}
+
+// Subscribe hands out the channel the test feeds; subErr makes it fail, and each call
+// is counted.
+func (f *fakeSource) Subscribe(context.Context) (<-chan api.Event, error) {
+	f.subs++
+	if f.subErr != nil {
+		return nil, f.subErr
+	}
+	if f.events == nil {
+		f.events = make(chan api.Event, 4096)
+	}
+	return f.events, nil
 }
 
 func (f *fakeSource) act(name string, args ...any) error {

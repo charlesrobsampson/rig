@@ -29,6 +29,7 @@ func run(t *testing.T, m Model, cmd tea.Cmd) (Model, []refreshMsg) {
 			}
 		case refreshMsg:
 			timers = append(timers, msg)
+		case retryMsg: // a retry timer is stepped by hand, like the refresh ones
 		case nil:
 		default:
 			var next tea.Cmd
