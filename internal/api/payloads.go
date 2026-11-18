@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/charlesrobsampson/rig/internal/domain"
@@ -279,6 +280,51 @@ type AgentEventParams struct {
 	// running total for this agent session, in CostUSD.
 	State   string   `json:"state"`
 	CostUSD *float64 `json:"cost_usd,omitempty"`
+}
+
+// AgentRecordParams is a record a host agent adds to its ticket's journal
+// (docs/formats.md §14). The daemon stamps the ticket, service, time and source itself.
+type AgentRecordParams struct {
+	Ticket  string          `json:"ticket"`
+	Service string          `json:"service"`
+	Kind    string          `json:"kind"`
+	Text    string          `json:"text,omitempty"`
+	Data    json.RawMessage `json:"data,omitempty"`
+}
+
+// JournalSource says who wrote a journal record: an agent in a container (through its
+// events file), an agent on the host (through agent.record), or rig itself.
+type JournalSource string
+
+const (
+	JournalSourceContainer JournalSource = "container"
+	JournalSourceHost      JournalSource = "host"
+	JournalSourceRig       JournalSource = "rig"
+)
+
+// JournalRecord is one line of a ticket's journal.jsonl.
+type JournalRecord struct {
+	At      time.Time       `json:"at"`
+	Ticket  string          `json:"ticket"`
+	Service string          `json:"service"`
+	Source  JournalSource   `json:"source"`
+	Kind    string          `json:"kind"`
+	Text    string          `json:"text,omitempty"`
+	Data    json.RawMessage `json:"data,omitempty"`
+}
+
+// JournalListParams filters journal records. An empty Ticket means every ticket; Limit
+// keeps only the newest records (0 means all).
+type JournalListParams struct {
+	Ticket  string `json:"ticket,omitempty"`
+	Service string `json:"service,omitempty"`
+	Kind    string `json:"kind,omitempty"`
+	Limit   int    `json:"limit,omitempty"`
+}
+
+// JournalListResult holds the matching records, oldest first.
+type JournalListResult struct {
+	Records []JournalRecord `json:"records"`
 }
 
 // AgentMessageParams types Text into a service's running agent, as if a human had
