@@ -356,3 +356,21 @@ func TestTheStatusLineReportsCostOnlyWhenACostCommandIsGiven(t *testing.T) {
 		t.Errorf("hooks = %v", hooks.Hooks)
 	}
 }
+
+func TestThePromptTeachesHowToJournalARecordWithTheHookCommand(t *testing.T) {
+	host, err := harness.Prompt(harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhaseImplement, TicketDir: ticketDir(t, artifacts), Dir: "/w"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"## Journal", `rig agent-event '{"kind":"feedback"`, `"kind": "feedback"`, "\\u0027"} {
+		if !strings.Contains(host, want) {
+			t.Errorf("prompt lacks %q:\n%s", want, host)
+		}
+	}
+
+	container := launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhasePlan, TicketDir: ticketDir(t, artifacts), Dir: "/w", HookCommand: `sh -c 'printf "%s\n" "$1" >> /rig-events/events.log' rig-event`})
+	prompt := container.Command[len(container.Command)-1]
+	if !strings.Contains(prompt, `sh -c 'printf "%s\n" "$1" >> /rig-events/events.log' rig-event '{"kind":"feedback"`) {
+		t.Errorf("the prompt must name the command this agent's hooks use:\n%s", prompt)
+	}
+}

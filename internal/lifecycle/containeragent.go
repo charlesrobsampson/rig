@@ -104,7 +104,7 @@ func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domai
 	req.Dir, req.AgentTicketDir = agentWorkDir, agentTicketDir
 	// Hooks inside the container cannot reach the daemon; they append to a file the
 	// daemon watches (docs/spikes/04-agent-container.md §5).
-	req.HookCommand = `sh -c 'echo "$1" >> ` + agentEventsDir + "/" + eventsFile + `' rig-event`
+	req.HookCommand = containerHookCommand(agentEventsDir + "/" + eventsFile)
 	req.CostCommand = containerCostCommand(agentEventsDir + "/" + eventsFile)
 	launch, err := h.Command(req)
 	if err != nil {
@@ -202,6 +202,14 @@ func (m *Manager) removeAgentContainers(ctx context.Context, id string, t domain
 		}
 	}
 	return errors.Join(failures...)
+}
+
+// containerHookCommand is what a container agent's hooks run, with the state word or
+// record as the next argument: it appends that argument to the events file as one
+// line. printf, not echo: the container's sh may expand backslashes in echo, which would
+// break a JSON record.
+func containerHookCommand(eventsPath string) string {
+	return `sh -c 'printf "%s\n" "$1" >> ` + eventsPath + `' rig-event`
 }
 
 // containerCostCommand is the status line command of a container agent. The agent cannot
