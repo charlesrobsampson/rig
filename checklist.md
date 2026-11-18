@@ -881,6 +881,20 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ---
 
+## Phase 12: Agent journal
+
+### 72 · Agent journal: structured records and feedback
+- [ ] Done
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168` (run from `~/projects/work/agentic-design`)
+- Branch: `task/72-agent-journal` · Depends: 30, 37, 65
+- Read: `docs/formats.md` §3, §8, §9, §13; `docs/spikes/04-agent-container.md` §5
+- Context: an orchestrator built on rig needs a record of what happened in each ticket (role results, verdicts, problems) and agents need a way to report friction with rig or their environment. The container events file is already the one channel out of a container; it carries only state words and cost.
+- Build: a record line in the events file (a JSON object, `{"kind", "text"?, "data"?}`) and the same record through `agent.record` for host agents (`rig agent-event '<json>'`). The daemon validates it, stamps ticket, service, time and source itself, and appends it to `journal.jsonl` in the ticket directory, which no agent can reach. Records are journaled exactly once across daemon restarts (a persisted offset per service), never mistaken for states, and announced as `agent.record`. `journal.list` and `rig journal [ticket] [--kind] [--service] [--limit]` read them (all tickets when none is named). The launch prompt tells the agent how to write one, with `feedback` as the kind for problems with rig or the environment. The container hook writes with `printf`, not `echo`, so backslashes in JSON survive `sh`.
+- Tests: a record is journaled with rig's stamps and the agent's forged ticket/service/at ignored; bad records (not JSON, no or bad kind, data not an object, too long) are dropped and nothing else is affected; a record line never moves the agent's state, including on first sight; a restarted daemon journals the records it had not seen and none twice; a truncated file starts over; `agent.record` from a host agent; `journal.list` filters and limits, across tickets; CLI `rig journal` and `--json`; `rig agent-event '<json>'` stays silent and exit 0; the prompt names the hook command; the container hook keeps a JSON line intact.
+- Manual check: run a container ticket with a real agent, ask it to report feedback, and see it in `rig journal --kind feedback`.
+
+---
+
 ## Backlog (not scheduled)
 
 ### 71 · Image overrides for services, agents, and dependencies
@@ -891,3 +905,13 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: let `ticket.yaml` (and global config as a default) name the image a container runs in instead of rig building one: `services[].image` (service container), `services[].agent_image` (agent base; rig still layers git, certs, and the agent on top unless `agent_image_final: true`), and `dependencies[].image` (already supported). Validate that overridden agent images contain what rig needs (git, a shell, the agent binary) with a clear error at start.
 - Tests (fake Docker): override used instead of a build; precedence service > ticket > global; missing required tools reported before any container starts; cache key includes the override digest.
 - Manual check: point a service at a prebuilt image and run it.
+
+### 73 · Bring the user's agent configuration into the container
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/73-agent-config-mount` · Depends: 37, 72
+- Read: `docs/spikes/04-agent-container.md`, `docs/formats.md` §4, §7, §13
+- Context: an orchestrator defines subagents, skills and hooks (Claude Code `.claude/` content) that a container agent never sees, because only the clone and the ticket files are mounted.
+- Build: `ticket.yaml` (and global config as a default) names directories of agent configuration (`agent_config: [path, ...]`), mounted read-only where the harness reads user-level configuration (for Claude Code, the agent's `~/.claude/` agents, skills and commands), never inside `/work`, so the agent cannot change its own rules. Hooks from that configuration are merged with rig's own hooks, rig's last, so they cannot be dropped. Paths must exist and contain no secrets rig knows of.
+- Tests (fake Docker): mounts are read-only and outside the checkout; rig's hooks survive a configuration that defines the same events; a missing path is refused before any container starts.
+- Manual check: a container agent lists a subagent defined on the host.
