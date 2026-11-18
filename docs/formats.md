@@ -195,6 +195,7 @@ Envelope: `{"type":"phase.changed","ticket":"ticket-412","service":"","at":"..."
 - Human output to stdout, diagnostics and errors to stderr.
 - Exit codes: `0` ok, `1` generic failure, `2` usage/invalid input, `3` blocked (gate, dirty checkout, limit), `4` daemon/backend unavailable, `5` not found.
 - Destructive commands (`stop --force`, `reconcile --fix`) prompt unless `--yes`.
+- A daemon that answers `unknown method` or `not implemented` for a method this client knows is older than the client: the client reports it as `unavailable` (exit 4), naming both versions, the method, and `rig daemon stop` as the fix, instead of the daemon's `invalid`.
 
 ## 11. `contract.md`
 ````markdown
