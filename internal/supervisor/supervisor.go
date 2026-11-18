@@ -5,7 +5,9 @@
 package supervisor
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -22,6 +24,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/clock"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/events"
+	"github.com/charlesrobsampson/rig/internal/journal"
 	"github.com/charlesrobsampson/rig/internal/state"
 	"github.com/charlesrobsampson/rig/internal/terminal"
 )
@@ -47,6 +50,9 @@ type Supervisor struct {
 	hooks map[key]hookReport
 	// offsets is how far into each container agent's events file has been read.
 	offsets map[key]int64
+	// journalMu serializes journal appends and their offsets: the poll loop and
+	// agent.record calls both write.
+	journalMu sync.Mutex
 }
 
 type key struct{ ticket, service string }
@@ -333,15 +339,20 @@ func EventsFile(ticketsDir, ticket, service string) string {
 	return filepath.Join(ticketsDir, ticket, ".rig-events", service, "events.log")
 }
 
-// readEvents applies the new lines of a service's events file as hook reports. The
-// first time a file is seen only its last line counts: older lines are history that a
-// restarted daemon must not replay as a string of state changes.
+// readEvents applies the new lines of a service's events file: state and cost lines as
+// hook reports, record lines into the ticket's journal. The first time a file is seen
+// only its last state and cost count: older lines are history that a restarted daemon
+// must not replay as a string of state changes. Records are different: each is
+// journaled exactly once, from an offset kept on disk.
 func (s *Supervisor) readEvents(ctx context.Context, ticket, service string) {
 	path := EventsFile(s.opts.Dir, ticket, service)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return
 	}
+	end := bytes.LastIndexByte(data, '\n') + 1 // only complete lines
+	s.journalEvents(ticket, service, data[:end])
+
 	k := key{ticket, service}
 	s.mu.Lock()
 	offset, seen := s.offsets[k]
@@ -349,12 +360,15 @@ func (s *Supervisor) readEvents(ctx context.Context, ticket, service string) {
 	if seen && int64(len(data)) < offset {
 		offset = 0 // the file was truncated: a new agent run
 	}
-
-	end := strings.LastIndexByte(string(data), '\n') + 1 // only complete lines
 	if end == 0 || int64(end) <= offset && seen {
 		return
 	}
-	chunk := strings.Split(strings.TrimSuffix(string(data[offset:end]), "\n"), "\n")
+	var chunk []string
+	for _, line := range strings.Split(strings.TrimSuffix(string(data[offset:end]), "\n"), "\n") {
+		if !journal.IsRecordLine(line) {
+			chunk = append(chunk, line)
+		}
+	}
 	if !seen {
 		chunk = lastOfEachKind(chunk)
 	}
@@ -372,6 +386,129 @@ func (s *Supervisor) readEvents(ctx context.Context, ticket, service string) {
 			}
 		}
 	}
+}
+
+// journalEvents journals the record lines of complete that it has not journaled before.
+// The offset is saved after the records are appended, so a crash in between repeats
+// records rather than losing them.
+func (s *Supervisor) journalEvents(ticket, service string, complete []byte) {
+	ticketDir := filepath.Join(s.opts.Dir, ticket)
+	s.journalMu.Lock()
+	defer s.journalMu.Unlock()
+	offset := journal.Offset(ticketDir, service)
+	if offset > int64(len(complete)) {
+		offset = 0 // the file was truncated: a new agent run
+	}
+	if offset == int64(len(complete)) {
+		return
+	}
+	for _, line := range strings.Split(strings.TrimSuffix(string(complete[offset:]), "\n"), "\n") {
+		if !journal.IsRecordLine(line) {
+			continue
+		}
+		line = strings.TrimSpace(line)
+		entry, err := journal.Parse(line)
+		if err != nil {
+			s.rejectRecord(ticketDir, ticket, service, line, err)
+			continue
+		}
+		s.appendRecord(ticketDir, ticket, service, api.JournalSourceContainer, entry)
+	}
+	if err := journal.SetOffset(ticketDir, service, int64(len(complete))); err != nil {
+		s.opts.Logger.Warn("save the journal offset", "ticket", ticket, "service", service, "err", err)
+	}
+}
+
+// rejectedQuote bounds how much of a refused line rig keeps: enough to see what the
+// agent tried, never a copy of something huge.
+const rejectedQuote = 200
+
+// rejectRecord journals why an agent's record was refused, so the agent's mistake (or
+// a format that is hard to write) is visible instead of silently lost.
+func (s *Supervisor) rejectRecord(ticketDir, ticket, service, line string, why error) {
+	quote := line
+	if len(quote) > rejectedQuote {
+		quote = strings.ToValidUTF8(quote[:rejectedQuote], "")
+	}
+	data, _ := json.Marshal(map[string]string{"line": strings.ToValidUTF8(quote, "")})
+	s.appendRecord(ticketDir, ticket, service, api.JournalSourceRig, journal.Entry{Kind: "record.rejected", Text: why.Error(), Data: data})
+}
+
+func (s *Supervisor) appendRecord(ticketDir, ticket, service string, source api.JournalSource, e journal.Entry) error {
+	r := api.JournalRecord{At: s.opts.Clock.Now().UTC(), Ticket: ticket, Service: service, Source: source, Kind: e.Kind, Text: e.Text, Data: e.Data}
+	if err := journal.Append(ticketDir, r); err != nil {
+		s.opts.Logger.Warn("journal a record", "ticket", ticket, "service", service, "err", err)
+		return err
+	}
+	if s.opts.Bus != nil {
+		s.opts.Bus.Publish(api.EventAgentRecord, ticket, service, api.AgentRecordData{Kind: e.Kind, Text: e.Text})
+	}
+	return nil
+}
+
+// Record handles agent.record: a host agent adds a record to its ticket's journal.
+func (s *Supervisor) Record(ctx context.Context, p api.AgentRecordParams) error {
+	entry := journal.Entry{Kind: p.Kind, Text: p.Text, Data: p.Data}
+	if err := entry.Validate(); err != nil {
+		return invalid("%v", err)
+	}
+	if err := domain.ValidateTicketID(p.Ticket); err != nil {
+		return invalid("%v", err)
+	}
+	statePath := filepath.Join(s.opts.Dir, p.Ticket, "state.json")
+	if _, err := os.Stat(statePath); err != nil {
+		return &api.Error{Code: api.CodeNotFound, Message: fmt.Sprintf("ticket %q not found", p.Ticket)}
+	}
+	current, err := s.opts.States.Load(statePath)
+	if err != nil {
+		return err
+	}
+	if _, ok := current.Services[p.Service]; !ok {
+		return &api.Error{Code: api.CodeNotFound, Message: fmt.Sprintf("ticket %q has no service %q", p.Ticket, p.Service)}
+	}
+	s.journalMu.Lock()
+	defer s.journalMu.Unlock()
+	return s.appendRecord(filepath.Join(s.opts.Dir, p.Ticket), p.Ticket, p.Service, api.JournalSourceHost, entry)
+}
+
+// Journal handles journal.list: the records of one ticket, or of every ticket.
+func (s *Supervisor) Journal(p api.JournalListParams) (api.JournalListResult, error) {
+	if p.Limit < 0 {
+		return api.JournalListResult{}, invalid("limit must be 0 (all) or more, got %d", p.Limit)
+	}
+	var tickets []string
+	if p.Ticket != "" {
+		if err := domain.ValidateTicketID(p.Ticket); err != nil {
+			return api.JournalListResult{}, invalid("%v", err)
+		}
+		if info, err := os.Stat(filepath.Join(s.opts.Dir, p.Ticket)); err != nil || !info.IsDir() {
+			return api.JournalListResult{}, &api.Error{Code: api.CodeNotFound, Message: fmt.Sprintf("ticket %q not found", p.Ticket)}
+		}
+		tickets = []string{p.Ticket}
+	} else {
+		entries, err := os.ReadDir(s.opts.Dir)
+		if err != nil && !os.IsNotExist(err) {
+			return api.JournalListResult{}, err
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				tickets = append(tickets, e.Name())
+			}
+		}
+	}
+	var all []api.JournalRecord
+	for _, t := range tickets {
+		records, err := journal.Read(filepath.Join(s.opts.Dir, t))
+		if err != nil {
+			return api.JournalListResult{}, fmt.Errorf("read the journal of %s: %w", t, err)
+		}
+		all = append(all, records...)
+	}
+	out := journal.Filter(all, p)
+	if out == nil {
+		out = []api.JournalRecord{}
+	}
+	return api.JournalListResult{Records: out}, nil
 }
 
 // parseCostLine reads a "cost 0.42" line of a container agent's events file.
