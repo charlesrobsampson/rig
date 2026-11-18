@@ -40,11 +40,13 @@ The exact shapes that every part of rig shares. `manifest.md` says *what* and *w
 ├── tasks.md           # agent; GitHub checkboxes `- [ ]` / `- [x]`, progress = counted boxes
 ├── manual-tests.md    # agent-written; see §10
 ├── contract.md        # multi-service tickets only; see §9
-├── .rig-events/<svc>/ # events.log: state words appended by a container agent's hooks (§7); read by the daemon
+├── .rig-events/<svc>/ # events.log: state words, cost lines and journal records (§14) appended by a container agent's hooks (§7); read by the daemon
+├── journal.jsonl      # rig-written journal of agent records, stamped by rig (§14); never mounted into a container
+├── journal.offsets.json # rig-written: how far into each service's events.log has been journaled (§14)
 ├── messages.jsonl     # rig-written log of messages typed into agents (`rig msg`): {at, service, from, text, delivered, reason?}
 └── <service path>/    # checkout (default `./<service name>`): isolated shared clone in container mode, git worktree in host mode
 ```
-`state.json` is the only file rig rewrites; it also appends to `messages.jsonl` and creates the stubs of `rig new`. Agents must never edit `state.json` or `ticket.yaml`. `store.json` is a rebuildable cache (see manifest §1, principle 4).
+`state.json` and `journal.offsets.json` are the only files rig rewrites; it also appends to `messages.jsonl` and `journal.jsonl`, and creates the stubs of `rig new`. Agents must never edit `state.json` or `ticket.yaml`. `store.json` is a rebuildable cache (see manifest §1, principle 4).
 
 ## 4. `ticket.yaml`
 Shape per manifest §5, plus:
@@ -148,6 +150,8 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 | `agent.attach`, `agent.message` | returns attach command / injects text (`agent.message` params `{ticket, service, text}`, result `{service, sent}`; errors `blocked` when the agent waits on a permission prompt (nothing typed), `not_running`, `unavailable` if the agent is not ready in time; `agent.attach` params `{ticket, service?}` (service optional when the ticket has one), result `{service, command[]}`; errors `not_found`, `not_running` when no agent is running) |
 | `push.run` | `{id, service?}`: runs the push step of a ticket in the push phase; result `{summary, services[{service, mode, status, skipped?, pushed, ref?, sha?, pr_url?, note?, error?}], done}` (a failed service is in the result with `error`, not an API error; `done` when every service is pushed and the ticket moved to `done`) |
 | `agent.event` | agent hook reports a state (`ready\|working\|blocked\|idle\|exited`) for a ticket/service; or `{state: "cost", cost_usd}`, the harness's running cost for the agent session (0 to 1,000,000; anything else is `invalid`), which is recorded in `services.<name>.agent.cost` `{usd, at}` without touching the agent's state and is announced as `agent.cost` only when the displayed cents change |
+| `agent.record` | `{ticket, service, kind, text?, data?}` -> `{}`: a host agent adds a record to its ticket's journal (§14). The daemon stamps `at` and `source: "host"`. `invalid` for a bad kind, text or data, or a bad ticket id; `not_found` for an unknown ticket or service. Publishes `agent.record` |
+| `journal.list` | `{ticket?, service?, kind?, limit?}` -> `{records[]}`: journal records, oldest first; without `ticket`, every ticket's; `limit` keeps the newest n (0 = all, negative is `invalid`); `not_found` for an unknown ticket; a ticket without a journal gives `[]` |
 | `contract.list` | `{ticket}` -> `{ticket, proposals[{id, from, status, what, why, rejected?}], problems?[], violation?}`; `not_found` without a contract.md |
 | `contract.accept` | `{ticket, proposal}` -> `{proposal, outcome: "accepted"}`: human action. Merges the proposal into the agreed section (as a `####` entry), marks it accepted, appends a changelog line, publishes `contract.resolved` and types a notice into every agent. `not_found` for an unknown id, `conflict` when it is not open |
 | `contract.reject` | `{ticket, proposal, reason}` -> `{proposal, outcome: "rejected"}`: human action; `reason` required (`invalid` without). Records `**Rejected:** <reason>` under the proposal and in the changelog; the proposer is told the reason |
@@ -176,6 +180,7 @@ Envelope: `{"type":"phase.changed","ticket":"ticket-412","service":"","at":"..."
 | `gate.approved` | `{"gate","service"}` |
 | `agent.cost` | `{"usd"}`: an agent's running cost changed by at least a cent |
 | `agent.state` | `{"state","previous"}` |
+| `agent.record` | `{"kind","text"?}`: a record was added to the ticket's journal (§14), including rig's own `record.rejected` |
 | `contract.pending` | `{"proposal":"P-backend-1"}` |
 | `contract.violation` | `{"detail"}` (agreed section edited directly) |
 | `contract.resolved` | `{"proposal","outcome":"accepted|rejected"}` |
@@ -229,3 +234,22 @@ errors: 400 invalid_user
 ## 13. Harness prompt contract
 - The launch prompt is assembled from: ticket title, current phase, `plan.md`, `tasks.md`, `contract.md` (multi-service only), and the rules for that phase. It never includes secret values.
 - Rules every agent receives: edit only your service's checkout; never edit `state.json`, `ticket.yaml`, or `## Agreed`; propose contract changes under `## Proposed changes`; request phase transitions, never assume them; write `manual-tests.md` with placeholders during/after `implement`.
+- Every prompt has a `## Journal` section: how to leave a record (§14) by running the agent's own hook command with the record as its argument (`rig agent-event '<json>'` on the host, the events-file command in a container), and to use `"kind": "feedback"` whenever rig or the environment gets in the way.
+
+## 14. Journal
+A ticket's journal is what its agents chose to record: feedback about rig or their environment, results, anything an orchestrator wants kept. Agents write records; only rig writes `journal.jsonl`.
+
+**What an agent writes** (one line, at most 64 KiB, UTF-8): `{"kind": "feedback", "text": "...", "data": {...}}`.
+- `kind` (required): `^[a-z][a-z0-9_.-]{0,63}$`. `feedback` is for problems with rig or the environment; other kinds are free (`note`, `verdict`, `review.result`).
+- `text` (optional): at most 16 KiB. `data` (optional): a JSON object; `null` means none.
+- Any other field (`ticket`, `service`, `at`, `source`) is ignored: rig stamps those itself.
+
+**How it reaches rig:**
+- A container agent: a line of `.rig-events/<svc>/events.log` whose first non-space character is `{` is a record, never a state, even when it is malformed. The hook command appends its argument with `printf '%s\n'` so JSON escapes survive the container's `sh`.
+- A host agent: `rig agent-event '<json>'`, which sends `agent.record`. A malformed record is dropped there, still with exit 0.
+
+**`journal.jsonl`** (in the ticket directory, 0600, one JSON object per line, append-only): `{at, ticket, service, source, kind, text?, data?}`. `source` is `container`, `host`, or `rig`. rig writes a `record.rejected` record (source `rig`, `text` saying why, `data: {"line": <first 200 bytes>}`) for each malformed record a container agent wrote, so a mistake is visible instead of lost. Readers skip a damaged line.
+
+**Exactly once:** the daemon journals the complete record lines of each events file from the offset saved in `journal.offsets.json` (`{"<service>": <byte offset>}`), then saves the new offset, so a restarted daemon neither loses nor repeats records (a crash between the two repeats them rather than losing them). A file shorter than its offset was truncated and is read from the start. Unlike states, records are not reduced to the last one when a file is first seen.
+
+**Trust:** records are what an agent said, not facts rig checked. rig guarantees who wrote them and when, not that they are true, and does not scrub them: an agent that holds a secret can write it into a record.
