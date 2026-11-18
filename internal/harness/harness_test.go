@@ -54,8 +54,10 @@ func TestTheLaunchCommandPerPhase(t *testing.T) {
 	for _, phase := range []domain.Phase{domain.PhasePlan, domain.PhaseImplement, domain.PhaseTest, domain.PhaseReview, domain.PhasePush} {
 		t.Run(string(phase), func(t *testing.T) {
 			l := launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: phase, TicketDir: dir, Dir: "/work/api"})
-			if l.Command[0] != "claude" || l.Command[1] != "--settings" || l.Command[3] != "--add-dir" || l.Command[4] != dir || len(l.Command) != 6 {
-				t.Fatalf("command = %q, want claude --settings <json> --add-dir <ticket dir> <prompt>", l.Command[:5])
+			// --add-dir takes several values, so the prompt must follow "--" or Claude Code
+			// reads it as another directory and the agent starts with no instructions.
+			if l.Command[0] != "claude" || l.Command[1] != "--settings" || l.Command[3] != "--add-dir" || l.Command[4] != dir || l.Command[5] != "--" || len(l.Command) != 7 {
+				t.Fatalf("command = %q, want claude --settings <json> --add-dir <ticket dir> -- <prompt>", l.Command[:6])
 			}
 			if l.Dir != "/work/api" {
 				t.Errorf("dir = %q", l.Dir)

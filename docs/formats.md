@@ -233,6 +233,7 @@ errors: 400 invalid_user
 - A `### ` heading inside a fenced code block is text, not a step. Placeholders may appear anywhere (preamble, titles, bodies, code blocks), with optional spaces inside the braces (`{{ api.url }}`). `{{<service>.url}}` and `.port` need the service to be running (they are its host port); `.internal_url` needs `internal_port`. Anything else is reported, all offenders at once, including `{{...}}` text that is not a placeholder; the file is never rendered partially.
 
 ## 13. Harness prompt contract
+- The prompt is the last argument, after `--` (Claude Code's `--add-dir` takes several values and would read the prompt as one more directory).
 - The launch prompt is assembled from: ticket title, current phase, `plan.md`, `tasks.md`, `contract.md` (multi-service only), and the rules for that phase. It never includes secret values.
 - Rules every agent receives: edit only your service's checkout; never edit `state.json`, `ticket.yaml`, or `## Agreed`; propose contract changes under `## Proposed changes`; request phase transitions, never assume them; write `manual-tests.md` with placeholders during/after `implement`.
 - Every prompt has a `## Journal` section: how to leave a record (§14) by running the agent's own hook command with the record as its argument (`rig agent-event '<json>'` on the host, the events-file command in a container), and to use `"kind": "feedback"` whenever rig or the environment gets in the way.

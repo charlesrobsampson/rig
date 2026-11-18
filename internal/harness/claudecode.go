@@ -110,7 +110,9 @@ func (c ClaudeCode) Command(r Request) (Launch, error) {
 	if addDir := firstNonEmpty(r.AgentTicketDir, r.TicketDir); addDir != "" {
 		command = append(command, "--add-dir", addDir)
 	}
-	return Launch{Command: append(command, prompt), Env: env, Dir: r.Dir}, nil
+	// "--" ends the options: --add-dir takes several values, and without it Claude Code
+	// reads the prompt as one more directory and starts with no instructions.
+	return Launch{Command: append(command, "--", prompt), Env: env, Dir: r.Dir}, nil
 }
 
 // AuthEnv maps a profile to what Claude Code reads (docs/spikes/04-agent-container.md §7).
