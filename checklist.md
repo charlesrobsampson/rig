@@ -900,6 +900,8 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Mutation check: keeping record lines in the state lines fails two supervisor tests.
   - `task check` green. `task test:race` green except `internal/git` `TestImportIsRepeatableAndPicksUpNewCommits/clone`, which failed twice under `-race` with a TempDir cleanup error (`.git/objects/pack: directory not empty`) and passed on three reruns; `internal/git` depends only on `domain`, which this task did not touch. Flaky (probably git writing into the object store as cleanup runs); worth its own task.
   - Not done here: the TUI does not show records yet (a FEEDBACK marker on the dashboard would be the obvious next step); the MCP server has no journal tool (a supervising agent can't read or write records through MCP yet); records are not scrubbed of secrets (formats §14 says so).
+  - **Also on this branch** (found while testing it, see `docs/field-tests/01-host-dummy-tickets.md`): the harness passes the prompt after `--`, because Claude Code 2.1.327 reads `--add-dir` as variadic and every agent started with no prompt; and the client names an older daemon as the cause of an unknown method (`unavailable`, exit 4, both versions and `rig daemon stop`; formats §10).
+  - Field test 01 ran two dummy tickets with real Claude Code on the host sandbox, plan to done. Its findings are tasks 74 to 80.
   - Manual check is for you: start a container ticket with a real agent, ask it to report something as feedback, and see it in `rig journal --kind feedback`; also try a host-sandbox agent.
 
 ---
@@ -924,3 +926,66 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: `ticket.yaml` (and global config as a default) names directories of agent configuration (`agent_config: [path, ...]`), mounted read-only where the harness reads user-level configuration (for Claude Code, the agent's `~/.claude/` agents, skills and commands), never inside `/work`, so the agent cannot change its own rules. Hooks from that configuration are merged with rig's own hooks, rig's last, so they cannot be dropped. Paths must exist and contain no secrets rig knows of.
 - Tests (fake Docker): mounts are read-only and outside the checkout; rig's hooks survive a configuration that defines the same events; a missing path is refused before any container starts.
 - Manual check: a container agent lists a subagent defined on the host.
+
+### 74 · Agents request phase transitions through the journal
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/74-transition-requests` · Depends: 72
+- Read: `docs/field-tests/01-host-dummy-tickets.md` findings 3, 4; `docs/formats.md` §8 (`transition.request`), §14
+- Build: A record of kind `transition.request` with `data: {{"to": "<phase>", "reason"?}}`, from either sandbox, is turned by the daemon into the existing `transition.request` (never an approval). The prompt names it in each phase's rules. A pending request shows as APPROVE on `rig list`, `ticket.list` and the TUI until a human acts.
+- Tests: a record becomes a request; a bad `to` is rejected with a `record.rejected` reason; a request never moves the phase or approves a gate; the summary shows it pending, then clears it after `phase.set`.
+- Manual check: a real agent in plan asks for implement and the request shows on `rig list`.
+
+### 75 · Tell the agent when the phase changes
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/75-phase-notice` · Depends: 72
+- Read: `docs/field-tests/01-host-dummy-tickets.md` finding 5; `docs/formats.md` §13
+- Build: On `phase.changed`, type a notice into each running agent with the new phase and that phase's rules (including the manual-tests rules from implement on), following the injection rules used for contract notices (never into a blocked agent, logged in messages.jsonl).
+- Tests: notice typed after a forward and a backward move; not typed into a blocked agent (retried later); the text carries the new phase's rules.
+- Manual check: move a running real agent from plan to implement and see it start without being messaged.
+
+### 76 · Prompt rules: ticket files, committing, and a dirty-checkout warning
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/76-prompt-rules` · Depends: 72
+- Read: `docs/field-tests/01-host-dummy-tickets.md` findings 6, 7
+- Build: Reword the common rule to allow the ticket's plan.md, tasks.md, manual-tests.md and contract proposals besides the checkout. Make the implement rule say to commit each task when its tests pass and why (rig imports the branch). `phase.set` to test or review warns (not blocks) when a checkout has uncommitted changes.
+- Tests: prompt text for each phase; the warning appears for a dirty checkout and not for a clean one.
+- Manual check: a real agent commits without being asked.
+
+### 77 · A fresh agent that never reports ready needs attention
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/77-not-ready-attention` · Depends: 72
+- Read: `docs/field-tests/01-host-dummy-tickets.md` finding 2; `docs/spikes/03-tmux.md` §2
+- Build: An agent that has not reported `ready` within a short time after launch (configurable, default 20s) shows as needing attention, and the screen heuristic recognises Claude Code's trust dialogs as blocked. Document trusting the rig tickets directory once.
+- Tests: with the fake clock and terminal: no ready report then attention; a trust-dialog screen is blocked; a ready report clears it.
+- Manual check: start a host ticket in a new folder and see it flagged until the trust prompt is answered.
+
+### 78 · Stop a host-only ticket without Docker
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/78-stop-without-docker` · Depends: 72
+- Read: `docs/field-tests/01-host-dummy-tickets.md` finding 9
+- Build: `ticket.stop` skips Docker cleanup when state.json records no container, network or proxy for the ticket, so a host-sandbox ticket stops and removes its checkouts while Docker is down.
+- Tests: host-only ticket stops with fake Docker down; a ticket with recorded containers still reports Docker unavailable.
+- Manual check: stop a host ticket with Docker Desktop quit.
+
+### 79 · Manual-tests starter for services without a port
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/79-manual-tests-starter` · Depends: 72
+- Read: `docs/field-tests/01-host-dummy-tickets.md` finding 8; `docs/formats.md` §12
+- Build: The starter manual-tests.md has no live placeholders in its prose, and its example step depends on whether the service has a port (`curl {{svc.url}}` only then; a command run in the checkout otherwise).
+- Tests: the starter renders for a service with a port and for one without.
+- Manual check: none.
+
+### 80 · Polish from the first field test
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/80-field-test-polish` · Depends: 72
+- Read: `docs/field-tests/01-host-dummy-tickets.md` findings 10, 11, 12
+- Build: `rig review` prints plain output when stdout is not a terminal. After a push that finishes a ticket, the CLI suggests `rig stop <id>`. The host-sandbox warning says the agent also loads the user's own Claude Code configuration.
+- Tests: review output without delta off a TTY; the stop hint after the last push; the warning text.
+- Manual check: none.
