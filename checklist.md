@@ -919,7 +919,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 73 · Bring the user's agent configuration into the container
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/73-agent-config-mount` · Depends: 37, 72
 - Read: `docs/spikes/04-agent-container.md`, `docs/formats.md` §4, §7, §13
 - Context: an orchestrator defines subagents, skills and hooks (Claude Code `.claude/` content) that a container agent never sees, because only the clone and the ticket files are mounted.
