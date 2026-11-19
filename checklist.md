@@ -987,12 +987,12 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/80-field-test-polish` · Depends: 72
 - Read: `docs/field-tests/01-host-dummy-tickets.md` findings 10, 11, 12
-- Build: `rig review` prints plain output when stdout is not a terminal. After a push that finishes a ticket, the CLI suggests `rig stop <id>`. The host-sandbox warning says the agent also loads the user's own Claude Code configuration. The older-daemon message prints both versions the same way, and for two dev builds says the daemon was started from a different build (field test 02, finding 5).
+- Build: `rig review` prints plain output when stdout is not a terminal. After a push that finishes a ticket, the CLI suggests `rig stop <id>`. With a `host_login` profile (or none), the host-sandbox warning says the agent also loads the user's own Claude Code configuration; a credential profile now gets its own (task 81). The older-daemon message prints both versions the same way, and for two dev builds says the daemon was started from a different build (field test 02, finding 5).
 - Tests: review output without delta off a TTY; the stop hint after the last push; the warning text.
 - Manual check: none.
 
 ### 81 · Agents start already trusted, with their own Claude configuration
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/81-setup-and-trust` · Depends: 72 · Overlaps: 73, 77 · Followed by: 88 (`rig setup`)
 - Read: `docs/field-tests/01-host-dummy-tickets.md` findings 2 and 10; `docs/field-tests/02-container-journal.md` finding 1; `docs/formats.md` §3, §7, §13
@@ -1021,6 +1021,17 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - a path outside the tickets directory is refused;
   - the user's HOME is never read or written.
 - Manual check: a new container ticket (with an `oauth_token` profile) and a new host ticket (with the same profile) both reach the input box with no first-run screen and no trust prompt.
+- Notes:
+  - `harness.Harness` gains `PrepareConfig(dir, trusted)`, and `harness.Request` gains `ConfigDir`, which becomes `CLAUDE_CONFIG_DIR`. Ticket env cannot override it.
+  - `ClaudeCode.PrepareConfig` merges `hasCompletedOnboarding`, a default `theme` (`dark`, only when none is set) and `projects[p].hasTrustDialogAccepted` into `.claude.json`. Other keys and project fields are kept, and a damaged file is replaced.
+  - Lifecycle:
+    - `agentConfigDir` is `<ticket>/.rig-claude/<svc>`.
+    - Host: only when the resolved profile exists and is not `host_login`. `trustablePaths(m.opts.Dir, checkout, ticketDir)` resolves symlinks and refuses anything outside the tickets directory.
+    - Container: always, with trust for `/work` and `/rig/ticket` and a rw mount at `/rig/claude`.
+  - The dry-run preview (`previewLaunches`) does not show `CLAUDE_CONFIG_DIR`.
+  - Tests: harness (env, keys, merge, damaged file, modes) and lifecycle (host with a token, host_login untouched, container mount and env, a tickets directory reached through a symlink, the user's HOME never written, the root check).
+  - Mutation checks: isolating `host_login` too, dropping the root check, and trusting unresolved paths each fail a test.
+  - Manual check: not run yet. It needs a token profile in the user's config (task 88 automates that). See the hand-off.
 
 ### 82 · Role permission profiles: no prompts for what a role may do
 - [ ] Done

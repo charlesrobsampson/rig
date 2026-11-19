@@ -33,6 +33,9 @@ type Request struct {
 	// CostCommand is what the harness's status line runs to report the agent's running
 	// cost. Empty means cost is not reported (the readout stays absent, never zero).
 	CostCommand string
+	// ConfigDir is the agent's own harness configuration directory, as the agent sees
+	// it. Empty means the agent uses its user's own configuration.
+	ConfigDir string
 }
 
 // Launch is what a terminal backend needs to start the agent.
@@ -47,6 +50,9 @@ type Harness interface {
 	Command(Request) (Launch, error)
 	// AuthEnv maps an auth profile to the environment variables this harness reads.
 	AuthEnv(p config.AuthProfile, secrets map[string]string) (map[string]string, error)
+	// PrepareConfig readies a configuration directory so the agent starts without
+	// first-run questions and trusts exactly the given (real) paths.
+	PrepareConfig(dir string, trusted []string) error
 }
 
 // Get returns the harness for a ticket's `harness` value; "" means claude-code.

@@ -131,6 +131,18 @@ func (m *Manager) prepareHostAgent(l loaded, svc domain.Service, eff policy.Effe
 	}
 	req.Dir, req.HookCommand = dir, shellQuote(m.rigBinary())+" agent-event"
 	req.CostCommand = shellQuote(m.rigBinary()) + " agent-event cost"
+	// With a credential profile the agent gets its own configuration, trusted ahead;
+	// the machine's own login lives in the user's configuration, so host_login keeps it.
+	if req.Profile != nil && req.Profile.Type != domain.AuthHostLogin {
+		trusted, err := trustablePaths(m.opts.Dir, dir, l.dir)
+		if err != nil {
+			return agentLaunch{}, err
+		}
+		req.ConfigDir = agentConfigDir(l.dir, svc.Name)
+		if err := h.PrepareConfig(req.ConfigDir, trusted); err != nil {
+			return agentLaunch{}, err
+		}
+	}
 	launch, err := h.Command(req)
 	if err != nil {
 		return agentLaunch{}, err

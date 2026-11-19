@@ -89,8 +89,10 @@ rig stop add-locale
 
 An auth profile maps stored secrets to what the agent reads: `oauth_token`, `api_key`,
 `auth_token`, `bedrock`, `vertex`, `foundry`, or `host_login` (host mode only: the agent
-uses your own login). A container cannot use your machine's login, which is why container
-agents need a profile. A ticket with two services looks like
+uses your own login and your own Claude Code configuration). A container cannot use your
+machine's login, which is why container agents need a profile. Every agent with a profile
+gets its own Claude Code configuration in the ticket, set up so it starts without
+first-run screens or folder-trust prompts, and without your personal CLAUDE.md or skills. A ticket with two services looks like
 [`examples/tickets/two-services.yaml`](examples/tickets/two-services.yaml).
 
 ## The terminal UI

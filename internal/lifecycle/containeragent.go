@@ -26,6 +26,7 @@ const (
 	agentWorkDir   = "/work"
 	agentTicketDir = "/rig/ticket"
 	agentEventsDir = "/rig-events"
+	agentClaudeDir = "/rig/claude"
 	eventsFile     = "events.log"
 )
 
@@ -88,6 +89,12 @@ func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domai
 		return agentLaunch{}, fmt.Errorf("prepare the events directory: %w", err)
 	}
 	mounts = append(mounts, docker.Mount{Source: events, Target: agentEventsDir})
+	// The agent's own Claude configuration, on the host so it outlives the container.
+	configDir := agentConfigDir(l.dir, svc.Name)
+	if err := h.PrepareConfig(configDir, []string{agentWorkDir, agentTicketDir}); err != nil {
+		return agentLaunch{}, err
+	}
+	mounts = append(mounts, docker.Mount{Source: configDir, Target: agentClaudeDir})
 
 	name := AgentContainerName(l.id, svc.Name)
 	id, err := m.agentContainer(ctx, name, docker.ContainerSpec{
@@ -101,7 +108,7 @@ func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domai
 		return agentLaunch{}, err
 	}
 
-	req.Dir, req.AgentTicketDir = agentWorkDir, agentTicketDir
+	req.Dir, req.AgentTicketDir, req.ConfigDir = agentWorkDir, agentTicketDir, agentClaudeDir
 	// Hooks inside the container cannot reach the daemon; they append to a file the
 	// daemon watches (docs/spikes/04-agent-container.md §5).
 	req.HookCommand = containerHookCommand(agentEventsDir + "/" + eventsFile)
