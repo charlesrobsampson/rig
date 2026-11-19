@@ -1064,6 +1064,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Tests check what git in the container needs: every store named, starting from the clone's alternates and following each mounted store's own, is mounted at exactly that path from that same store. They cover a repo reached through a symlink (new clone and older clone) and a borrowed store reached through a symlink.
   - Mutation checks: cloning from the unresolved path, or mounting only real paths, fails the symlink tests.
   - `TestImportIsRepeatableAndPicksUpNewCommits/clone` still flakes at TempDir cleanup, on master too; task 85.
+  - Manual check done with real Docker: a ticket on a repo under `/tmp`. The clone's alternates names `/private/tmp/...`; inside the agent container `git status` and `git commit` work, and `rig stop` imported the commit into the main repo.
 
 ### 85 · Stop the flaky TempDir cleanup in git tests
 - [ ] Done
