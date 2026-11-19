@@ -175,6 +175,9 @@ func (m *Manager) Start(ctx context.Context, p api.TicketStartParams) (api.Ticke
 	if err := m.checkSecrets(l, p.Sandbox); err != nil {
 		return api.TicketStartResult{}, err
 	}
+	if err := m.checkAgentConfig(l, p.Sandbox); err != nil {
+		return api.TicketStartResult{}, err
+	}
 
 	var infos []api.CheckoutInfo
 	var created []git.Checkout

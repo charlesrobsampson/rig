@@ -133,13 +133,15 @@ func (m *Manager) prepareHostAgent(l loaded, svc domain.Service, eff policy.Effe
 	req.CostCommand = shellQuote(m.rigBinary()) + " agent-event cost"
 	// With a credential profile the agent gets its own configuration, trusted ahead;
 	// the machine's own login lives in the user's configuration, so host_login keeps it.
-	if req.Profile != nil && req.Profile.Type != domain.AuthHostLogin {
+	if ownsConfig(domain.SandboxHost, req.Profile) {
 		trusted, err := trustablePaths(m.opts.Dir, dir, l.dir)
 		if err != nil {
 			return agentLaunch{}, err
 		}
 		req.ConfigDir = agentConfigDir(l.dir, svc.Name)
-		if err := h.PrepareConfig(req.ConfigDir, trusted); err != nil {
+		snapshot := agentSnapshotDir(l.dir, svc.Name)
+		cfg := harness.Config{Trusted: trusted, Templates: eff.AgentConfig, Snapshot: snapshot, SnapshotSeen: snapshot, Secrets: req.Secrets}
+		if err := h.PrepareConfig(req.ConfigDir, cfg); err != nil {
 			return agentLaunch{}, err
 		}
 	}

@@ -918,14 +918,20 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Manual check: point a service at a prebuilt image and run it.
 
 ### 73 · Bring the user's agent configuration into the container
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/73-agent-config-mount` · Depends: 37, 72
 - Read: `docs/spikes/04-agent-container.md`, `docs/formats.md` §4, §7, §13
 - Context: an orchestrator defines subagents, skills and hooks (Claude Code `.claude/` content) that a container agent never sees, because only the clone and the ticket files are mounted.
-- Build: `ticket.yaml` (and global config as a default) names directories of agent configuration (`agent_config: [path, ...]`), mounted read-only where the harness reads user-level configuration (for Claude Code, the agent's `~/.claude/` agents, skills and commands), never inside `/work`, so the agent cannot change its own rules. Hooks from that configuration are merged with rig's own hooks, rig's last, so they cannot be dropped. Paths must exist and contain no secrets rig knows of.
-- Tests (fake Docker): mounts are read-only and outside the checkout; rig's hooks survive a configuration that defines the same events; a missing path is refused before any container starts.
-- Manual check: a container agent lists a subagent defined on the host.
+- Build (as built, 2026-11-19; the user asked whether to copy or symlink, and the answer was copy, then link):
+  - `agent_config: [path, ...]` in `ticket.yaml`; absent inherits the global `defaults.agent_config` (`~` allowed there), and `[]` means none. Absolute paths.
+  - Copy, then link. At every launch rig rebuilds `<ticket>/.rig-agent-config/<svc>/` from the templates, in order, copying only `CLAUDE.md`, `settings.json`, `agents/`, `skills/`, `commands/`, `output-styles/` and `hooks/`. The agent's config directory (task 81) gets a link per entry: to `/rig/agent-config/<entry>` in a container, where the copy is mounted read-only, and to the host copy for a host agent. Direct symlinks to the templates were rejected: they are dead inside a container, and on the host an agent could write through them into the user's templates.
+  - The snapshot is emptied, not replaced, so a running agent container's mount still sees the rebuild.
+  - Hooks: rig's come through `--settings`, and Claude Code runs the hooks of every settings source, so no merge is needed and "rig's last" does not apply (hooks run in parallel). What could drop rig's hooks is `disableAllHooks`, or re-pointing `RIG_*` / `CLAUDE_CONFIG_DIR` through `env`; a template that sets them is refused.
+  - Refused before anything is made (`checkAgentConfig`, after `checkSecrets`): a missing or relative path, a link or non-regular file inside a template, a file holding a secret value the agent gets (named, never shown), the settings above, and a host agent without its own configuration (host_login or no profile).
+- Tests: harness (snapshot and links, later template wins, rebuild drops agent edits and dropped entries, a template's settings.json replaces Claude Code's own and is otherwise kept, refusals); lifecycle with fake Docker (snapshot mounted read-only at `/rig/agent-config`, nothing inside `/work`, host agent reads through its links, refusals leave no checkout, container or agent); config and policy (`[]` vs absent, `~`, absolute paths). Mutation checks: read-write mount, no secret scan, snapshot not emptied, exec bit dropped, no replace, host_login allowed: all caught.
+- Manual check: a container agent lists a subagent defined in a template.
+  - Passed 2026-11-19 (Claude Code 2.1.328, container, oauth_token profile). `/agents` is gone in this version, so the user asked the agent to "use the pirate-reviewer subagent"; it ran the template's subagent. Writing to `/rig/claude/agents/...` in the container failed with "Read-only file system".
 
 ### 74 · Agents request phase transitions through the journal
 - [ ] Done
@@ -1139,3 +1145,13 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Tests: the token reaches the store and never the output; the config gains the profile and keeps other keys; re-running changes nothing; works with a fake store and a temp config.
 - Manual check: on a fresh machine, `rig setup` then a new container ticket reaches the input box with no login screen.
 
+
+### 89 · An agent cannot switch off rig's hooks from its own checkout
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/89-managed-hooks` · Depends: 73
+- Read: task 73 notes; Claude Code managed settings docs
+- Why: found in task 73. Templates are checked, but an agent can still write `disableAllHooks` (or `env` overrides of `RIG_*`) into `/work/.claude/settings.local.json` in its own checkout, which Claude Code reads as project settings. Rig would lose the agent's state and journal.
+- Build: in a container, mount a rig-written managed settings file read-only where Claude Code reads it on Linux (`/etc/claude-code/managed-settings.json`) that forbids turning hooks off; check what managed settings can enforce on 2.1.328 first. On the host, at least warn when a checkout's `.claude/settings*.json` sets these.
+- Tests: the managed settings mount is read-only and present in every agent container; a checkout setting `disableAllHooks` is reported.
+- Manual check: an agent that writes `disableAllHooks` into its checkout keeps reporting its state.

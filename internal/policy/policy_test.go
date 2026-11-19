@@ -238,3 +238,32 @@ func TestMergeCommitFollowsServiceThenTicketThenGlobalWithAnExplicitFalseWinning
 		})
 	}
 }
+
+func TestResolveAgentConfig(t *testing.T) {
+	tests := []struct {
+		name           string
+		global, ticket []string
+		want           []string
+	}{
+		{"global default", []string{"/g"}, nil, []string{"/g"}},
+		{"ticket replaces global", []string{"/g"}, []string{"/t1", "/t2"}, []string{"/t1", "/t2"}},
+		{"an empty ticket list means none", []string{"/g"}, []string{}, []string{}},
+		{"none anywhere", nil, nil, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := baseGlobal()
+			g.Defaults.AgentConfig = tt.global
+			got := resolve(g, domain.Ticket{AgentConfig: tt.ticket}, domain.Service{}, policy.Flags{}).AgentConfig
+			if len(got) != len(tt.want) || (len(got) > 0 && !reflect.DeepEqual(got, tt.want)) {
+				t.Errorf("agent config = %v, want %v", got, tt.want)
+			}
+			if len(got) > 0 {
+				got[0] = "changed"
+				if again := resolve(g, domain.Ticket{AgentConfig: tt.ticket}, domain.Service{}, policy.Flags{}).AgentConfig; again[0] == "changed" {
+					t.Error("Resolve returned the config's own list")
+				}
+			}
+		})
+	}
+}

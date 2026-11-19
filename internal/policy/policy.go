@@ -31,6 +31,8 @@ type Effective struct {
 	TerminalBackend string
 	// Auth is the auth profile name, empty when none is configured anywhere.
 	Auth string
+	// AgentConfig lists the agent configuration templates, in order; empty means none.
+	AgentConfig []string
 }
 
 func Resolve(g config.Global, t domain.Ticket, s domain.Service, f Flags) Effective {
@@ -44,6 +46,7 @@ func Resolve(g config.Global, t domain.Ticket, s domain.Service, f Flags) Effect
 		Harness:         first(f.Harness, s.Harness, t.Harness, d.Harness),
 		TerminalBackend: first(f.TerminalBackend, d.TerminalBackend),
 		Auth:            first(s.Auth, t.Auth, g.Auth.Default),
+		AgentConfig:     firstList(t.AgentConfig, d.AgentConfig),
 	}
 }
 
@@ -65,6 +68,16 @@ func first[T comparable](levels ...T) T {
 		}
 	}
 	return zero
+}
+
+// firstList takes the first level that is set at all, including an empty list, as a copy.
+func firstList(levels ...[]string) []string {
+	for _, l := range levels {
+		if l != nil {
+			return slices.Clone(l)
+		}
+	}
+	return nil
 }
 
 // firstGates takes the first level that is set at all, including an empty list,

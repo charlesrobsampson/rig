@@ -51,8 +51,11 @@ type Harness interface {
 	// AuthEnv maps an auth profile to the environment variables this harness reads.
 	AuthEnv(p config.AuthProfile, secrets map[string]string) (map[string]string, error)
 	// PrepareConfig readies a configuration directory so the agent starts without
-	// first-run questions and trusts exactly the given (real) paths.
-	PrepareConfig(dir string, trusted []string) error
+	// first-run questions, trusts exactly the given (real) paths, and has the
+	// templates' instructions, subagents, skills and hooks.
+	PrepareConfig(dir string, c Config) error
+	// CheckTemplates reports why configuration templates must not reach an agent.
+	CheckTemplates(templates []string, secrets map[string]string) error
 }
 
 // Get returns the harness for a ticket's `harness` value; "" means claude-code.
@@ -65,3 +68,19 @@ func Get(name string) (Harness, error) {
 }
 
 func indent(s string) string { return strings.TrimRight(s, "\n") }
+
+// Config is what PrepareConfig puts in an agent's configuration directory.
+type Config struct {
+	// Trusted are the real paths the agent may work in without a trust prompt.
+	Trusted []string
+	// Templates are directories laid out like the harness's user configuration
+	// (~/.claude for Claude Code). They are copied, in order, into Snapshot, and a later
+	// template's file replaces an earlier one's. The templates themselves are never changed.
+	Templates []string
+	// Snapshot is the rig-owned copy of the templates on the host, rebuilt on every
+	// launch; SnapshotSeen is the same directory as the agent sees it, which the
+	// configuration directory links to.
+	Snapshot, SnapshotSeen string
+	// Secrets are the values, by name, that no template may contain.
+	Secrets map[string]string
+}

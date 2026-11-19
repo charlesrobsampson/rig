@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/charlesrobsampson/rig/internal/config"
+	"github.com/charlesrobsampson/rig/internal/domain"
+	"github.com/charlesrobsampson/rig/internal/policy"
 )
 
 // agentConfigDir is where an agent's own harness configuration lives on the host.
@@ -30,4 +34,39 @@ func trustablePaths(root string, paths ...string) ([]string, error) {
 		out = append(out, real)
 	}
 	return out, nil
+}
+
+// agentSnapshotDir is where an agent's configuration templates are copied on the host.
+// It sits outside the agent's config directory so a container can mount it read-only.
+func agentSnapshotDir(ticketDir, service string) string {
+	return filepath.Join(ticketDir, ".rig-agent-config", service)
+}
+
+// ownsConfig reports whether an agent gets its own configuration directory: every
+// container agent does, and a host agent with a credential profile; host_login keeps
+// the user's own, because that is where the machine's login is.
+func ownsConfig(sandbox domain.Sandbox, profile *config.AuthProfile) bool {
+	return sandbox == domain.SandboxContainer || (profile != nil && profile.Type != domain.AuthHostLogin)
+}
+
+// checkAgentConfig refuses agent configuration that cannot or must not reach an agent,
+// before anything for the ticket is made.
+func (m *Manager) checkAgentConfig(l loaded, sandbox domain.Sandbox) error {
+	for _, svc := range l.ticket.Services {
+		eff := policy.Resolve(m.opts.Global, l.ticket, svc, policy.Flags{Sandbox: sandbox})
+		if len(eff.AgentConfig) == 0 {
+			continue
+		}
+		h, req, err := m.agentRequest(l, svc, eff)
+		if err != nil {
+			return invalid("service %s: %v", svc.Name, err)
+		}
+		if !ownsConfig(eff.Sandbox, req.Profile) {
+			return invalid("service %s: agent_config needs the agent's own configuration, which a host agent has only with a credential profile (oauth_token, api_key, auth_token or cloud); with host_login or no profile it uses the user's own configuration", svc.Name)
+		}
+		if err := h.CheckTemplates(eff.AgentConfig, req.Secrets); err != nil {
+			return invalid("service %s: %v", svc.Name, err)
+		}
+	}
+	return nil
 }

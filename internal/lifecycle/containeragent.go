@@ -13,6 +13,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/docker"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/git"
+	"github.com/charlesrobsampson/rig/internal/harness"
 	"github.com/charlesrobsampson/rig/internal/policy"
 	"github.com/charlesrobsampson/rig/internal/supervisor"
 )
@@ -23,11 +24,12 @@ func AgentContainerName(ticket, service string) string {
 
 const (
 	// Where an agent sees its checkout, the ticket's working files, and its hook events.
-	agentWorkDir   = "/work"
-	agentTicketDir = "/rig/ticket"
-	agentEventsDir = "/rig-events"
-	agentClaudeDir = "/rig/claude"
-	eventsFile     = "events.log"
+	agentWorkDir        = "/work"
+	agentTicketDir      = "/rig/ticket"
+	agentEventsDir      = "/rig-events"
+	agentClaudeDir      = "/rig/claude"
+	agentConfigSnapshot = "/rig/agent-config"
+	eventsFile          = "events.log"
 )
 
 // ticketFiles are the only files of the ticket directory an agent gets: the ones it
@@ -43,7 +45,7 @@ func EventsDir(ticketDir, service string) string {
 // the agent inside it. The container holds exactly: the service's checkout (read-write),
 // for a clone the main repository's object store (read-only, at its real path, because
 // the clone reads it through alternates), the ticket's working files, and a directory
-// for hook events. It joins the ticket's network. No git credentials, no Docker socket,
+// for hook events, and the agent configuration snapshot (read-only). It joins the ticket's network. No git credentials, no Docker socket,
 // no other branches.
 func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domain.Service, eff policy.Effective, co api.CheckoutInfo, net *api.NetworkInfo, extraEnv map[string]string) (agentLaunch, error) {
 	h, req, err := m.agentRequest(l, svc, eff)
@@ -91,10 +93,16 @@ func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domai
 	mounts = append(mounts, docker.Mount{Source: events, Target: agentEventsDir})
 	// The agent's own Claude configuration, on the host so it outlives the container.
 	configDir := agentConfigDir(l.dir, svc.Name)
-	if err := h.PrepareConfig(configDir, []string{agentWorkDir, agentTicketDir}); err != nil {
+	snapshot := agentSnapshotDir(l.dir, svc.Name)
+	cfg := harness.Config{Trusted: []string{agentWorkDir, agentTicketDir}, Templates: eff.AgentConfig, Snapshot: snapshot, SnapshotSeen: agentConfigSnapshot, Secrets: req.Secrets}
+	if err := h.PrepareConfig(configDir, cfg); err != nil {
 		return agentLaunch{}, err
 	}
 	mounts = append(mounts, docker.Mount{Source: configDir, Target: agentClaudeDir})
+	// Read-only, so the agent cannot change the configuration it is held to.
+	if len(eff.AgentConfig) > 0 {
+		mounts = append(mounts, docker.Mount{Source: snapshot, Target: agentConfigSnapshot, ReadOnly: true})
+	}
 
 	name := AgentContainerName(l.id, svc.Name)
 	id, err := m.agentContainer(ctx, name, docker.ContainerSpec{

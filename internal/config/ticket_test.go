@@ -123,6 +123,7 @@ func TestParseTicketRejectsInvalidTickets(t *testing.T) {
 		{"service missing name", "id: d\ntitle: T\nservices:\n  - {repo: /r, branch: b}\n", []string{"services[0].name"}},
 		{"bad service name", "id: d\ntitle: T\nservices:\n  - {name: API, repo: /r, branch: b}\n", []string{"services[0].name", "API"}},
 		{"relative repo", "id: d\ntitle: T\nservices:\n  - {name: api, repo: ../r, branch: b}\n", []string{"services[0].repo", "absolute"}},
+		{"relative agent config", minimal + "agent_config: [roles]\n", []string{"agent_config[0]", "absolute"}},
 		{"duplicate service names", "id: d\ntitle: T\nservices:\n  - {name: api, repo: /r, branch: b}\n  - {name: api, repo: /s, branch: c, path: ./other}\n", []string{"duplicate name", "api"}},
 		{"service and dependency share a name", minimal + "dependencies:\n  - {name: api, image: x}\n", []string{"duplicate name", "api"}},
 		{"dependency without image", minimal + "dependencies:\n  - {name: db}\n", []string{"dependencies[0].image", "required"}},
@@ -239,5 +240,20 @@ func TestLoadTicketReadsAFile(t *testing.T) {
 	}
 	if _, err := config.LoadTicket(filepath.Join(dir, "missing.yaml"), config.TicketOptions{}); err == nil {
 		t.Error("missing file did not error")
+	}
+}
+
+func TestParseTicketKeepsAnEmptyAgentConfigApartFromAnAbsentOne(t *testing.T) {
+	absent, err := parse(t, minimal)
+	if err != nil || absent.AgentConfig != nil {
+		t.Errorf("absent agent_config = %#v, %v; it must stay nil (inherit)", absent.AgentConfig, err)
+	}
+	empty, err := parse(t, minimal+"agent_config: []\n")
+	if err != nil || empty.AgentConfig == nil || len(empty.AgentConfig) != 0 {
+		t.Errorf("agent_config: [] = %#v, %v; it must mean none", empty.AgentConfig, err)
+	}
+	set, err := parse(t, minimal+"agent_config: [/roles/claude]\n")
+	if err != nil || len(set.AgentConfig) != 1 || set.AgentConfig[0] != "/roles/claude" {
+		t.Errorf("agent_config = %#v, %v", set.AgentConfig, err)
 	}
 }

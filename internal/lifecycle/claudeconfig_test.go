@@ -151,3 +151,113 @@ func TestTrustIsForTheRealPathsWhenTheTicketsDirectoryIsALink(t *testing.T) {
 		t.Errorf("trusted = %v, want the real paths %v", got, want)
 	}
 }
+
+// roles writes an agent configuration template with one subagent.
+func roles(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if files == nil {
+		files = map[string]string{"agents/reviewer.md": "review carefully"}
+	}
+	for name, content := range files {
+		p := filepath.Join(dir, name)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func useAgentConfig(t *testing.T, ticketPath string, dirs ...string) {
+	t.Helper()
+	raw, _ := os.ReadFile(filepath.Join(ticketPath, "ticket.yaml"))
+	line := "agent_config: [" + strings.Join(dirs, ", ") + "]\n"
+	if err := os.WriteFile(filepath.Join(ticketPath, "ticket.yaml"), append(raw, []byte(line)...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAContainerAgentGetsItsAgentConfigReadOnly(t *testing.T) {
+	f, dk, _ := agentsFixture(t, withAuth(config.AuthProfile{Type: domain.AuthOAuthToken, Secrets: []string{"WORK_TOKEN"}}))
+	path := f.create("demo", testkit.NewRepo(t))
+	useAuth(t, path)
+	useAgentConfig(t, path, roles(t, nil))
+	if res := f.mustStart("demo", domain.SandboxContainer); res.Agents[0].Error != "" {
+		t.Fatal(res.Agents[0].Error)
+	}
+
+	c, err := dk.InspectContainer(ctx, "rig-demo-svc1-agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := filepath.Join(path, ".rig-agent-config", "svc1")
+	if !slices.Contains(mountSet(c), snapshot+" -> /rig/agent-config ro") {
+		t.Errorf("mounts = %v; the snapshot must be mounted read-only", mountSet(c))
+	}
+	for _, m := range c.Mounts {
+		if strings.HasPrefix(m.Target, "/work") && m.Target != "/work" {
+			t.Errorf("%s is mounted inside the checkout", m.Target)
+		}
+	}
+	link, err := os.Readlink(filepath.Join(path, ".rig-claude", "svc1", "agents"))
+	if err != nil || link != "/rig/agent-config/agents" {
+		t.Errorf("agents -> %q, %v", link, err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(snapshot, "agents", "reviewer.md")); string(got) != "review carefully" {
+		t.Errorf("snapshot reviewer.md = %q", got)
+	}
+}
+
+func TestAHostAgentGetsItsAgentConfig(t *testing.T) {
+	homeWatch(t)
+	f, term := agentFixture(t, withAuth(config.AuthProfile{Type: domain.AuthOAuthToken, Secrets: []string{"WORK_TOKEN"}}))
+	path := f.create("demo", testkit.NewRepo(t))
+	useAuth(t, path)
+	useAgentConfig(t, path, roles(t, nil))
+	f.mustStart("demo", domain.SandboxHost)
+
+	configDir := term.Spawned()[0].Env["CLAUDE_CONFIG_DIR"]
+	if got, err := os.ReadFile(filepath.Join(configDir, "agents", "reviewer.md")); err != nil || string(got) != "review carefully" {
+		t.Errorf("reviewer.md through the agent's config = %q, %v", got, err)
+	}
+}
+
+func TestBadAgentConfigIsRefusedBeforeAnythingStarts(t *testing.T) {
+	cases := []struct {
+		name    string
+		sandbox domain.Sandbox
+		profile config.AuthProfile
+		dir     func(t *testing.T) string
+		want    string
+	}{
+		{"missing", domain.SandboxContainer, config.AuthProfile{Type: domain.AuthOAuthToken, Secrets: []string{"WORK_TOKEN"}},
+			func(t *testing.T) string { return filepath.Join(t.TempDir(), "nope") }, "does not exist"},
+		{"a known secret", domain.SandboxContainer, config.AuthProfile{Type: domain.AuthOAuthToken, Secrets: []string{"WORK_TOKEN"}},
+			func(t *testing.T) string { return roles(t, map[string]string{"CLAUDE.md": "token secret-WORK_TOKEN"}) }, "WORK_TOKEN"},
+		{"the user's own config", domain.SandboxHost, config.AuthProfile{Type: domain.AuthHostLogin},
+			func(t *testing.T) string { return roles(t, nil) }, "own configuration"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f, dk, term := agentsFixture(t, withAuth(c.profile))
+			path := f.create("demo", testkit.NewRepo(t))
+			useAuth(t, path)
+			useAgentConfig(t, path, c.dir(t))
+
+			_, err := f.start("demo", c.sandbox)
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("err = %v, want it to mention %q", err, c.want)
+			}
+			if _, err := os.Stat(filepath.Join(path, "svc1")); !os.IsNotExist(err) {
+				t.Error("a checkout was made")
+			}
+			if _, err := dk.InspectContainer(ctx, "rig-demo-svc1-agent"); err == nil {
+				t.Error("an agent container was made")
+			}
+			if len(term.Spawned()) > 0 {
+				t.Error("an agent was started")
+			}
+		})
+	}
+}

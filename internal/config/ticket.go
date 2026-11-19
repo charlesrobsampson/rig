@@ -101,6 +101,11 @@ func validateTicket(t *domain.Ticket, repoCheck func(string) error) []string {
 
 	problems = append(problems, checkEnv("env", t.Env)...)
 	problems = append(problems, checkSecrets("secrets", t.Secrets)...)
+	for i, p := range t.AgentConfig {
+		if !filepath.IsAbs(p) {
+			add("agent_config[%d]: %s must be an absolute path", i, p)
+		}
+	}
 	return problems
 }
 
