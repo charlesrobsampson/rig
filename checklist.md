@@ -987,7 +987,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/80-field-test-polish` · Depends: 72
 - Read: `docs/field-tests/01-host-dummy-tickets.md` findings 10, 11, 12
-- Build: `rig review` prints plain output when stdout is not a terminal. After a push that finishes a ticket, the CLI suggests `rig stop <id>`. The host-sandbox warning says the agent also loads the user's own Claude Code configuration.
+- Build: `rig review` prints plain output when stdout is not a terminal. After a push that finishes a ticket, the CLI suggests `rig stop <id>`. The host-sandbox warning says the agent also loads the user's own Claude Code configuration. The older-daemon message prints both versions the same way, and for two dev builds says the daemon was started from a different build (field test 02, finding 5).
 - Tests: review output without delta off a TTY; the stop hint after the last push; the warning text.
 - Manual check: none.
 
@@ -996,13 +996,13 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/81-setup-and-trust` · Depends: 72 · Overlaps: 73, 77
 - Read: `docs/field-tests/01-host-dummy-tickets.md` findings 2 and 10; `docs/formats.md` §3, §13
-- Why: every new host ticket stops at two Claude Code trust prompts (the checkout and `--add-dir <ticket dir>`). Trusting a parent folder is not enough: since Claude Code 2.1.232 a nested git repo does not inherit trust, and every rig checkout is a repo. Trust is checked by an ancestor walk in some code paths and by exact path in others, and it has changed between versions (claude-code issues 86824, 72896, 84402). So rig must set trust on the exact paths itself.
+- Why: every new container agent stops at Claude Code's first-run screens (theme, notes, trust; field test 02, finding 1), and every new host ticket stops at two Claude Code trust prompts (the checkout and `--add-dir <ticket dir>`). Trusting a parent folder is not enough: since Claude Code 2.1.232 a nested git repo does not inherit trust, and every rig checkout is a repo. Trust is checked by an ancestor walk in some code paths and by exact path in others, and it has changed between versions (claude-code issues 86824, 72896, 84402). So rig must set trust on the exact paths itself.
 - Build:
   - `rig setup` (interactive, run once) records a master workspace (default `<home>/work`) and checks the Claude profile (`claude setup-token` for containers). The approval means rig may trust anything it creates inside the workspace, and nothing outside it.
   - Every checkout and ticket directory is created inside the workspace.
   - Each host agent gets its own Claude Code config directory (`CLAUDE_CONFIG_DIR` under the ticket directory). rig writes `hasTrustDialogAccepted: true` there for exactly the checkout and the ticket directory, and never edits the user's `~/.claude.json`.
   - This also stops host agents loading the user's personal CLAUDE.md, skills and settings (finding 10). What a ticket does carry over comes from task 73.
-  - Container agents get the same pre-set trust inside the container.
+  - Container agents get the same: a Claude configuration with onboarding completed (`hasCompletedOnboarding`), a theme set, and trust for exactly `/work` and `/rig/ticket`. Check the exact keys against the Claude Code version in the agent image.
   - rig refuses to trust a path outside the workspace.
 - Tests:
   - the config dir holds trust for exactly the two paths;
@@ -1010,7 +1010,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - the user's `~/.claude.json` is never touched (fake HOME);
   - the setup answers are stored and re-running is idempotent.
 - Open: does a host login (keychain) carry over to a separate `CLAUDE_CONFIG_DIR`? Check first. If not, the host profile needs `setup-token` too.
-- Manual check: a new host ticket starts working with no trust prompt.
+- Manual check: a new host ticket and a new container ticket both start working with no first-run screen and no trust prompt.
 
 ### 82 · Role permission profiles: no prompts for what a role may do
 - [ ] Done
@@ -1044,4 +1044,17 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Build and prove it on the user's own repos first.
 - Tests (stage 1): role checks on a table of calls, with a fake `gh`; no token in agent-visible output; journaled calls.
 - Manual check: a reviewer agent reads a real PR's comments through rig.
+
+### 84 · A clone's object store must be reachable in the container through a symlinked path
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/84-clone-symlink-objects` · Depends: none
+- Read: `docs/field-tests/02-container-journal.md` finding 2; `internal/git/clone.go` (`ObjectsMounts`), `internal/lifecycle/containeragent.go`
+- Why: git fails in a container ("bad object HEAD") when the repository's path goes through a symlink, such as `/tmp` → `/private/tmp` on macOS. `ObjectsMounts` mounts the resolved path, but the clone's `alternates` file names the path as given at clone time.
+- Build: clone from the resolved repository path, so `alternates` names the same path rig mounts. Keep the rule that mounts come from the main repository, never from the clone's own `alternates` file. Existing clones made through a symlink either get their `alternates` rewritten to the resolved path when rig opens them, after checking that it resolves to the same store, or are also mounted at the unresolved path derived from the main repository.
+- Tests:
+  - a clone of a repository reached through a symlinked directory has `alternates` naming the resolved path;
+  - `git status` works in the clone with only the mounted paths visible (a test that fakes the container's view);
+  - an agent-edited `alternates` never changes the mounts.
+- Manual check: a container ticket on a repository under `/tmp` can run `git status` and commit.
 
