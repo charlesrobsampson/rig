@@ -74,7 +74,7 @@ func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domai
 				return agentLaunch{}, fmt.Errorf("find the repository's objects: %w", err)
 			}
 			for _, o := range objects {
-				mounts = append(mounts, docker.Mount{Source: o, Target: o, ReadOnly: true})
+				mounts = append(mounts, docker.Mount{Source: o.Source, Target: o.Target, ReadOnly: true})
 			}
 		}
 	}

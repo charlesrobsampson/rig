@@ -16,7 +16,14 @@ import (
 // ObjectsMounter is implemented by checkouts that read the main repository's objects
 // through git alternates, so a container must mount those directories read-only.
 type ObjectsMounter interface {
-	ObjectsMounts() ([]string, error)
+	ObjectsMounts() ([]ObjectsMount, error)
+}
+
+// ObjectsMount mounts one object store (Source, a real host path) read-only at Target,
+// a path git inside the container will look for it at.
+type ObjectsMount struct {
+	Source string
+	Target string
 }
 
 type clone struct {
@@ -123,28 +130,39 @@ func (c clone) Remove(ctx context.Context, force bool) error {
 	return os.RemoveAll(c.path)
 }
 
-// ObjectsMounts lists the real host paths of the main repository's object store and
-// of any stores it borrows from, in the order to mount them. They are derived from
-// the main repository, never from the clone: the agent can edit the clone's
-// alternates file, and rig must not mount whatever path it names.
-func (c clone) ObjectsMounts() ([]string, error) {
-	common, err := Trusted().Run(context.Background(), c.repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+// ObjectsMounts lists the main repository's object store and any stores it borrows
+// from, each mounted from its real host path at every path git inside the container
+// will name it by: the real path, and the path as reached through a symlink (a clone
+// made from such a path, or an alternates entry written through one, names that).
+// They are derived from the main repository, never from the clone: the agent can edit
+// the clone's alternates file, and rig must not mount whatever path it names.
+func (c clone) ObjectsMounts() ([]ObjectsMount, error) {
+	common, err := Trusted().Run(context.Background(), c.repo, "rev-parse", "--git-common-dir")
 	if err != nil {
 		return nil, err
 	}
-	var mounts []string
-	seen := map[string]bool{}
-	var add func(dir string) error
-	add = func(dir string) error {
-		real, err := filepath.EvalSymlinks(dir)
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(c.repo, common)
+	}
+	var mounts []ObjectsMount
+	mounted := map[string]bool{}
+	followed := map[string]bool{}
+	var add func(named string) error
+	add = func(named string) error {
+		real, err := filepath.EvalSymlinks(named)
 		if err != nil {
-			return fmt.Errorf("resolve object store %s: %w", dir, err)
+			return fmt.Errorf("resolve object store %s: %w", named, err)
 		}
-		if seen[real] {
+		for _, target := range []string{real, filepath.Clean(named)} {
+			if !mounted[target] {
+				mounted[target] = true
+				mounts = append(mounts, ObjectsMount{Source: real, Target: target})
+			}
+		}
+		if followed[real] {
 			return nil
 		}
-		seen[real] = true
-		mounts = append(mounts, real)
+		followed[real] = true
 		borrowed, err := alternates(real)
 		if err != nil {
 			return err
@@ -208,7 +226,13 @@ func provisionClone(ctx context.Context, spec Spec) (c Checkout, err error) {
 	if err := os.MkdirAll(filepath.Dir(spec.Path), 0o755); err != nil {
 		return nil, err
 	}
-	if _, err := Trusted().Run(ctx, spec.Repo, "clone", "-q", "--shared", "--no-checkout", "--no-tags", spec.Repo, spec.Path); err != nil {
+	// Clone from the real path: alternates records the path it is given, and a
+	// container mounts the store at its real path.
+	source, err := filepath.EvalSymlinks(spec.Repo)
+	if err != nil {
+		return nil, fmt.Errorf("resolve repository %s: %w", spec.Repo, err)
+	}
+	if _, err := Trusted().Run(ctx, spec.Repo, "clone", "-q", "--shared", "--no-checkout", "--no-tags", source, spec.Path); err != nil {
 		return nil, err
 	}
 	// From here on the directory is agent-writable territory: hardened runner only.
