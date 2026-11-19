@@ -1031,7 +1031,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - The dry-run preview (`previewLaunches`) does not show `CLAUDE_CONFIG_DIR`.
   - Tests: harness (env, keys, merge, damaged file, modes) and lifecycle (host with a token, host_login untouched, container mount and env, a tickets directory reached through a symlink, the user's HOME never written, the root check).
   - Mutation checks: isolating `host_login` too, dropping the root check, and trusting unresolved paths each fail a test.
-  - Manual check: not run yet. It needs a token profile in the user's config (task 88 automates that). See the hand-off.
+  - Manual check (2026-11-19, by the user): a container ticket with an `oauth_token` profile in `~/.config/rig/config.json` started straight at work, with no first-run screen, no trust prompt and no Keychain dialog; `rig list` showed `idle`, $0.06. Host mode with a token profile was not tried.
 
 ### 82 · Role permission profiles: no prompts for what a role may do
 - [ ] Done
