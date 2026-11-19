@@ -1067,7 +1067,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Manual check done with real Docker: a ticket on a repo under `/tmp`. The clone's alternates names `/private/tmp/...`; inside the agent container `git status` and `git commit` work, and `rig stop` imported the commit into the main repo.
 
 ### 85 · Stop the flaky TempDir cleanup in git tests
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/85-quiet-git-tests` · Depends: none
 - Read: `internal/testkit/repo.go` (`pinGitEnv`); `internal/git/lifecycle_test.go` (`TestImportIsRepeatableAndPicksUpNewCommits`)
@@ -1075,6 +1075,12 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: confirm the cause, then pin it off in `pinGitEnv` through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`, for example `gc.auto=0`, `gc.autoDetach=false`, `maintenance.auto=false`, `fetch.writeCommitGraph=false`. Keep the test as it is: it covers import repeatability, which pushing relies on.
 - Tests: `go test ./internal/git/ -count=20 -run TestImportIsRepeatable` passes every time.
 - Manual check: none.
+- Notes:
+  - Cause confirmed with `GIT_TRACE`: git 2.54 runs `git maintenance run --auto --detach` after `commit` and after `fetch`. The background process was still writing into the main repo's `.git/objects` when the test's TempDir was removed.
+  - Fix in `internal/testkit/repo.go`, in two places. `pinGitEnv` sets `maintenance.auto=false` and `gc.auto=0` through `GIT_CONFIG_COUNT`, which covers the trusted runner and repos tests clone themselves. `NewRepo` writes the same two keys into the repo's own config, because the hardened runner drops git variables.
+  - Each half alone fixes this test; both are kept for the other paths.
+  - Before: 9 failures in 30 runs. After: 0 in 60.
+  - `task test:race` also showed `TestAnUnhealthyDependencyIsAnError` (lifecycle) failing once under load. It passes 5 of 5 alone, and it is a timing test unrelated to this change; task 87.
 
 ### 86 · Pin each clone's start commit in the main repository
 - [ ] Done
@@ -1088,5 +1094,15 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - deleting the source branch and running `git gc --prune=now` in the main repo leaves the clone working (`git log`, `git status`);
   - import moves the ref; remove deletes it;
   - nothing else under `refs/` changes.
+- Manual check: none.
+
+### 87 · Make the dependency-health test independent of timing
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/87-deterministic-dep-health` · Depends: none
+- Read: `internal/lifecycle/dependencies_test.go` (`TestAnUnhealthyDependencyIsAnError`); the fake Docker in `internal/testkit`
+- Why: the test marks the dependency unhealthy from a goroutine that polls with real sleeps for up to about 2 s. Under `task test:race` with the whole suite running, that can miss, and the test fails (seen once while doing task 85).
+- Build: replace the polling goroutine with something deterministic. Either the fake Docker sets a container's health when it is created (for example `SetHealthOnCreate(name, health)`), or the start's health wait runs on the injected clock. No real sleeps in the test.
+- Tests: the test passes 50 times in a row under `-race` with `-count=50`; the fake's new behaviour gets its own test.
 - Manual check: none.
 
