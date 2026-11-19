@@ -918,7 +918,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Manual check: point a service at a prebuilt image and run it.
 
 ### 73 · Bring the user's agent configuration into the container
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/73-agent-config-mount` · Depends: 37, 72
 - Read: `docs/spikes/04-agent-container.md`, `docs/formats.md` §4, §7, §13
@@ -930,7 +930,8 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Hooks: rig's come through `--settings`, and Claude Code runs the hooks of every settings source, so no merge is needed and "rig's last" does not apply (hooks run in parallel). What could drop rig's hooks is `disableAllHooks`, or re-pointing `RIG_*` / `CLAUDE_CONFIG_DIR` through `env`; a template that sets them is refused.
   - Refused before anything is made (`checkAgentConfig`, after `checkSecrets`): a missing or relative path, a link or non-regular file inside a template, a file holding a secret value the agent gets (named, never shown), the settings above, and a host agent without its own configuration (host_login or no profile).
 - Tests: harness (snapshot and links, later template wins, rebuild drops agent edits and dropped entries, a template's settings.json replaces Claude Code's own and is otherwise kept, refusals); lifecycle with fake Docker (snapshot mounted read-only at `/rig/agent-config`, nothing inside `/work`, host agent reads through its links, refusals leave no checkout, container or agent); config and policy (`[]` vs absent, `~`, absolute paths). Mutation checks: read-write mount, no secret scan, snapshot not emptied, exec bit dropped, no replace, host_login allowed: all caught.
-- Manual check: a container agent lists a subagent defined in a template (`/agents`).
+- Manual check: a container agent lists a subagent defined in a template.
+  - Passed 2026-11-19 (Claude Code 2.1.328, container, oauth_token profile). `/agents` is gone in this version, so the user asked the agent to "use the pirate-reviewer subagent"; it ran the template's subagent. Writing to `/rig/claude/agents/...` in the container failed with "Read-only file system".
 
 ### 74 · Agents request phase transitions through the journal
 - [ ] Done
