@@ -991,26 +991,36 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Tests: review output without delta off a TTY; the stop hint after the last push; the warning text.
 - Manual check: none.
 
-### 81 · `rig setup`: one master workspace, and agents that start already trusted
+### 81 · Agents start already trusted, with their own Claude configuration
 - [ ] Done
-- Session: _(fill on start)_
-- Branch: `task/81-setup-and-trust` · Depends: 72 · Overlaps: 73, 77
-- Read: `docs/field-tests/01-host-dummy-tickets.md` findings 2 and 10; `docs/formats.md` §3, §13
-- Why: every new container agent stops at Claude Code's first-run screens (theme, notes, trust; field test 02, finding 1), and every new host ticket stops at two Claude Code trust prompts (the checkout and `--add-dir <ticket dir>`). Trusting a parent folder is not enough: since Claude Code 2.1.232 a nested git repo does not inherit trust, and every rig checkout is a repo. Trust is checked by an ancestor walk in some code paths and by exact path in others, and it has changed between versions (claude-code issues 86824, 72896, 84402). So rig must set trust on the exact paths itself.
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
+- Branch: `task/81-setup-and-trust` · Depends: 72 · Overlaps: 73, 77 · Followed by: 88 (`rig setup`)
+- Read: `docs/field-tests/01-host-dummy-tickets.md` findings 2 and 10; `docs/field-tests/02-container-journal.md` finding 1; `docs/formats.md` §3, §7, §13
+- Why:
+  - every new container agent stops at Claude Code's first-run screens (theme, notes, trust; field test 02, finding 1);
+  - every new host ticket stops at two trust prompts (field test 01, finding 2);
+  - host agents load the user's personal CLAUDE.md, skills and settings (field test 01, finding 10).
+  Trusting a parent folder is not enough: since Claude Code 2.1.232 a nested git repo does not inherit trust, and every rig checkout is a repo (claude-code issues 86824, 72896, 84402).
+- Decided with the user (2026-11-19):
+  - Host agents with a credential profile (`oauth_token` and the others) get their own config too, and use the token. A separate config directory does not carry over the Mac login (checked: `CLAUDE_CONFIG_DIR=<new dir> claude auth status` says `loggedIn: false`).
+  - `host_login`, and no profile, keep today's behaviour: the user's own configuration, with its prompts.
+  - The interactive `rig setup` (token into the Keychain, default profile in the config) moves to task 88.
+- Checked on Claude Code 2.1.328 with a throwaway config and a fake token: a `.claude.json` with `hasCompletedOnboarding: true`, a `theme`, and `projects[<path>].hasTrustDialogAccepted: true` for the working directory and the `--add-dir` directory starts straight at the input box. The trust keys must be the **real** (symlink-resolved) paths.
 - Build:
-  - `rig setup` (interactive, run once) records a master workspace (default `<home>/work`) and checks the Claude profile (`claude setup-token` for containers). The approval means rig may trust anything it creates inside the workspace, and nothing outside it.
-  - Every checkout and ticket directory is created inside the workspace.
-  - Each host agent gets its own Claude Code config directory (`CLAUDE_CONFIG_DIR` under the ticket directory). rig writes `hasTrustDialogAccepted: true` there for exactly the checkout and the ticket directory, and never edits the user's `~/.claude.json`.
-  - This also stops host agents loading the user's personal CLAUDE.md, skills and settings (finding 10). What a ticket does carry over comes from task 73.
-  - Container agents get the same: a Claude configuration with onboarding completed (`hasCompletedOnboarding`), a theme set, and trust for exactly `/work` and `/rig/ticket`. Check the exact keys against the Claude Code version in the agent image.
-  - rig refuses to trust a path outside the workspace.
+  - Each agent gets a Claude config directory `<ticket>/.rig-claude/<service>/` (0700), passed as `CLAUDE_CONFIG_DIR`.
+    - Host: only with a credential profile.
+    - Container: always, mounted read-write at `/rig/claude`, so it survives a replaced container.
+  - Before each launch rig merges into its `.claude.json` (0600): onboarding done, a theme when none is set, and trust for exactly the agent's working directory and ticket directory. Host paths are the resolved real paths; container paths are `/work` and `/rig/ticket`. Every other key Claude Code wrote is kept.
+  - On the host rig refuses to trust a path outside its tickets directory.
+  - The harness owns the Claude-specific file (`Harness.PrepareConfig`); lifecycle only chooses the directory and the paths.
 - Tests:
-  - the config dir holds trust for exactly the two paths;
-  - a path outside the workspace is refused;
-  - the user's `~/.claude.json` is never touched (fake HOME);
-  - the setup answers are stored and re-running is idempotent.
-- Open: does a host login (keychain) carry over to a separate `CLAUDE_CONFIG_DIR`? Check first. If not, the host profile needs `setup-token` too.
-- Manual check: a new host ticket and a new container ticket both start working with no first-run screen and no trust prompt.
+  - the config has exactly the onboarding and trust keys, and a relaunch keeps keys Claude Code added;
+  - host with a credential profile: `CLAUDE_CONFIG_DIR` points at the ticket's directory, and trust is for the resolved checkout and ticket directory;
+  - host with `host_login`: no `CLAUDE_CONFIG_DIR`, nothing written;
+  - container: the mount, `--env CLAUDE_CONFIG_DIR`, and trust for `/work` and `/rig/ticket`;
+  - a path outside the tickets directory is refused;
+  - the user's HOME is never read or written.
+- Manual check: a new container ticket (with an `oauth_token` profile) and a new host ticket (with the same profile) both reach the input box with no first-run screen and no trust prompt.
 
 ### 82 · Role permission profiles: no prompts for what a role may do
 - [ ] Done
@@ -1105,4 +1115,16 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: replace the polling goroutine with something deterministic. Either the fake Docker sets a container's health when it is created (for example `SetHealthOnCreate(name, health)`), or the start's health wait runs on the injected clock. No real sleeps in the test.
 - Tests: the test passes 50 times in a row under `-race` with `-count=50`; the fake's new behaviour gets its own test.
 - Manual check: none.
+
+### 88 · `rig setup`: store the Claude token and a default profile
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/88-rig-setup` · Depends: 81
+- Read: README step 2 (token into the Keychain by hand); `internal/secrets`; `internal/config/global.go` (auth profiles)
+- Build: `rig setup`, interactive and safe to re-run.
+  - It asks for the token printed by `claude setup-token` (input hidden), stores it under `secrets.keychain_service`, and writes an `oauth_token` profile as `auth.default` into the global config, keeping everything else in the file.
+  - It checks Docker and the terminal backend and prints what is missing.
+  - `--json` reports what it did without echoing the token.
+- Tests: the token reaches the store and never the output; the config gains the profile and keeps other keys; re-running changes nothing; works with a fake store and a temp config.
+- Manual check: on a fresh machine, `rig setup` then a new container ticket reaches the input box with no login screen.
 
