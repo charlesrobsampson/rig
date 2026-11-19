@@ -1047,7 +1047,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 84 · A clone's object store must be reachable in the container through a symlinked path
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/84-clone-symlink-objects` · Depends: none
 - Read: `docs/field-tests/02-container-journal.md` finding 2; `internal/git/clone.go` (`ObjectsMounts`), `internal/lifecycle/containeragent.go`
 - Why: git fails in a container ("bad object HEAD") when the repository's path goes through a symlink, such as `/tmp` → `/private/tmp` on macOS. `ObjectsMounts` mounts the resolved path, but the clone's `alternates` file names the path as given at clone time.
