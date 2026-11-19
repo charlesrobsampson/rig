@@ -102,6 +102,9 @@ func (c ClaudeCode) Command(r Request) (Launch, error) {
 		}
 	}
 	// Rig's variables come last: nothing a ticket sets may re-point the agent's reports.
+	if r.ConfigDir != "" {
+		env["CLAUDE_CONFIG_DIR"] = r.ConfigDir
+	}
 	env["RIG_TICKET"], env["RIG_SERVICE"] = r.Ticket.ID, r.Service
 
 	// The ticket directory holds the files the agent works from and writes to (plan.md,

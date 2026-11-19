@@ -41,6 +41,7 @@ The exact shapes that every part of rig shares. `manifest.md` says *what* and *w
 ├── manual-tests.md    # agent-written; see §10
 ├── contract.md        # multi-service tickets only; see §9
 ├── .rig-events/<svc>/ # events.log: state words, cost lines and journal records (§14) appended by a container agent's hooks (§7); read by the daemon
+├── .rig-claude/<svc>/ # the agent's own Claude Code configuration (`CLAUDE_CONFIG_DIR`, §13): every container agent, and a host agent with a credential profile
 ├── journal.jsonl      # rig-written journal of agent records, stamped by rig (§14); never mounted into a container
 ├── journal.offsets.json # rig-written: how far into each service's events.log has been journaled (§14)
 ├── messages.jsonl     # rig-written log of messages typed into agents (`rig msg`): {at, service, from, text, delivered, reason?}
@@ -234,6 +235,7 @@ errors: 400 invalid_user
 
 ## 13. Harness prompt contract
 - The prompt is the last argument, after `--` (Claude Code's `--add-dir` takes several values and would read the prompt as one more directory).
+- **The agent's own configuration:** `CLAUDE_CONFIG_DIR` is `<ticket>/.rig-claude/<svc>/`, mounted read-write at `/rig/claude` in a container. A host agent gets one only with a credential profile (`oauth_token`, `api_key`, `auth_token`, cloud). `host_login`, or no profile, keeps the user's own configuration, because that is where the machine's login is. Before every launch rig merges into its `.claude.json` (0600, directory 0700): `hasCompletedOnboarding: true`, a `theme` if none is set, and `projects[<path>].hasTrustDialogAccepted: true` for exactly the agent's working directory and ticket directory. Those are the resolved real paths on the host, which must lie inside the tickets directory, and `/work` and `/rig/ticket` in a container. Every other key is kept. So a new agent starts at the input box with no first-run screens or trust prompts, and never loads the user's personal CLAUDE.md, skills or settings.
 - The launch prompt is assembled from: ticket title, current phase, `plan.md`, `tasks.md`, `contract.md` (multi-service only), and the rules for that phase. It never includes secret values.
 - Rules every agent receives: edit only your service's checkout; never edit `state.json`, `ticket.yaml`, or `## Agreed`; propose contract changes under `## Proposed changes`; request phase transitions, never assume them; write `manual-tests.md` with placeholders during/after `implement`.
 - Every prompt has a `## Journal` section: how to leave a record (§14) by running the agent's own hook command with the record as its argument (`rig agent-event '<json>'` on the host, the events-file command in a container), and to use `"kind": "feedback"` whenever rig or the environment gets in the way.
