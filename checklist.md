@@ -1068,11 +1068,25 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 85 · Stop the flaky TempDir cleanup in git tests
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/85-quiet-git-tests` · Depends: none
 - Read: `internal/testkit/repo.go` (`pinGitEnv`); `internal/git/lifecycle_test.go` (`TestImportIsRepeatableAndPicksUpNewCommits`)
 - Why: `TestImportIsRepeatableAndPicksUpNewCommits/clone` sometimes fails at cleanup ("unlinkat …/.git/objects: directory not empty"), on master as well as on branches. Likely cause: git starts background maintenance after `fetch` (auto gc or maintenance, detached), which is still writing into `.git/objects` while the test's TempDir is removed.
 - Build: confirm the cause, then pin it off in `pinGitEnv` through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`, for example `gc.auto=0`, `gc.autoDetach=false`, `maintenance.auto=false`, `fetch.writeCommitGraph=false`. Keep the test as it is: it covers import repeatability, which pushing relies on.
 - Tests: `go test ./internal/git/ -count=20 -run TestImportIsRepeatable` passes every time.
+- Manual check: none.
+
+### 86 · Pin each clone's start commit in the main repository
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/86-pin-clone-base` · Depends: 84
+- Read: `internal/git/clone.go` (`provisionClone`, `Remove`); `docs/formats.md` §3 (repository access)
+- Why: a shared clone borrows the main repository's objects. If the branch it started from is deleted or force-pushed and git then prunes unreachable objects (gc), the clone loses objects it needs. git warns about this for `--shared` clones.
+- Build: on provisioning a clone, rig writes a ref in the main repository, `refs/rig/<ticket>/<service>`, at the clone's start commit (trusted runner). Import moves it to the imported tip. Removing the checkout deletes the ref. The ref name goes into `docs/formats.md`.
+- Tests:
+  - after provisioning, the ref exists at the start commit;
+  - deleting the source branch and running `git gc --prune=now` in the main repo leaves the clone working (`git log`, `git status`);
+  - import moves the ref; remove deletes it;
+  - nothing else under `refs/` changes.
 - Manual check: none.
 
