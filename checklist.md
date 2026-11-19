@@ -932,7 +932,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/74-transition-requests` · Depends: 72
 - Read: `docs/field-tests/01-host-dummy-tickets.md` findings 3, 4; `docs/formats.md` §8 (`transition.request`), §14
-- Build: A record of kind `transition.request` with `data: {{"to": "<phase>", "reason"?}}`, from either sandbox, is turned by the daemon into the existing `transition.request` (never an approval). The prompt names it in each phase's rules. A pending request shows as APPROVE on `rig list`, `ticket.list` and the TUI until a human acts.
+- Build: A record of kind `transition.request` with `data: {"to": "<phase>", "reason"?}`, from either sandbox, is turned by the daemon into the existing `transition.request` (never an approval). The prompt names it in each phase's rules. A pending request shows as APPROVE on `rig list`, `ticket.list` and the TUI until a human acts.
 - Tests: a record becomes a request; a bad `to` is rejected with a `record.rejected` reason; a request never moves the phase or approves a gate; the summary shows it pending, then clears it after `phase.set`.
 - Manual check: a real agent in plan asks for implement and the request shows on `rig list`.
 
@@ -959,6 +959,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Session: _(fill on start)_
 - Branch: `task/77-not-ready-attention` · Depends: 72
 - Read: `docs/field-tests/01-host-dummy-tickets.md` finding 2; `docs/spikes/03-tmux.md` §2
+- Note: task 81 removes the trust prompts this was mostly about. Keep this as the fallback for any other dialog that stops a fresh agent.
 - Build: An agent that has not reported `ready` within a short time after launch (configurable, default 20s) shows as needing attention, and the screen heuristic recognises Claude Code's trust dialogs as blocked. Document trusting the rig tickets directory once.
 - Tests: with the fake clock and terminal: no ready report then attention; a trust-dialog screen is blocked; a ready report clears it.
 - Manual check: start a host ticket in a new folder and see it flagged until the trust prompt is answered.
@@ -989,3 +990,58 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: `rig review` prints plain output when stdout is not a terminal. After a push that finishes a ticket, the CLI suggests `rig stop <id>`. The host-sandbox warning says the agent also loads the user's own Claude Code configuration.
 - Tests: review output without delta off a TTY; the stop hint after the last push; the warning text.
 - Manual check: none.
+
+### 81 · `rig setup`: one master workspace, and agents that start already trusted
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/81-setup-and-trust` · Depends: 72 · Overlaps: 73, 77
+- Read: `docs/field-tests/01-host-dummy-tickets.md` findings 2 and 10; `docs/formats.md` §3, §13
+- Why: every new host ticket stops at two Claude Code trust prompts (the checkout and `--add-dir <ticket dir>`). Trusting a parent folder is not enough: since Claude Code 2.1.232 a nested git repo does not inherit trust, and every rig checkout is a repo. Trust is checked by an ancestor walk in some code paths and by exact path in others, and it has changed between versions (claude-code issues 86824, 72896, 84402). So rig must set trust on the exact paths itself.
+- Build:
+  - `rig setup` (interactive, run once) records a master workspace (default `<home>/work`) and checks the Claude profile (`claude setup-token` for containers). The approval means rig may trust anything it creates inside the workspace, and nothing outside it.
+  - Every checkout and ticket directory is created inside the workspace.
+  - Each host agent gets its own Claude Code config directory (`CLAUDE_CONFIG_DIR` under the ticket directory). rig writes `hasTrustDialogAccepted: true` there for exactly the checkout and the ticket directory, and never edits the user's `~/.claude.json`.
+  - This also stops host agents loading the user's personal CLAUDE.md, skills and settings (finding 10). What a ticket does carry over comes from task 73.
+  - Container agents get the same pre-set trust inside the container.
+  - rig refuses to trust a path outside the workspace.
+- Tests:
+  - the config dir holds trust for exactly the two paths;
+  - a path outside the workspace is refused;
+  - the user's `~/.claude.json` is never touched (fake HOME);
+  - the setup answers are stored and re-running is idempotent.
+- Open: does a host login (keychain) carry over to a separate `CLAUDE_CONFIG_DIR`? Check first. If not, the host profile needs `setup-token` too.
+- Manual check: a new host ticket starts working with no trust prompt.
+
+### 82 · Role permission profiles: no prompts for what a role may do
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/82-permission-profiles` · Depends: 72, 81
+- Read: `docs/formats.md` §13 (launch settings), §14 (journal); Claude Code `--permission-mode` (2.1.327 has `dontAsk`: anything not allowed is denied without a prompt) and PreToolUse hook decisions
+- Build:
+  - A permission profile per role and phase, in config, with defaults. For example, the coder may edit its checkout, run its tests and `git add/commit` but never push; a reviewer is read-only plus its verdict file.
+  - rig writes the profile's allow and deny rules into the `--settings` it already passes, and launches with `--permission-mode dontAsk`.
+  - A `rig policy` PreToolUse hook decides allow or deny from the role, phase and path, for rules that settings cannot express.
+  - Every deny is journaled (`permission.denied`). An agent that needs more journals a `permission.request`, which shows on `rig list` until a human answers.
+  - Nothing here can approve a gate or a transition.
+- Tests:
+  - the profile's settings for each built-in role;
+  - the policy hook's decisions on a table of tool calls;
+  - a deny and a request are journaled;
+  - a request never changes the profile on its own.
+- Manual check: a real agent works through a plan → implement ticket with no permission prompts, and a deliberately forbidden command is denied and journaled.
+
+### 83 · GitHub broker: agents use GitHub without holding credentials
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/83-github-broker` · Depends: 82 · Not needed while rig runs only on the user's machine and agents need no GitHub access; schedule it when an agent needs to read PRs or CI, or when rig runs unattended.
+- Stage 1, proxy:
+  - The daemon makes GitHub calls for agents with the user's existing `gh` login, through a `rig gh` command or an MCP tool, checked against the role profile (task 82). For example, a reviewer may read a PR and comment but never push or merge.
+  - The token never reaches the agent, and every call is journaled.
+- Stage 2, GitHub App:
+  - Setup, once: create an app with no webhook and the permissions Contents r/w, Pull requests r/w, Metadata r, Checks/Actions r. Install it on chosen repos only. `rig setup github --app-id … --key app.pem` stores the key in the Keychain and deletes the file.
+  - The daemon signs a JWT and mints installation tokens (1 hour), narrowed per request to one repo and the role's permissions. Tokens are cached and renewed early. Use `ghinstallation` or about 100 lines of Go.
+  - Catches: commits and PRs are authored by `<app>[bot]` (check branch protection, CODEOWNERS and team norms); an org install needs an org owner's approval; the key can mint for every install, so keep it in the Keychain and rotate it if it is exposed.
+  - Build and prove it on the user's own repos first.
+- Tests (stage 1): role checks on a table of calls, with a fake `gh`; no token in agent-visible output; journaled calls.
+- Manual check: a reviewer agent reads a real PR's comments through rig.
+
