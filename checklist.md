@@ -1176,7 +1176,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 91 · Files rig places in a checkout, ignored by git
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/91-checkout-files` · Depends: 84
 - Read: `docs/field-tests/03-private-node-app.md` finding 3; `docs/formats.md` §4, §7
 - Why: a project's `.npmrc` (or `.env` with references only) is untracked and ignored in the main repository, so a clone lacks it, and the agent had to write it. A clone also lacks the main repository's `.git/info/exclude`, so such a file is not ignored there and can be committed.
