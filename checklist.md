@@ -953,7 +953,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 76 · Prompt rules: ticket files, committing, and a dirty-checkout warning
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/76-prompt-rules` · Depends: 72
 - Read: `docs/field-tests/01-host-dummy-tickets.md` findings 6, 7
 - Build: Reword the common rule to allow the ticket's plan.md, tasks.md, manual-tests.md and contract proposals besides the checkout. Make the implement rule say to commit each task when its tests pass and why (rig imports the branch). `phase.set` to test or review warns (not blocks) when a checkout has uncommitted changes.
