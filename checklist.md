@@ -902,7 +902,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Not done here: the TUI does not show records yet (a FEEDBACK marker on the dashboard would be the obvious next step); the MCP server has no journal tool (a supervising agent can't read or write records through MCP yet); records are not scrubbed of secrets (formats §14 says so).
   - **Also on this branch** (found while testing it, see `docs/field-tests/01-host-dummy-tickets.md`): the harness passes the prompt after `--`, because Claude Code 2.1.327 reads `--add-dir` as variadic and every agent started with no prompt; and the client names an older daemon as the cause of an unknown method (`unavailable`, exit 4, both versions and `rig daemon stop`; formats §10).
   - Field test 01 ran two dummy tickets with real Claude Code on the host sandbox, plan to done. Its findings are tasks 74 to 80.
-  - Manual check is for you: start a container ticket with a real agent, ask it to report something as feedback, and see it in `rig journal --kind feedback`; also try a host-sandbox agent.
+  - Manual check: done 2026-11-19, in `docs/field-tests/02-container-journal.md` (container) and `01-host-dummy-tickets.md` (host). A container record arrived with source `container`; restart and older-daemon checks passed.
 
 ---
 
