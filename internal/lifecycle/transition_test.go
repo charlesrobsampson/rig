@@ -2,6 +2,8 @@ package lifecycle_test
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -371,5 +373,35 @@ func TestConcurrentMovesToTheSamePhaseHaveOneWinner(t *testing.T) {
 	}
 	if st := f.state("demo"); wins != 1 || len(st.Transitions) != 1 {
 		t.Errorf("%d moves succeeded and %d were logged, want exactly one of each", wins, len(st.Transitions))
+	}
+}
+
+func TestMovingToTestOrReviewWarnsAboutUncommittedWork(t *testing.T) {
+	f := newFixture(t, domain.SandboxHost)
+	f.create("demo", testkit.NewRepo(t))
+	res, err := f.startHost("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkout := res.Checkouts[0].Path
+	if err := os.WriteFile(filepath.Join(checkout, "work.go"), []byte("package x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if moved := f.mustSet("demo", domain.PhaseImplement, ""); len(moved.Warnings) > 0 {
+		t.Errorf("moving to implement warned: %v", moved.Warnings)
+	}
+	moved := f.mustSet("demo", domain.PhaseTest, "")
+	if len(moved.Warnings) != 1 || !strings.Contains(moved.Warnings[0], "svc1") || !strings.Contains(moved.Warnings[0], "1 untracked") || !strings.Contains(moved.Warnings[0], "commit") {
+		t.Errorf("warnings = %v; want one naming svc1, what is uncommitted and that only commits count", moved.Warnings)
+	}
+	if moved.To != domain.PhaseTest {
+		t.Errorf("the warning must not block the move: to = %s", moved.To)
+	}
+
+	testkit.RunGit(t, checkout, "add", "-A")
+	testkit.RunGit(t, checkout, "commit", "-qm", "work")
+	if moved := f.mustSet("demo", domain.PhaseReview, ""); len(moved.Warnings) > 0 {
+		t.Errorf("a clean checkout warned: %v", moved.Warnings)
 	}
 }

@@ -952,13 +952,18 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Manual check: move a running real agent from plan to implement and see it start without being messaged.
 
 ### 76 · Prompt rules: ticket files, committing, and a dirty-checkout warning
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/76-prompt-rules` · Depends: 72
 - Read: `docs/field-tests/01-host-dummy-tickets.md` findings 6, 7
 - Build: Reword the common rule to allow the ticket's plan.md, tasks.md, manual-tests.md and contract proposals besides the checkout. Make the implement rule say to commit each task when its tests pass and why (rig imports the branch). `phase.set` to test or review warns (not blocks) when a checkout has uncommitted changes.
 - Tests: prompt text for each phase; the warning appears for a dirty checkout and not for a clean one.
+- Notes (as built):
+  - The edit rule lists only the ticket files that apply: `manual-tests.md` from implement on, contract proposals only with several services (existing tests require both), and names the ticket directory as the agent sees it.
+  - The commit rule, with its reason, is in implement, test and review. The plan rule now says the checkout stays unchanged (field test 03: two of three runs installed and ran tests in plan).
+  - `phase.set` and `transition.request` results carry `warnings` for uncommitted work on a move to test or review; `rig phase` and `rig review --move` print them to stderr. Untracked files count, ignored ones do not.
 - Manual check: a real agent commits without being asked.
+  - Passed 2026-11-19 (container, Claude Code 2.1.328): in implement, with nothing in the plan about committing, the agent made the change, ran the test, and committed "Add greeting.txt" on its branch; it also ticked tasks.md and wrote manual-tests.md. $0.05. Seen on the way: `sed -i` on a ticket file fails in a container, because each file is mounted on its own and the directory is not writable (sed writes a temporary file beside it); the agent rewrote the file instead. Added as a note to task 80.
 
 ### 77 · A fresh agent that never reports ready needs attention
 - [ ] Done
@@ -998,6 +1003,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Manual check: none.
 - Also (field test 03, finding 7): `rig stop --force` without a terminal aborts at its confirmation; add `--yes` for scripts.
 
+- Also (task 76 manual check): `sed -i` on a mounted ticket file fails in a container (single-file mounts, directory not writable). Say in the prompt to rewrite ticket files rather than edit them in place, or mount a writable directory holding only those files.
 ### 81 · Agents start already trusted, with their own Claude configuration
 - [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`

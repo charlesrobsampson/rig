@@ -37,6 +37,9 @@ the work being redone count again. Every move is logged.`,
 				return printJSON(cmd.OutOrStdout(), res)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "%s: %s -> %s\n", res.Summary.ID, res.From, res.To)
+			for _, w := range res.Warnings {
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)
+			}
 			return nil
 		},
 	}

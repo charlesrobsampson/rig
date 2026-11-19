@@ -8,25 +8,26 @@ import (
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/gates"
+	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/state"
 )
 
 // SetPhase moves a ticket on behalf of a human.
-func (m *Manager) SetPhase(_ context.Context, p api.PhaseSetParams) (api.TransitionResult, error) {
-	return m.transition(p.ID, "human", p.To, p.Reason, "")
+func (m *Manager) SetPhase(ctx context.Context, p api.PhaseSetParams) (api.TransitionResult, error) {
+	return m.transition(ctx, p.ID, "human", p.To, p.Reason, "")
 }
 
 // RequestTransition is an agent asking for a move. It is judged by exactly the rules a
 // human's move is: the gate for a forward step must already be approved (an agent can
 // never grant one), and a backward step needs a reason.
-func (m *Manager) RequestTransition(_ context.Context, p api.TransitionRequestParams) (api.TransitionResult, error) {
+func (m *Manager) RequestTransition(ctx context.Context, p api.TransitionRequestParams) (api.TransitionResult, error) {
 	if p.Service == "" {
 		return api.TransitionResult{}, invalid("a transition request must say which service's agent is asking")
 	}
-	return m.transition(p.ID, "agent:"+p.Service, p.To, p.Reason, p.Service)
+	return m.transition(ctx, p.ID, "agent:"+p.Service, p.To, p.Reason, p.Service)
 }
 
-func (m *Manager) transition(id, by string, to domain.Phase, reason, service string) (api.TransitionResult, error) {
+func (m *Manager) transition(ctx context.Context, id, by string, to domain.Phase, reason, service string) (api.TransitionResult, error) {
 	if !to.Valid() {
 		return api.TransitionResult{}, invalid("invalid phase %q", string(to))
 	}
@@ -35,7 +36,35 @@ func (m *Manager) transition(id, by string, to domain.Phase, reason, service str
 		return api.TransitionResult{}, err
 	}
 	defer unlock()
-	return m.moveLocked(l, id, by, to, reason, service)
+	res, err := m.moveLocked(l, id, by, to, reason, service)
+	if err == nil && (to == domain.PhaseTest || to == domain.PhaseReview) {
+		res.Warnings = m.uncommittedWork(ctx, l)
+	}
+	return res, err
+}
+
+// uncommittedWork names each checkout that holds changes no commit has: rig imports
+// and reviews commits only, so that work would be missing from test and review. It
+// warns rather than blocks, because a human may be moving on deliberately.
+func (m *Manager) uncommittedWork(ctx context.Context, l loaded) []string {
+	var warnings []string
+	for _, svc := range l.ticket.Services {
+		rec := l.state.Services[svc.Name]
+		if rec.Checkout.Path == "" {
+			continue
+		}
+		co, err := git.Open(ctx, git.Spec{Repo: svc.Repo, Branch: svc.Branch, Path: rec.Checkout.Path, Kind: rec.Checkout.Kind})
+		if err != nil {
+			continue
+		}
+		dirty, err := co.IsDirty(ctx)
+		if err != nil || dirty.Modified+dirty.Untracked == 0 {
+			continue
+		}
+		dirty.Unimported = 0
+		warnings = append(warnings, fmt.Sprintf("service %s has uncommitted work (%s); rig reviews and pushes commits only, so commit it or it is left out", svc.Name, dirty.Describe()))
+	}
+	return warnings
 }
 
 // moveLocked is the move itself, for a caller that already holds the ticket's lock.

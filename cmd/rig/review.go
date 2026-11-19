@@ -55,6 +55,9 @@ base: commits, staged and unstaged edits and new files. The diff goes through de
 				}
 				if !a.json {
 					fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s -> %s\n", args[0], moved.From, moved.To)
+					for _, w := range moved.Warnings {
+						fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)
+					}
 				}
 			}
 			return nil
