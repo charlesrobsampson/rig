@@ -178,7 +178,7 @@ func Prompt(r Request) (string, error) {
 	fmt.Fprintf(&b, "Current phase: %s.\n\n", r.Phase)
 
 	b.WriteString("## Rules\n")
-	for _, rule := range commonRules {
+	for _, rule := range commonRules(r) {
 		b.WriteString("- " + rule + "\n")
 	}
 	if rules, ok := phaseRules[r.Phase]; ok {
@@ -220,11 +220,28 @@ func Prompt(r Request) (string, error) {
 	return b.String(), nil
 }
 
-var commonRules = []string{
-	"Edit only files inside your own service's checkout (your working directory).",
-	"Never edit state.json or ticket.yaml.",
-	"Request phase transitions; never assume them. Gates are approved by a human only.",
+// commonRules name the ticket files the agent may edit, where it sees them: the plan
+// phase works in files there, so a rule that allowed only the checkout contradicted it.
+func commonRules(r Request) []string {
+	files := "plan.md and tasks.md"
+	switch multi, later := len(r.Ticket.Services) > 1, !beforeImplement(r.Phase); {
+	case multi && later:
+		files = "plan.md, tasks.md, manual-tests.md and proposals under \"## Proposed changes\" in contract.md"
+	case multi:
+		files = "plan.md, tasks.md and proposals under \"## Proposed changes\" in contract.md"
+	case later:
+		files = "plan.md, tasks.md and manual-tests.md"
+	}
+	return []string{
+		"Edit only your own service's checkout (your working directory) and, in the ticket directory (" + firstNonEmpty(r.AgentTicketDir, r.TicketDir) + "), " + files + ".",
+		"Never edit state.json or ticket.yaml.",
+		"Request phase transitions; never assume them. Gates are approved by a human only.",
+	}
 }
+
+// commitRule is said in every phase that changes code, with the reason: an agent's own
+// default is to commit only when asked, and one terse line did not beat it.
+const commitRule = "Commit each change on your branch as soon as its tests pass, without being asked. rig imports your branch's commits; uncommitted work is not reviewed or pushed."
 
 // contractRules apply only to a ticket with several services, whose contract.md holds
 // what they have agreed on (docs/formats.md §11).
@@ -235,10 +252,10 @@ var contractRules = []string{
 }
 
 var phaseRules = map[domain.Phase][]string{
-	domain.PhasePlan:      {"Refine plan.md and tasks.md; do not write implementation code yet.", "Request the implement phase when the plan is ready for approval."},
-	domain.PhaseImplement: {"Work through tasks.md, committing small, meaningful changes on your branch.", "Run the service's tests before asking to move on."},
-	domain.PhaseTest:      {"Run the full test suite and fix failures; keep manual-tests.md accurate.", "Request the review phase once tests pass."},
-	domain.PhaseReview:    {"Address review feedback only; keep changes small and focused."},
+	domain.PhasePlan:      {"Refine plan.md and tasks.md; do not change your checkout or write implementation code yet.", "Request the implement phase when the plan is ready for approval."},
+	domain.PhaseImplement: {"Work through tasks.md in small, meaningful steps.", commitRule, "Run the service's tests before asking to move on."},
+	domain.PhaseTest:      {"Run the full test suite and fix failures; keep manual-tests.md accurate.", commitRule, "Request the review phase once tests pass."},
+	domain.PhaseReview:    {"Address review feedback only; keep changes small and focused.", commitRule},
 	domain.PhasePush:      {"Do not push; pushing is done by rig on the host after approval."},
 }
 

@@ -268,6 +268,9 @@ type TransitionResult struct {
 	By      string        `json:"by"`
 	Reason  string        `json:"reason"`
 	At      time.Time     `json:"at"`
+	// Warnings do not stop the move: a checkout with uncommitted work when moving to
+	// test or review.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // AgentEventParams is what an agent's hook reports: the agent of ticket/service is now

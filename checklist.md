@@ -958,6 +958,10 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Read: `docs/field-tests/01-host-dummy-tickets.md` findings 6, 7
 - Build: Reword the common rule to allow the ticket's plan.md, tasks.md, manual-tests.md and contract proposals besides the checkout. Make the implement rule say to commit each task when its tests pass and why (rig imports the branch). `phase.set` to test or review warns (not blocks) when a checkout has uncommitted changes.
 - Tests: prompt text for each phase; the warning appears for a dirty checkout and not for a clean one.
+- Notes (as built):
+  - The edit rule lists only the ticket files that apply: `manual-tests.md` from implement on, contract proposals only with several services (existing tests require both), and names the ticket directory as the agent sees it.
+  - The commit rule, with its reason, is in implement, test and review. The plan rule now says the checkout stays unchanged (field test 03: two of three runs installed and ran tests in plan).
+  - `phase.set` and `transition.request` results carry `warnings` for uncommitted work on a move to test or review; `rig phase` and `rig review --move` print them to stderr. Untracked files count, ignored ones do not.
 - Manual check: a real agent commits without being asked.
 
 ### 77 · A fresh agent that never reports ready needs attention

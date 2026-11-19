@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -89,5 +91,24 @@ func TestPhaseJSONAndErrors(t *testing.T) {
 				t.Errorf("code %d (want %d), stdout %q, stderr %q", code, tt.code, stdout, stderr)
 			}
 		})
+	}
+}
+
+func TestPhaseWarnsAboutUncommittedWorkButStillMoves(t *testing.T) {
+	home, d, repo, _ := newEnvWithTerminal(t)
+	newTicket(t, d, "demo", repo)
+	if _, stderr, code := rig(t, d, "start", "demo", "--sandbox", "host"); code != 0 {
+		t.Fatalf("start: %s", stderr)
+	}
+	rig(t, d, "approve", "demo", "plan_approval")
+	rig(t, d, "phase", "demo", "implement")
+	os.WriteFile(filepath.Join(home, "tickets", "demo", "svc1", "work.go"), []byte("package x\n"), 0o644)
+
+	stdout, stderr, code := rig(t, d, "phase", "demo", "test")
+	if code != 0 || !strings.Contains(stdout, "implement -> test") {
+		t.Fatalf("code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "warning: service svc1 has uncommitted work") {
+		t.Errorf("stderr lacks the warning:\n%s", stderr)
 	}
 }

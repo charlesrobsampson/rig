@@ -376,3 +376,51 @@ func TestThePromptTeachesHowToJournalARecordWithTheHookCommand(t *testing.T) {
 		t.Errorf("the prompt must name the command this agent's hooks use:\n%s", prompt)
 	}
 }
+
+func TestTheRulesAllowTheTicketFilesAndSayWhereTheyAre(t *testing.T) {
+	dir := ticketDir(t, artifacts)
+	cases := []struct {
+		name           string
+		services       []string
+		phase          domain.Phase
+		agentTicketDir string
+		want, not      []string
+	}{
+		{"plan, one service, container", []string{"api"}, domain.PhasePlan, "/rig/ticket", []string{"/rig/ticket", "plan.md", "tasks.md"}, []string{"manual-tests.md", "Proposed changes"}},
+		{"implement, one service, host", []string{"api"}, domain.PhaseImplement, "", []string{dir, "plan.md", "tasks.md", "manual-tests.md"}, []string{"Proposed changes"}},
+		{"plan, two services", []string{"api", "web"}, domain.PhasePlan, "/rig/ticket", []string{"plan.md", "tasks.md", "## Proposed changes"}, []string{"manual-tests.md"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			prompt := promptOf(launch(t, harness.Request{Ticket: ticket(c.services...), Service: "api", Phase: c.phase, TicketDir: dir, AgentTicketDir: c.agentTicketDir, Dir: "/w"}))
+			rule := prompt[strings.Index(prompt, "- Edit only"):]
+			rule = rule[:strings.Index(rule, "\n")]
+			for _, want := range c.want {
+				if !strings.Contains(rule, want) {
+					t.Errorf("rule lacks %q: %s", want, rule)
+				}
+			}
+			for _, not := range c.not {
+				if strings.Contains(rule, not) {
+					t.Errorf("rule mentions %q: %s", not, rule)
+				}
+			}
+		})
+	}
+}
+
+func TestThePromptSaysToCommitAndWhy(t *testing.T) {
+	dir := ticketDir(t, artifacts)
+	for _, phase := range []domain.Phase{domain.PhaseImplement, domain.PhaseTest, domain.PhaseReview} {
+		prompt := promptOf(launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: phase, TicketDir: dir, Dir: "/w"}))
+		for _, want := range []string{"Commit", "rig imports", "not reviewed or pushed"} {
+			if !strings.Contains(prompt, want) {
+				t.Errorf("phase %s: prompt lacks %q", phase, want)
+			}
+		}
+	}
+	plan := promptOf(launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhasePlan, TicketDir: dir, Dir: "/w"}))
+	if !strings.Contains(plan, "do not change your checkout") {
+		t.Error("the plan phase must say the checkout stays as it is")
+	}
+}
