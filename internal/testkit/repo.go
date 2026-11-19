@@ -27,6 +27,13 @@ func pinGitEnv(t *testing.T) {
 		"GIT_COMMITTER_EMAIL": "test@rig.invalid",
 		"GIT_AUTHOR_DATE":     "2026-01-01T00:00:00Z",
 		"GIT_COMMITTER_DATE":  "2026-01-01T00:00:00Z",
+		// git starts maintenance in the background after commit and fetch; it can
+		// still be writing when the test's temp dir is removed.
+		"GIT_CONFIG_COUNT":   "2",
+		"GIT_CONFIG_KEY_0":   "maintenance.auto",
+		"GIT_CONFIG_VALUE_0": "false",
+		"GIT_CONFIG_KEY_1":   "gc.auto",
+		"GIT_CONFIG_VALUE_1": "0",
 	} {
 		t.Setenv(k, v)
 	}
@@ -38,6 +45,9 @@ func NewRepo(t *testing.T) *Repo {
 	pinGitEnv(t)
 	r := &Repo{t: t, Dir: RealTempDir(t)}
 	r.Git("init", "-q", "-b", "main")
+	// Also in the repo itself: the hardened runner drops git variables from the environment.
+	r.Git("config", "maintenance.auto", "false")
+	r.Git("config", "gc.auto", "0")
 	r.Commit("README.md", "# test repo\n", "initial commit")
 	return r
 }
