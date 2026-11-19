@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -191,6 +192,50 @@ func TestACloneHasNoWritePathIntoTheMainRepository(t *testing.T) {
 	}
 }
 
+// readableInContainer checks what git inside the container needs: every object store
+// it will look for, starting from the clone's alternates file and following each
+// mounted store's own, is mounted at exactly the path named, from that same store.
+func readableInContainer(t *testing.T, clonePath string, mounts []git.ObjectsMount) {
+	t.Helper()
+	at := map[string]string{}
+	for _, m := range mounts {
+		at[m.Target] = m.Source
+	}
+	var follow func(objects, file string)
+	follow = func(objects, file string) {
+		data, err := os.ReadFile(filepath.Join(file, "info", "alternates"))
+		if err != nil {
+			return
+		}
+		for _, named := range strings.Fields(string(data)) {
+			if !filepath.IsAbs(named) {
+				named = filepath.Join(objects, named)
+			}
+			source, ok := at[named]
+			if !ok {
+				t.Errorf("git in the container looks for %s, which is not mounted (mounts %+v)", named, mounts)
+				continue
+			}
+			if real, err := filepath.EvalSymlinks(named); err != nil || real != source {
+				t.Errorf("%s is mounted from %s, but on the host it is %s (%v)", named, source, real, err)
+			}
+			follow(named, source)
+		}
+	}
+	objects := filepath.Join(clonePath, ".git", "objects")
+	follow(objects, objects)
+}
+
+func sources(mounts []git.ObjectsMount) []string {
+	var out []string
+	for _, m := range mounts {
+		if !slices.Contains(out, m.Source) {
+			out = append(out, m.Source)
+		}
+	}
+	return out
+}
+
 func TestObjectsMountsComeFromTheMainRepositoryAndAreResolved(t *testing.T) {
 	t.Run("the main repo's object store, with symlinks resolved", func(t *testing.T) {
 		repo := testkit.NewRepo(t)
@@ -205,9 +250,35 @@ func TestObjectsMountsComeFromTheMainRepositoryAndAreResolved(t *testing.T) {
 			t.Fatal(err)
 		}
 		mounts, err := co.(git.ObjectsMounter).ObjectsMounts()
-		if err != nil || len(mounts) != 1 || mounts[0] != repo.Path(".git/objects") {
-			t.Errorf("mounts = %v, %v; want [%s]", mounts, err, repo.Path(".git/objects"))
+		if err != nil || strings.Join(sources(mounts), "\n") != repo.Path(".git/objects") {
+			t.Errorf("mounts = %+v, %v; want only %s mounted", mounts, err, repo.Path(".git/objects"))
 		}
+		readableInContainer(t, spec.Path, mounts)
+		named, _ := os.ReadFile(filepath.Join(spec.Path, ".git", "objects", "info", "alternates"))
+		if strings.TrimSpace(string(named)) != repo.Path(".git/objects") {
+			t.Errorf("the new clone's alternates names %q; want the real path %s", named, repo.Path(".git/objects"))
+		}
+	})
+
+	t.Run("a clone made through a symlink by an older rig", func(t *testing.T) {
+		repo := testkit.NewRepo(t)
+		link := filepath.Join(testkit.RealTempDir(t), "link-to-repo")
+		if err := os.Symlink(repo.Dir, link); err != nil {
+			t.Fatal(err)
+		}
+		path := newPath(t)
+		// what earlier rigs did: clone from the path as given, so alternates names the link
+		testkit.RunGit(t, repo.Dir, "clone", "-q", "--shared", "--no-checkout", link, path)
+		testkit.RunGit(t, path, "checkout", "-q", "-b", "feat/x", "main")
+		co, err := git.Open(ctx, git.Spec{Repo: link, Branch: "feat/x", Path: path, Kind: domain.CheckoutClone})
+		if err != nil {
+			t.Fatal(err)
+		}
+		mounts, err := co.(git.ObjectsMounter).ObjectsMounts()
+		if err != nil || strings.Join(sources(mounts), "\n") != repo.Path(".git/objects") {
+			t.Errorf("mounts = %+v, %v; want only %s mounted", mounts, err, repo.Path(".git/objects"))
+		}
+		readableInContainer(t, path, mounts)
 	})
 
 	t.Run("alternates the main repo itself depends on", func(t *testing.T) {
@@ -222,9 +293,30 @@ func TestObjectsMountsComeFromTheMainRepositoryAndAreResolved(t *testing.T) {
 		}
 		mounts, err := co.(git.ObjectsMounter).ObjectsMounts()
 		want := []string{mainRepo.Path(".git/objects"), upstream.Path(".git/objects")}
-		if err != nil || strings.Join(mounts, "\n") != strings.Join(want, "\n") {
-			t.Errorf("mounts = %v, %v; want %v", mounts, err, want)
+		if err != nil || strings.Join(sources(mounts), "\n") != strings.Join(want, "\n") {
+			t.Errorf("mounts = %+v, %v; want %v", mounts, err, want)
 		}
+		readableInContainer(t, spec.Path, mounts)
+	})
+
+	t.Run("a store the main repo borrows through a symlink", func(t *testing.T) {
+		upstream := testkit.NewRepo(t)
+		link := filepath.Join(testkit.RealTempDir(t), "link-to-upstream")
+		if err := os.Symlink(upstream.Dir, link); err != nil {
+			t.Fatal(err)
+		}
+		mainDir := filepath.Join(testkit.RealTempDir(t), "main")
+		testkit.RunGit(t, upstream.Dir, "clone", "-q", "--shared", link, mainDir)
+		spec := git.Spec{Repo: mainDir, Branch: "feat/x", Path: newPath(t), Kind: domain.CheckoutClone}
+		co, err := git.Provision(ctx, spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mounts, err := co.(git.ObjectsMounter).ObjectsMounts()
+		if err != nil {
+			t.Fatal(err)
+		}
+		readableInContainer(t, spec.Path, mounts)
 	})
 
 	t.Run("an agent rewriting its clone's alternates changes nothing", func(t *testing.T) {
@@ -234,11 +326,15 @@ func TestObjectsMountsComeFromTheMainRepositoryAndAreResolved(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		before, err := co.(git.ObjectsMounter).ObjectsMounts()
+		if err != nil {
+			t.Fatal(err)
+		}
 		hostile := filepath.Join(path, ".git", "objects", "info", "alternates")
 		os.WriteFile(hostile, []byte("/Users/someone/.ssh\n"), 0o644)
 		mounts, err := co.(git.ObjectsMounter).ObjectsMounts()
-		if err != nil || len(mounts) != 1 || strings.Contains(mounts[0], ".ssh") {
-			t.Errorf("mounts = %v, %v; they must come from the main repo, not the clone's alternates file", mounts, err)
+		if err != nil || !slices.Equal(mounts, before) || strings.Contains(fmt.Sprint(mounts), ".ssh") {
+			t.Errorf("mounts = %+v, %v; they must come from the main repo, not the clone's alternates file", mounts, err)
 		}
 	})
 }

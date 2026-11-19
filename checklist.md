@@ -1046,7 +1046,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Manual check: a reviewer agent reads a real PR's comments through rig.
 
 ### 84 · A clone's object store must be reachable in the container through a symlinked path
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/84-clone-symlink-objects` · Depends: none
 - Read: `docs/field-tests/02-container-journal.md` finding 2; `internal/git/clone.go` (`ObjectsMounts`), `internal/lifecycle/containeragent.go`
@@ -1057,4 +1057,22 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - `git status` works in the clone with only the mounted paths visible (a test that fakes the container's view);
   - an agent-edited `alternates` never changes the mounts.
 - Manual check: a container ticket on a repository under `/tmp` can run `git status` and commit.
+- Notes:
+  - `git.ObjectsMounter.ObjectsMounts()` now returns `[]git.ObjectsMount{Source, Target}`: each store is mounted from its real path at the real path, and also at the path as named when that goes through a symlink.
+  - Targets come only from the main repository: the path it was opened by (`rev-parse --git-common-dir` joined to the repo path as given, unresolved) and the entries in its own alternates file. The clone's alternates file is still never read for mounts.
+  - New clones are made from the resolved repo path, so their alternates name the real path. The extra mount covers clones made by earlier rigs.
+  - Tests check what git in the container needs: every store named, starting from the clone's alternates and following each mounted store's own, is mounted at exactly that path from that same store. They cover a repo reached through a symlink (new clone and older clone) and a borrowed store reached through a symlink.
+  - Mutation checks: cloning from the unresolved path, or mounting only real paths, fails the symlink tests.
+  - `TestImportIsRepeatableAndPicksUpNewCommits/clone` still flakes at TempDir cleanup, on master too; task 85.
+  - Manual check done with real Docker: a ticket on a repo under `/tmp`. The clone's alternates names `/private/tmp/...`; inside the agent container `git status` and `git commit` work, and `rig stop` imported the commit into the main repo.
+
+### 85 · Stop the flaky TempDir cleanup in git tests
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/85-quiet-git-tests` · Depends: none
+- Read: `internal/testkit/repo.go` (`pinGitEnv`); `internal/git/lifecycle_test.go` (`TestImportIsRepeatableAndPicksUpNewCommits`)
+- Why: `TestImportIsRepeatableAndPicksUpNewCommits/clone` sometimes fails at cleanup ("unlinkat …/.git/objects: directory not empty"), on master as well as on branches. Likely cause: git starts background maintenance after `fetch` (auto gc or maintenance, detached), which is still writing into `.git/objects` while the test's TempDir is removed.
+- Build: confirm the cause, then pin it off in `pinGitEnv` through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`, for example `gc.auto=0`, `gc.autoDetach=false`, `maintenance.auto=false`, `fetch.writeCommitGraph=false`. Keep the test as it is: it covers import repeatability, which pushing relies on.
+- Tests: `go test ./internal/git/ -count=20 -run TestImportIsRepeatable` passes every time.
+- Manual check: none.
 
