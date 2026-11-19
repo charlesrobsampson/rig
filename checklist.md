@@ -884,7 +884,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 ## Phase 12: Agent journal
 
 ### 72 · Agent journal: structured records and feedback
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168` (run from `~/projects/work/agentic-design`)
 - Branch: `task/72-agent-journal` · Depends: 30, 37, 65
 - Read: `docs/formats.md` §3, §8, §9, §13; `docs/spikes/04-agent-container.md` §5
@@ -892,6 +892,17 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: a record line in the events file (a JSON object, `{"kind", "text"?, "data"?}`) and the same record through `agent.record` for host agents (`rig agent-event '<json>'`). The daemon validates it, stamps ticket, service, time and source itself, and appends it to `journal.jsonl` in the ticket directory, which no agent can reach. Records are journaled exactly once across daemon restarts (a persisted offset per service), never mistaken for states, and announced as `agent.record`. `journal.list` and `rig journal [ticket] [--kind] [--service] [--limit]` read them (all tickets when none is named). The launch prompt tells the agent how to write one, with `feedback` as the kind for problems with rig or the environment. The container hook writes with `printf`, not `echo`, so backslashes in JSON survive `sh`.
 - Tests: a record is journaled with rig's stamps and the agent's forged ticket/service/at ignored; bad records (not JSON, no or bad kind, data not an object, too long) are dropped and nothing else is affected; a record line never moves the agent's state, including on first sight; a restarted daemon journals the records it had not seen and none twice; a truncated file starts over; `agent.record` from a host agent; `journal.list` filters and limits, across tickets; CLI `rig journal` and `--json`; `rig agent-event '<json>'` stays silent and exit 0; the prompt names the hook command; the container hook keeps a JSON line intact.
 - Manual check: run a container ticket with a real agent, ask it to report feedback, and see it in `rig journal --kind feedback`.
+- Notes:
+  - **`internal/journal`** (added to the manifest layout): `journal.Entry{Kind, Text, Data}` is what an agent writes; `journal.Parse(line)` (64 KiB, UTF-8, a JSON object, then `Entry.Validate`: kind `^[a-z][a-z0-9_.-]{0,63}$`, text up to 16 KiB, data a JSON object or nothing; other fields ignored). `journal.IsRecordLine` (first non-space is `{`, so a broken record is never a state). `Append`/`Read` on `journal.jsonl` (0600, one write per line, damaged lines skipped on read), `Filter` (ticket, service, kind, oldest first, newest `Limit`), `Offset`/`SetOffset` in `journal.offsets.json`. Record type is `api.JournalRecord{At, Ticket, Service, Source container|host|rig, Kind, Text, Data}`.
+  - **Supervisor:** `readEvents` journals record lines first (`journalEvents`, under `journalMu`, from the saved offset, then saves the new one: a crash in between repeats, never loses) and keeps them out of the state lines, including on first sight. A malformed record becomes a `record.rejected` record from source `rig` with the reason and the first 200 bytes. `Supervisor.Record` (agent.record, source host; same validation, `not_found` for unknown ticket/service) and `Supervisor.Journal` (journal.list; one ticket or every ticket directory). Every record publishes `agent.record` `{kind, text}`. Daemon handlers in `internal/daemon/agents.go`.
+  - **CLI:** `rig agent-event '<json>'` sends agent.record (bad JSON or a refused record: silent exit 0, like every hook report). `rig journal [id] [--kind] [--service] [--limit]` with `--json`; table text is the first line, cut at 100 characters.
+  - **Harness:** every prompt has a `## Journal` section naming the agent's own hook command (`rig agent-event` on the host, the events-file command in a container), with `feedback` for anything in rig or the environment that gets in the way. The container hook is now `printf '%s\n' "$1"`: Debian's dash `echo` expands `\n` and `\\` and would break a JSON record. Note the guarding test (`containerhook_internal_test.go`) passes with the old `echo` on macOS, whose `sh` is bash; it only bites on Linux (`task test:linux`).
+  - Mutation check: keeping record lines in the state lines fails two supervisor tests.
+  - `task check` green. `task test:race` green except `internal/git` `TestImportIsRepeatableAndPicksUpNewCommits/clone`, which failed twice under `-race` with a TempDir cleanup error (`.git/objects/pack: directory not empty`) and passed on three reruns; `internal/git` depends only on `domain`, which this task did not touch. Flaky (probably git writing into the object store as cleanup runs); worth its own task.
+  - Not done here: the TUI does not show records yet (a FEEDBACK marker on the dashboard would be the obvious next step); the MCP server has no journal tool (a supervising agent can't read or write records through MCP yet); records are not scrubbed of secrets (formats §14 says so).
+  - **Also on this branch** (found while testing it, see `docs/field-tests/01-host-dummy-tickets.md`): the harness passes the prompt after `--`, because Claude Code 2.1.327 reads `--add-dir` as variadic and every agent started with no prompt; and the client names an older daemon as the cause of an unknown method (`unavailable`, exit 4, both versions and `rig daemon stop`; formats §10).
+  - Field test 01 ran two dummy tickets with real Claude Code on the host sandbox, plan to done. Its findings are tasks 74 to 80.
+  - Manual check: done 2026-11-19, in `docs/field-tests/02-container-journal.md` (container) and `01-host-dummy-tickets.md` (host). A container record arrived with source `container`; restart and older-daemon checks passed.
 
 ---
 
@@ -915,3 +926,135 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: `ticket.yaml` (and global config as a default) names directories of agent configuration (`agent_config: [path, ...]`), mounted read-only where the harness reads user-level configuration (for Claude Code, the agent's `~/.claude/` agents, skills and commands), never inside `/work`, so the agent cannot change its own rules. Hooks from that configuration are merged with rig's own hooks, rig's last, so they cannot be dropped. Paths must exist and contain no secrets rig knows of.
 - Tests (fake Docker): mounts are read-only and outside the checkout; rig's hooks survive a configuration that defines the same events; a missing path is refused before any container starts.
 - Manual check: a container agent lists a subagent defined on the host.
+
+### 74 · Agents request phase transitions through the journal
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/74-transition-requests` · Depends: 72
+- Read: `docs/field-tests/01-host-dummy-tickets.md` findings 3, 4; `docs/formats.md` §8 (`transition.request`), §14
+- Build: A record of kind `transition.request` with `data: {"to": "<phase>", "reason"?}`, from either sandbox, is turned by the daemon into the existing `transition.request` (never an approval). The prompt names it in each phase's rules. A pending request shows as APPROVE on `rig list`, `ticket.list` and the TUI until a human acts.
+- Tests: a record becomes a request; a bad `to` is rejected with a `record.rejected` reason; a request never moves the phase or approves a gate; the summary shows it pending, then clears it after `phase.set`.
+- Manual check: a real agent in plan asks for implement and the request shows on `rig list`.
+
+### 75 · Tell the agent when the phase changes
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/75-phase-notice` · Depends: 72
+- Read: `docs/field-tests/01-host-dummy-tickets.md` finding 5; `docs/formats.md` §13
+- Build: On `phase.changed`, type a notice into each running agent with the new phase and that phase's rules (including the manual-tests rules from implement on), following the injection rules used for contract notices (never into a blocked agent, logged in messages.jsonl).
+- Tests: notice typed after a forward and a backward move; not typed into a blocked agent (retried later); the text carries the new phase's rules.
+- Manual check: move a running real agent from plan to implement and see it start without being messaged.
+
+### 76 · Prompt rules: ticket files, committing, and a dirty-checkout warning
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/76-prompt-rules` · Depends: 72
+- Read: `docs/field-tests/01-host-dummy-tickets.md` findings 6, 7
+- Build: Reword the common rule to allow the ticket's plan.md, tasks.md, manual-tests.md and contract proposals besides the checkout. Make the implement rule say to commit each task when its tests pass and why (rig imports the branch). `phase.set` to test or review warns (not blocks) when a checkout has uncommitted changes.
+- Tests: prompt text for each phase; the warning appears for a dirty checkout and not for a clean one.
+- Manual check: a real agent commits without being asked.
+
+### 77 · A fresh agent that never reports ready needs attention
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/77-not-ready-attention` · Depends: 72
+- Read: `docs/field-tests/01-host-dummy-tickets.md` finding 2; `docs/spikes/03-tmux.md` §2
+- Note: task 81 removes the trust prompts this was mostly about. Keep this as the fallback for any other dialog that stops a fresh agent.
+- Build: An agent that has not reported `ready` within a short time after launch (configurable, default 20s) shows as needing attention, and the screen heuristic recognises Claude Code's trust dialogs as blocked. Document trusting the rig tickets directory once.
+- Tests: with the fake clock and terminal: no ready report then attention; a trust-dialog screen is blocked; a ready report clears it.
+- Manual check: start a host ticket in a new folder and see it flagged until the trust prompt is answered.
+
+### 78 · Stop a host-only ticket without Docker
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/78-stop-without-docker` · Depends: 72
+- Read: `docs/field-tests/01-host-dummy-tickets.md` finding 9
+- Build: `ticket.stop` skips Docker cleanup when state.json records no container, network or proxy for the ticket, so a host-sandbox ticket stops and removes its checkouts while Docker is down.
+- Tests: host-only ticket stops with fake Docker down; a ticket with recorded containers still reports Docker unavailable.
+- Manual check: stop a host ticket with Docker Desktop quit.
+
+### 79 · Manual-tests starter for services without a port
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/79-manual-tests-starter` · Depends: 72
+- Read: `docs/field-tests/01-host-dummy-tickets.md` finding 8; `docs/formats.md` §12
+- Build: The starter manual-tests.md has no live placeholders in its prose, and its example step depends on whether the service has a port (`curl {{svc.url}}` only then; a command run in the checkout otherwise).
+- Tests: the starter renders for a service with a port and for one without.
+- Manual check: none.
+
+### 80 · Polish from the first field test
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/80-field-test-polish` · Depends: 72
+- Read: `docs/field-tests/01-host-dummy-tickets.md` findings 10, 11, 12
+- Build: `rig review` prints plain output when stdout is not a terminal. After a push that finishes a ticket, the CLI suggests `rig stop <id>`. The host-sandbox warning says the agent also loads the user's own Claude Code configuration. The older-daemon message prints both versions the same way, and for two dev builds says the daemon was started from a different build (field test 02, finding 5).
+- Tests: review output without delta off a TTY; the stop hint after the last push; the warning text.
+- Manual check: none.
+
+### 81 · `rig setup`: one master workspace, and agents that start already trusted
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/81-setup-and-trust` · Depends: 72 · Overlaps: 73, 77
+- Read: `docs/field-tests/01-host-dummy-tickets.md` findings 2 and 10; `docs/formats.md` §3, §13
+- Why: every new container agent stops at Claude Code's first-run screens (theme, notes, trust; field test 02, finding 1), and every new host ticket stops at two Claude Code trust prompts (the checkout and `--add-dir <ticket dir>`). Trusting a parent folder is not enough: since Claude Code 2.1.232 a nested git repo does not inherit trust, and every rig checkout is a repo. Trust is checked by an ancestor walk in some code paths and by exact path in others, and it has changed between versions (claude-code issues 86824, 72896, 84402). So rig must set trust on the exact paths itself.
+- Build:
+  - `rig setup` (interactive, run once) records a master workspace (default `<home>/work`) and checks the Claude profile (`claude setup-token` for containers). The approval means rig may trust anything it creates inside the workspace, and nothing outside it.
+  - Every checkout and ticket directory is created inside the workspace.
+  - Each host agent gets its own Claude Code config directory (`CLAUDE_CONFIG_DIR` under the ticket directory). rig writes `hasTrustDialogAccepted: true` there for exactly the checkout and the ticket directory, and never edits the user's `~/.claude.json`.
+  - This also stops host agents loading the user's personal CLAUDE.md, skills and settings (finding 10). What a ticket does carry over comes from task 73.
+  - Container agents get the same: a Claude configuration with onboarding completed (`hasCompletedOnboarding`), a theme set, and trust for exactly `/work` and `/rig/ticket`. Check the exact keys against the Claude Code version in the agent image.
+  - rig refuses to trust a path outside the workspace.
+- Tests:
+  - the config dir holds trust for exactly the two paths;
+  - a path outside the workspace is refused;
+  - the user's `~/.claude.json` is never touched (fake HOME);
+  - the setup answers are stored and re-running is idempotent.
+- Open: does a host login (keychain) carry over to a separate `CLAUDE_CONFIG_DIR`? Check first. If not, the host profile needs `setup-token` too.
+- Manual check: a new host ticket and a new container ticket both start working with no first-run screen and no trust prompt.
+
+### 82 · Role permission profiles: no prompts for what a role may do
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/82-permission-profiles` · Depends: 72, 81
+- Read: `docs/formats.md` §13 (launch settings), §14 (journal); Claude Code `--permission-mode` (2.1.327 has `dontAsk`: anything not allowed is denied without a prompt) and PreToolUse hook decisions
+- Build:
+  - A permission profile per role and phase, in config, with defaults. For example, the coder may edit its checkout, run its tests and `git add/commit` but never push; a reviewer is read-only plus its verdict file.
+  - rig writes the profile's allow and deny rules into the `--settings` it already passes, and launches with `--permission-mode dontAsk`.
+  - A `rig policy` PreToolUse hook decides allow or deny from the role, phase and path, for rules that settings cannot express.
+  - Every deny is journaled (`permission.denied`). An agent that needs more journals a `permission.request`, which shows on `rig list` until a human answers.
+  - Nothing here can approve a gate or a transition.
+- Tests:
+  - the profile's settings for each built-in role;
+  - the policy hook's decisions on a table of tool calls;
+  - a deny and a request are journaled;
+  - a request never changes the profile on its own.
+- Manual check: a real agent works through a plan → implement ticket with no permission prompts, and a deliberately forbidden command is denied and journaled.
+
+### 83 · GitHub broker: agents use GitHub without holding credentials
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/83-github-broker` · Depends: 82 · Not needed while rig runs only on the user's machine and agents need no GitHub access; schedule it when an agent needs to read PRs or CI, or when rig runs unattended.
+- Stage 1, proxy:
+  - The daemon makes GitHub calls for agents with the user's existing `gh` login, through a `rig gh` command or an MCP tool, checked against the role profile (task 82). For example, a reviewer may read a PR and comment but never push or merge.
+  - The token never reaches the agent, and every call is journaled.
+- Stage 2, GitHub App:
+  - Setup, once: create an app with no webhook and the permissions Contents r/w, Pull requests r/w, Metadata r, Checks/Actions r. Install it on chosen repos only. `rig setup github --app-id … --key app.pem` stores the key in the Keychain and deletes the file.
+  - The daemon signs a JWT and mints installation tokens (1 hour), narrowed per request to one repo and the role's permissions. Tokens are cached and renewed early. Use `ghinstallation` or about 100 lines of Go.
+  - Catches: commits and PRs are authored by `<app>[bot]` (check branch protection, CODEOWNERS and team norms); an org install needs an org owner's approval; the key can mint for every install, so keep it in the Keychain and rotate it if it is exposed.
+  - Build and prove it on the user's own repos first.
+- Tests (stage 1): role checks on a table of calls, with a fake `gh`; no token in agent-visible output; journaled calls.
+- Manual check: a reviewer agent reads a real PR's comments through rig.
+
+### 84 · A clone's object store must be reachable in the container through a symlinked path
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/84-clone-symlink-objects` · Depends: none
+- Read: `docs/field-tests/02-container-journal.md` finding 2; `internal/git/clone.go` (`ObjectsMounts`), `internal/lifecycle/containeragent.go`
+- Why: git fails in a container ("bad object HEAD") when the repository's path goes through a symlink, such as `/tmp` → `/private/tmp` on macOS. `ObjectsMounts` mounts the resolved path, but the clone's `alternates` file names the path as given at clone time.
+- Build: clone from the resolved repository path, so `alternates` names the same path rig mounts. Keep the rule that mounts come from the main repository, never from the clone's own `alternates` file. Existing clones made through a symlink either get their `alternates` rewritten to the resolved path when rig opens them, after checking that it resolves to the same store, or are also mounted at the unresolved path derived from the main repository.
+- Tests:
+  - a clone of a repository reached through a symlinked directory has `alternates` naming the resolved path;
+  - `git status` works in the clone with only the mounted paths visible (a test that fakes the container's view);
+  - an agent-edited `alternates` never changes the mounts.
+- Manual check: a container ticket on a repository under `/tmp` can run `git status` and commit.
+

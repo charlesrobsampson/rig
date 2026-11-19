@@ -396,3 +396,73 @@ func TestACallHonorsTheContextDeadline(t *testing.T) {
 		t.Fatalf("error = %v, want the context deadline", err)
 	}
 }
+
+// A daemon started from an older rig binary does not know methods added since; the
+// user needs to hear that, not "unknown method".
+func TestAnOlderDaemonIsNamedAsTheCauseOfAMissingMethod(t *testing.T) {
+	t.Run("known but not served", func(t *testing.T) {
+		p := newPaths(t)
+		startDaemon(t, p, nil) // serves no journal.list
+		c := mustConnect(t, p)
+		assertOlderDaemon(t, c.Call(context.Background(), api.MethodJournalList, nil, nil))
+	})
+	t.Run("unknown to the daemon's protocol", func(t *testing.T) {
+		p := newPaths(t)
+		ln, err := net.Listen("unix", p.socket)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ln.Close()
+		go func() {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+			dec, enc := api.NewDecoder(conn), api.NewEncoder(conn)
+			for {
+				req, err := dec.ReadRequest()
+				if err != nil {
+					return
+				}
+				if req.Method == api.MethodHello {
+					resp, _ := api.Success(req.ID, api.HelloResult{Protocol: api.ProtocolVersion, Server: "v0.1.0"})
+					enc.Write(resp)
+					continue
+				}
+				enc.Write(api.Failure(req.ID, &api.Error{Code: api.CodeInvalid, Message: `unknown method "` + req.Method + `"`}))
+			}
+		}()
+		c, err := connect(t, p, client.Options{Version: "v0.2.0"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+		err = c.Call(context.Background(), api.MethodJournalList, nil, nil)
+		assertOlderDaemon(t, err)
+		if !strings.Contains(err.Error(), "v0.1.0") || !strings.Contains(err.Error(), "v0.2.0") {
+			t.Errorf("error = %v, want both versions named", err)
+		}
+	})
+	t.Run("a handler's own invalid error is left alone", func(t *testing.T) {
+		p := newPaths(t)
+		startDaemon(t, p, func(s *daemon.Server) {
+			s.Handle(api.MethodJournalList, func(context.Context, json.RawMessage) (any, error) {
+				return nil, &api.Error{Code: api.CodeInvalid, Message: "limit must be 0 (all) or more"}
+			})
+		})
+		c := mustConnect(t, p)
+		var apiErr *api.Error
+		if err := c.Call(context.Background(), api.MethodJournalList, nil, nil); !errors.As(err, &apiErr) || apiErr.Message != "limit must be 0 (all) or more" {
+			t.Errorf("error = %v", err)
+		}
+	})
+}
+
+func assertOlderDaemon(t *testing.T, err error) {
+	t.Helper()
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) || apiErr.Code != api.CodeUnavailable || !strings.Contains(apiErr.Message, "older") || !strings.Contains(apiErr.Message, "rig daemon stop") || !strings.Contains(apiErr.Message, "journal.list") {
+		t.Errorf("error = %v, want an unavailable error naming the old daemon, the method and the fix", err)
+	}
+}

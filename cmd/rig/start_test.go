@@ -138,7 +138,7 @@ func TestStartDryRunJSONHasTheFullCommand(t *testing.T) {
 		t.Fatalf("code %d, %q, %v", code, stdout, err)
 	}
 	cmd := got.Launches[0].Command
-	if len(cmd) != 6 || cmd[0] != "claude" || !strings.Contains(cmd[2], "agent-event") || cmd[3] != "--add-dir" || !strings.Contains(cmd[5], `service "svc1"`) {
+	if len(cmd) != 7 || cmd[0] != "claude" || !strings.Contains(cmd[2], "agent-event") || cmd[3] != "--add-dir" || cmd[5] != "--" || !strings.Contains(cmd[6], `service "svc1"`) {
 		t.Errorf("command = %q", cmd)
 	}
 }

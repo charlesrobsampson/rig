@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/charlesrobsampson/rig/internal/api"
+	"github.com/charlesrobsampson/rig/internal/journal"
 )
 
 // agentEventTimeout bounds how long a hook can hold the agent up.
@@ -22,20 +24,30 @@ const agentEventTimeout = 3 * time.Second
 // exit 0 and silence.
 func newAgentEventCmd(a *app) *cobra.Command {
 	return &cobra.Command{
-		Use:   "agent-event <ready|working|blocked|idle|exited|cost>",
-		Short: "Report an agent's state (run by agent hooks)",
+		Use:   "agent-event <ready|working|blocked|idle|exited|cost|'<record json>'>",
+		Short: "Report an agent's state or journal a record (run by agent hooks and agents)",
 		Long: `Tell the daemon what the agent of $RIG_TICKET/$RIG_SERVICE is doing. Agent hooks run
 this; it always exits 0 and never starts the daemon, so a hook cannot break the agent.
 
 "cost" is the agent's status line: it reads the harness's status JSON on standard input,
 reports its running cost (cost.total_cost_usd) when there is one, and prints the amount as
-the status line.`,
+the status line.
+
+A JSON object ({"kind": "feedback", "text": "...", "data": {...}}) is a record for the
+ticket's journal (see "rig journal"); a badly written one is dropped, still with exit 0.`,
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ticket, service := os.Getenv("RIG_TICKET"), os.Getenv("RIG_SERVICE")
 			if len(args) != 1 || ticket == "" || service == "" {
 				return nil
+			}
+			if journal.IsRecordLine(args[0]) {
+				entry, err := journal.Parse(strings.TrimSpace(args[0]))
+				if err != nil {
+					return nil
+				}
+				return reportQuietly(cmd.Context(), a, api.MethodAgentRecord, api.AgentRecordParams{Ticket: ticket, Service: service, Kind: entry.Kind, Text: entry.Text, Data: entry.Data})
 			}
 			p := api.AgentEventParams{Ticket: ticket, Service: service, State: args[0]}
 			if args[0] == "cost" {
@@ -46,17 +58,22 @@ the status line.`,
 				p.CostUSD = &usd
 				fmt.Fprintf(cmd.OutOrStdout(), "$%.2f\n", usd)
 			}
-			ctx, cancel := context.WithTimeout(cmd.Context(), agentEventTimeout)
-			defer cancel()
-			c, err := a.connect(ctx, false)
-			if err != nil {
-				return nil
-			}
-			defer c.Close()
-			_ = c.Call(ctx, api.MethodAgentEvent, p, nil)
-			return nil
+			return reportQuietly(cmd.Context(), a, api.MethodAgentEvent, p)
 		},
 	}
+}
+
+// reportQuietly sends a hook's report to a running daemon and ignores every failure.
+func reportQuietly(ctx context.Context, a *app, method string, params any) error {
+	ctx, cancel := context.WithTimeout(ctx, agentEventTimeout)
+	defer cancel()
+	c, err := a.connect(ctx, false)
+	if err != nil {
+		return nil
+	}
+	defer c.Close()
+	_ = c.Call(ctx, method, params, nil)
+	return nil
 }
 
 // readStatusCost pulls cost.total_cost_usd out of the status JSON Claude Code feeds its

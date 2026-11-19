@@ -19,6 +19,7 @@ const (
 	EventGateApproved      EventType = "gate.approved"
 	EventAgentState        EventType = "agent.state"
 	EventAgentCost         EventType = "agent.cost"
+	EventAgentRecord       EventType = "agent.record"
 	EventContractPending   EventType = "contract.pending"
 	EventContractViolation EventType = "contract.violation"
 	EventContractResolved  EventType = "contract.resolved"
@@ -83,6 +84,12 @@ type AgentStateData struct {
 // cent (the harness reports far more often than that).
 type AgentCostData struct {
 	USD float64 `json:"usd"`
+}
+
+// AgentRecordData announces a record an agent added to its ticket's journal.
+type AgentRecordData struct {
+	Kind string `json:"kind"`
+	Text string `json:"text,omitempty"`
 }
 
 type ContractPendingData struct {

@@ -208,6 +208,10 @@ Optional pieces, each off until you configure it:
 - **Contract tests:** `rig contract export` turns a contract's endpoint and schema blocks
   into an OpenAPI document your services' tests can check themselves against
   ([docs/contract-tests.md](docs/contract-tests.md)).
+- **Journal:** agents can leave records (`{"kind": "feedback", "text": "..."}`) through
+  their hook command; rig stamps who and when and keeps them in the ticket's
+  `journal.jsonl`, out of the agents' reach. `rig journal --kind feedback` lists what got in
+  agents' way across all tickets ([docs/formats.md §14](docs/formats.md)).
 - **MCP:** `claude mcp add rig -- rig mcp` lets a supervising agent list tickets, read
   files, message agents and propose contract changes; it can approve nothing
   ([docs/mcp.md](docs/mcp.md)).

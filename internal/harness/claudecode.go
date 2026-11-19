@@ -64,11 +64,8 @@ func (c ClaudeCode) Command(r Request) (Launch, error) {
 	if svc == nil {
 		return Launch{}, fmt.Errorf("ticket %s has no service %q", r.Ticket.ID, r.Service)
 	}
-	hookCommand := r.HookCommand
-	if hookCommand == "" {
-		hookCommand = "rig agent-event"
-	}
-	settingsJSON, err := settings(hookCommand, r.CostCommand)
+	r.HookCommand = hookCommandOf(r)
+	settingsJSON, err := settings(r.HookCommand, r.CostCommand)
 	if err != nil {
 		return Launch{}, err
 	}
@@ -113,7 +110,9 @@ func (c ClaudeCode) Command(r Request) (Launch, error) {
 	if addDir := firstNonEmpty(r.AgentTicketDir, r.TicketDir); addDir != "" {
 		command = append(command, "--add-dir", addDir)
 	}
-	return Launch{Command: append(command, prompt), Env: env, Dir: r.Dir}, nil
+	// "--" ends the options: --add-dir takes several values, and without it Claude Code
+	// reads the prompt as one more directory and starts with no instructions.
+	return Launch{Command: append(command, "--", prompt), Env: env, Dir: r.Dir}, nil
 }
 
 // AuthEnv maps a profile to what Claude Code reads (docs/spikes/04-agent-container.md §7).
@@ -192,6 +191,11 @@ func Prompt(r Request) (string, error) {
 		}
 	}
 
+	b.WriteString("\n## Journal\n")
+	for _, rule := range journalRules(hookCommandOf(r)) {
+		b.WriteString("- " + rule + "\n")
+	}
+
 	artifacts := []string{"plan.md", "tasks.md"}
 	if len(r.Ticket.Services) > 1 {
 		b.WriteString("\n## contract.md\n")
@@ -233,6 +237,24 @@ var phaseRules = map[domain.Phase][]string{
 	domain.PhaseTest:      {"Run the full test suite and fix failures; keep manual-tests.md accurate.", "Request the review phase once tests pass."},
 	domain.PhaseReview:    {"Address review feedback only; keep changes small and focused."},
 	domain.PhasePush:      {"Do not push; pushing is done by rig on the host after approval."},
+}
+
+func hookCommandOf(r Request) string {
+	if r.HookCommand == "" {
+		return "rig agent-event"
+	}
+	return r.HookCommand
+}
+
+// journalRules tell the agent how to leave a record in the ticket's journal through the
+// same command its hooks use, so it works in a container and on the host alike
+// (docs/formats.md §14).
+func journalRules(hookCommand string) []string {
+	return []string{
+		"To leave a record in the ticket's journal, run `" + hookCommand + ` '{"kind":"feedback","text":"..."}'` + "`" + ` with one line of JSON: "kind" (lowercase, such as "feedback" or "note"), "text", and optionally "data" (a JSON object). rig adds the ticket, service and time itself.`,
+		`Use "kind": "feedback" whenever rig or your environment gets in your way: a missing tool, permission or credential, a blocked host, a rule that is unclear, something slow. Say what you were doing, what you expected and what happened, then carry on as best you can.`,
+		"Keep the JSON on one line and put no single quote in it (write \\u0027 instead).",
+	}
 }
 
 func firstNonEmpty(a, b string) string {

@@ -50,6 +50,8 @@ type Client struct {
 	mu     sync.Mutex
 	seq    int
 	broken bool
+	// server is the daemon's version from hello, to name it when it is out of date.
+	server string
 }
 
 func Connect(ctx context.Context, opts Options) (*Client, error) {
@@ -101,6 +103,7 @@ func open(ctx context.Context, opts Options) (*Client, error) {
 	var hello api.HelloResult
 	err = c.Call(ctx, api.MethodHello, api.HelloParams{Client: "rig", Version: opts.Version}, &hello)
 	if err == nil {
+		c.server = hello.Server
 		if err = hello.Compatible(); err != nil {
 			err = &api.Error{Code: api.CodeUnavailable, Message: err.Error()}
 		}
@@ -110,6 +113,23 @@ func open(ctx context.Context, opts Options) (*Client, error) {
 		return nil, err
 	}
 	return c, nil
+}
+
+// explainMissing turns the daemon's "I don't know that method" into its usual cause: a
+// daemon still running from an older rig binary than this client.
+func (c *Client) explainMissing(method string, err error) error {
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) || apiErr.Code != api.CodeInvalid || !api.KnownMethod(method) {
+		return err
+	}
+	unknown := fmt.Sprintf("unknown method %q", method)
+	unserved := fmt.Sprintf("method %q is not implemented by this daemon", method)
+	if apiErr.Message != unknown && apiErr.Message != unserved {
+		return err
+	}
+	return &api.Error{Code: api.CodeUnavailable, Message: fmt.Sprintf(
+		"the running daemon (version %s) does not know %s: it is older than this rig (version %s). Run \"rig daemon stop\"; the next command starts the daemon from this rig",
+		c.server, method, c.opts.Version)}
 }
 
 func isNotRunning(err error) bool {
@@ -143,7 +163,7 @@ func (c *Client) Call(ctx context.Context, method string, params any, result any
 		return fmt.Errorf("unexpected response id %q (wanted %q)", resp.ID, id)
 	}
 	if err := resp.Err(); err != nil {
-		return err
+		return c.explainMissing(method, err)
 	}
 	if result != nil && len(resp.Result) > 0 {
 		if err := json.Unmarshal(resp.Result, result); err != nil {

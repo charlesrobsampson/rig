@@ -31,6 +31,7 @@
 ├── contract.md        # cross-service interfaces (endpoints, schemas, events); only for multi-service tickets
 ├── tasks.md           # micro-steps + TDD checklist
 ├── manual-tests.md    # agent-written test steps; rig substitutes live ports
+├── journal.jsonl      # records agents leave (feedback, results), stamped by rig; agents cannot edit it
 ├── backend/           # checkout of repo A (isolated shared clone, or worktree in host mode)
 └── frontend/          # checkout of repo B
 ```
@@ -186,6 +187,7 @@ rig/
 │   ├── gates/      # which approvals a ticket needs before changing phase (pure rules)
 │   ├── git/        # checkout provisioning (clone/worktree), dirty checks, import, push/PR
 │   ├── harness/    # agent launchers
+│   ├── journal/    # agent records: parse, validate, append to journal.jsonl, filter (docs/formats.md §14)
 │   ├── registry/   # reads tickets (ticket.yaml + state.json) for list/get
 │   ├── policy/     # precedence resolution (flags > service > ticket > global)
 │   ├── state/      # state.json reader/writer + phase machine
@@ -217,6 +219,7 @@ rig/
 * `rig push <id>` run push policy
 * `rig logs <id>` stream logs
 * `rig events` print daemon events as they happen
+* `rig journal [id] [--kind feedback] [--service s] [--limit n]` records agents left (feedback on rig or their environment, results); every ticket when no id
 * `rig daemon start|status|stop|run` manage the background daemon (`run` is the foreground form the others re-exec)
 * `rig config show` print the effective global config
 * Global flags: `--config <file>`, `--json`

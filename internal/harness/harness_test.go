@@ -54,8 +54,10 @@ func TestTheLaunchCommandPerPhase(t *testing.T) {
 	for _, phase := range []domain.Phase{domain.PhasePlan, domain.PhaseImplement, domain.PhaseTest, domain.PhaseReview, domain.PhasePush} {
 		t.Run(string(phase), func(t *testing.T) {
 			l := launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: phase, TicketDir: dir, Dir: "/work/api"})
-			if l.Command[0] != "claude" || l.Command[1] != "--settings" || l.Command[3] != "--add-dir" || l.Command[4] != dir || len(l.Command) != 6 {
-				t.Fatalf("command = %q, want claude --settings <json> --add-dir <ticket dir> <prompt>", l.Command[:5])
+			// --add-dir takes several values, so the prompt must follow "--" or Claude Code
+			// reads it as another directory and the agent starts with no instructions.
+			if l.Command[0] != "claude" || l.Command[1] != "--settings" || l.Command[3] != "--add-dir" || l.Command[4] != dir || l.Command[5] != "--" || len(l.Command) != 7 {
+				t.Fatalf("command = %q, want claude --settings <json> --add-dir <ticket dir> -- <prompt>", l.Command[:6])
 			}
 			if l.Dir != "/work/api" {
 				t.Errorf("dir = %q", l.Dir)
@@ -354,5 +356,23 @@ func TestTheStatusLineReportsCostOnlyWhenACostCommandIsGiven(t *testing.T) {
 	json.Unmarshal([]byte(with.Command[2]), &hooks)
 	if len(hooks.Hooks) != 6 {
 		t.Errorf("hooks = %v", hooks.Hooks)
+	}
+}
+
+func TestThePromptTeachesHowToJournalARecordWithTheHookCommand(t *testing.T) {
+	host, err := harness.Prompt(harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhaseImplement, TicketDir: ticketDir(t, artifacts), Dir: "/w"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"## Journal", `rig agent-event '{"kind":"feedback"`, `"kind": "feedback"`, "\\u0027"} {
+		if !strings.Contains(host, want) {
+			t.Errorf("prompt lacks %q:\n%s", want, host)
+		}
+	}
+
+	container := launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhasePlan, TicketDir: ticketDir(t, artifacts), Dir: "/w", HookCommand: `sh -c 'printf "%s\n" "$1" >> /rig-events/events.log' rig-event`})
+	prompt := container.Command[len(container.Command)-1]
+	if !strings.Contains(prompt, `sh -c 'printf "%s\n" "$1" >> /rig-events/events.log' rig-event '{"kind":"feedback"`) {
+		t.Errorf("the prompt must name the command this agent's hooks use:\n%s", prompt)
 	}
 }
