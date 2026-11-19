@@ -63,6 +63,8 @@ type Defaults struct {
 	// BranchPrefix starts the default branch name of new tickets: <prefix><ticket>/<service>.
 	BranchPrefix string        `json:"branch_prefix"`
 	Policy       domain.Policy `json:"policy"`
+	// AgentConfig is what a ticket without agent_config gets (docs/formats.md §4).
+	AgentConfig []string `json:"agent_config,omitempty"`
 }
 
 type Limits struct {
@@ -202,6 +204,9 @@ func LoadGlobal(opts GlobalOptions) (Global, error) {
 	for i, c := range g.Docker.ExtraCACerts {
 		g.Docker.ExtraCACerts[i] = expandHome(c, home)
 	}
+	for i, p := range g.Defaults.AgentConfig {
+		g.Defaults.AgentConfig[i] = expandHome(p, home)
+	}
 
 	if problems := validateGlobal(g); len(problems) > 0 {
 		return Global{}, fmt.Errorf("invalid config %s:\n  - %s", path, strings.Join(problems, "\n  - "))
@@ -287,6 +292,11 @@ func validateGlobal(g Global) []string {
 	for i, c := range g.Docker.ExtraCACerts {
 		if !filepath.IsAbs(c) {
 			add("docker.extra_ca_certs[%d]: %s must be an absolute path", i, c)
+		}
+	}
+	for i, p := range g.Defaults.AgentConfig {
+		if !filepath.IsAbs(p) {
+			add("defaults.agent_config[%d]: %s must be an absolute path", i, p)
 		}
 	}
 	for i, h := range g.Egress.DefaultAllow {

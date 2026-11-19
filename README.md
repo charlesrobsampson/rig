@@ -92,7 +92,11 @@ An auth profile maps stored secrets to what the agent reads: `oauth_token`, `api
 uses your own login and your own Claude Code configuration). A container cannot use your
 machine's login, which is why container agents need a profile. Every agent with a profile
 gets its own Claude Code configuration in the ticket, set up so it starts without
-first-run screens or folder-trust prompts, and without your personal CLAUDE.md or skills. A ticket with two services looks like
+first-run screens or folder-trust prompts, and without your personal CLAUDE.md or skills.
+To give agents your own roles, subagents, skills and hooks, point `agent_config` (in
+`ticket.yaml`, or `defaults.agent_config` in the global config) at directories laid out
+like `~/.claude`. rig copies them in at every launch, read-only in a container, and never
+changes the originals. A ticket with two services looks like
 [`examples/tickets/two-services.yaml`](examples/tickets/two-services.yaml).
 
 ## The terminal UI

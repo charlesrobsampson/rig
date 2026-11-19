@@ -16,7 +16,10 @@ type Ticket struct {
 	Harness      string            `json:"harness,omitempty" yaml:"harness,omitempty"`
 	Auth         string            `json:"auth,omitempty" yaml:"auth,omitempty"`
 	Egress       Egress            `json:"egress" yaml:"egress,omitempty"`
-	Policy       Policy            `json:"policy" yaml:"policy,omitempty"`
+	// AgentConfig lists directories of agent configuration (subagents, skills, hooks)
+	// every agent of the ticket gets. Nil inherits the global default; empty means none.
+	AgentConfig []string `json:"agent_config,omitempty" yaml:"agent_config,omitempty"`
+	Policy      Policy   `json:"policy" yaml:"policy,omitempty"`
 }
 
 type Source struct {

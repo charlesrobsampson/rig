@@ -129,6 +129,7 @@ func TestLoadGlobalRejectsBadConfigFiles(t *testing.T) {
 		{"wrong value type", `{"limits":{"max_active_tickets":"many"}}`, []string{"max_active_tickets"}},
 		{"relative rig home", `{"paths":{"home":"rig-home"}}`, []string{"paths.home", "absolute"}},
 		{"relative ca cert", `{"docker":{"extra_ca_certs":["certs/corp.pem"]}}`, []string{"docker.extra_ca_certs", "absolute"}},
+		{"relative agent config", `{"defaults":{"agent_config":["claude-roles"]}}`, []string{"defaults.agent_config[0]", "absolute"}},
 		{"port range below 1024", `{"docker":{"port_range":{"min":80,"max":2000}}}`, []string{"docker.port_range", "80-2000"}},
 		{"port range above 65535", `{"docker":{"port_range":{"min":41000,"max":70000}}}`, []string{"docker.port_range", "70000"}},
 		{"port range backwards", `{"docker":{"port_range":{"min":42000,"max":41000}}}`, []string{"docker.port_range", "42000-41000"}},
@@ -158,7 +159,7 @@ func TestLoadGlobalRejectsBadConfigFiles(t *testing.T) {
 func TestLoadGlobalExpandsTildeInPaths(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(t.TempDir(), "config.json")
-	if err := os.WriteFile(path, []byte(`{"paths":{"home":"~/rigwork"},"docker":{"extra_ca_certs":["~/certs/corp.pem"]}}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"paths":{"home":"~/rigwork"},"docker":{"extra_ca_certs":["~/certs/corp.pem"]},"defaults":{"agent_config":["~/roles"]}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	got, err := config.LoadGlobal(config.GlobalOptions{Path: path, Env: env{}.get, UserHome: func() (string, error) { return home, nil }})
@@ -170,6 +171,9 @@ func TestLoadGlobalExpandsTildeInPaths(t *testing.T) {
 	}
 	if want := filepath.Join(home, "certs", "corp.pem"); !reflect.DeepEqual(got.Docker.ExtraCACerts, []string{want}) {
 		t.Errorf("extra_ca_certs = %v, want [%s]", got.Docker.ExtraCACerts, want)
+	}
+	if want := filepath.Join(home, "roles"); !reflect.DeepEqual(got.Defaults.AgentConfig, []string{want}) {
+		t.Errorf("agent_config = %v, want [%s]", got.Defaults.AgentConfig, want)
 	}
 }
 
