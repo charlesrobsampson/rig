@@ -996,6 +996,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: `rig review` prints plain output when stdout is not a terminal. After a push that finishes a ticket, the CLI suggests `rig stop <id>`. With a `host_login` profile (or none), the host-sandbox warning says the agent also loads the user's own Claude Code configuration; a credential profile now gets its own (task 81). The older-daemon message prints both versions the same way, and for two dev builds says the daemon was started from a different build (field test 02, finding 5).
 - Tests: review output without delta off a TTY; the stop hint after the last push; the warning text.
 - Manual check: none.
+- Also (field test 03, finding 7): `rig stop --force` without a terminal aborts at its confirmation; add `--yes` for scripts.
 
 ### 81 · Agents start already trusted, with their own Claude configuration
 - [x] Done
@@ -1144,7 +1145,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - `--json` reports what it did without echoing the token.
 - Tests: the token reaches the store and never the output; the config gains the profile and keeps other keys; re-running changes nothing; works with a fake store and a temp config.
 - Manual check: on a fresh machine, `rig setup` then a new container ticket reaches the input box with no login screen.
-
+- Also (field test 03, finding 2): when the host trusts an extra CA (`NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`), offer to add it to `docker.extra_ca_certs`.
 
 ### 89 · An agent cannot switch off rig's hooks from its own checkout
 - [ ] Done
@@ -1155,3 +1156,58 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: in a container, mount a rig-written managed settings file read-only where Claude Code reads it on Linux (`/etc/claude-code/managed-settings.json`) that forbids turning hooks off; check what managed settings can enforce on 2.1.328 first. On the host, at least warn when a checkout's `.claude/settings*.json` sets these.
 - Tests: the managed settings mount is read-only and present in every agent container; a checkout setting `disableAllHooks` is reported.
 - Manual check: an agent that writes `disableAllHooks` into its checkout keeps reporting its state.
+
+### 90 · Build secrets for service Dockerfiles, and a failed service image stops its agent cleanly
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/90-build-secrets` · Depends: 81
+- Read: `docs/field-tests/03-private-node-app.md` finding 1; `internal/docker` (image builds); `internal/lifecycle/services.go`, `containeragent.go`
+- Build:
+  - `services[].build.secrets: [NAME, ...]`: each named secret (resolved like the ticket's `secrets`) is passed to the build as a BuildKit secret with that id (`--secret id=NAME,env=NAME` or the API equivalent). It never becomes a build argument, a layer or a log line.
+  - When a service's image fails to build, its agent is not attempted: the result says the agent did not start because the service image failed, and no TLS hint is printed unless the build output shows a certificate error.
+- Tests (fake Docker): the build request carries the secret by id, and its value appears in no argument, label or log; a failed service build skips the agent with that reason; the TLS hint only follows certificate errors.
+- Manual check: a Dockerfile with `RUN --mount=type=secret,id=NODE_AUTH_TOKEN` builds.
+
+### 91 · Files rig places in a checkout, ignored by git
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/91-checkout-files` · Depends: 84
+- Read: `docs/field-tests/03-private-node-app.md` finding 3; `docs/formats.md` §4, §7
+- Why: a project's `.npmrc` (or `.env` with references only) is untracked and ignored in the main repository, so a clone lacks it, and the agent had to write it. A clone also lacks the main repository's `.git/info/exclude`, so such a file is not ignored there and can be committed.
+- Build:
+  - `services[].files: [{path, from}]`: rig copies `from` (an absolute host path) to `path` inside the checkout at every start, and adds `path` to the checkout's `.git/info/exclude`. Refused, before anything is made, if `from` contains the value of a secret rig knows (the same check as task 73), or `path` leaves the checkout.
+  - A new clone gets the main repository's `.git/info/exclude` entries.
+- Tests: the file arrives and is ignored (`git status` clean); a secret value in `from` is refused by name; a path outside the checkout is refused; a clone inherits the main repository's excludes.
+- Manual check: a container agent runs `npm ci` with the private registry and no hand-written `.npmrc`.
+
+### 92 · The agent base image per service
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/92-agent-base-per-service` · Depends: 37
+- Read: `docs/field-tests/03-private-node-app.md` finding 5; `docs/formats.md` §4
+- Build: `services[].agent_base` (and ticket-level `agent_base`) override the global `docker.agent_base` for a service with no Dockerfile. Same validation as the global value.
+- Tests: service beats ticket beats global; the agent image is built on the chosen base.
+- Manual check: one ticket with a node service and a Go service, each agent with its own toolchain.
+
+### 93 · Remove agent images nothing uses
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/93-prune-agent-images` · Depends: 37
+- Read: `docs/field-tests/03-private-node-app.md` finding 6; `internal/lifecycle` agent images
+- Build: `rig reconcile` (and `--json`) lists `rig-agent:*` images that no ticket's agent uses and no current configuration would build, and removes them with `--prune`. Images in use are never removed.
+- Tests (fake Docker): an unused image is listed and pruned; one used by a running or stopped agent container is kept; without `--prune` nothing is removed.
+- Manual check: after a few tickets, `rig reconcile --prune` frees the old images.
+
+### 94 · Service profiles: a service's run details from a file, not repeated in every ticket
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/94-service-profiles` · Depends: 90, 91, 92
+- Read: `docs/field-tests/03-private-node-app.md`; `docs/formats.md` §4; manifest §5
+- Why: field test 03 needed a base image, a secret, a CA, a hand-written `.npmrc` and a plan telling the agent how to install and verify. All of that is the same for every ticket on that repository, and today each `ticket.yaml` would repeat it. The larger tool (jybe) will write these files at its init and prove them with a shakedown; rig only reads and runs them, and never decides what goes in one.
+- Build:
+  - A service profile file (YAML), holding the per-service fields that describe how to run it: `build` (with `secrets`, task 90), `agent_base` (task 92), `files` (task 91), `install`, `test` (the verify command), `start`, `internal_port`, `healthcheck`, `secrets`, `egress.allow`.
+  - `services[].profile: <path>`: absolute, or relative to the service's repository root. A ticket's own service fields override the profile's; lists replace, never merge.
+  - The profile may live anywhere the user chose (inside the repository, or beside other configuration); rig resolves the path at start and refuses a missing or invalid profile before anything is made, naming the file and the field.
+  - The agent's prompt gets the install and verify commands, so a plan no longer has to explain them.
+- Tests: fields come from the profile; ticket fields win; relative paths resolve against the repository; an invalid profile is refused by file and field before any checkout; secrets in a profile are names only (values that look like secrets are rejected, as in `env`).
+- Manual check: the field test 03 setup as one profile, and a ticket that names only the profile installs and verifies with no plan instructions.
