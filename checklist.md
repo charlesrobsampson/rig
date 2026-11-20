@@ -1243,3 +1243,6 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Tests: the screen is printed and nothing is run or typed; `--lines` limits the output; `--json` carries the screen; the same errors as attach when no agent runs.
 - Manual check: `rig attach <ticket> --read` on a running real agent shows its screen.
   - Passed 2026-11-20 (container, Claude Code 2.1.328): `--read --lines 12` showed the agent's reply and input box, `--read` printed the visible screen (40 lines), `--json` carried it as `screen`, and `messages.jsonl` stayed empty: nothing was typed.
+- Notes (as built):
+  - In a terminal `--read` opens a pager (`$PAGER`, else `less -R -F +G`, at the end) on the agent's last 2000 lines, so a long history does not flood the window; `--no-pager`, `--json`, or output that is not a terminal prints instead. The terminal check is shared with the TUI (`app.interactive`).
+  - An empty screen prints a hint to restart the daemon: a daemon from before this task ignores `read` and sends none.

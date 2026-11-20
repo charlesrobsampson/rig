@@ -37,9 +37,11 @@ type deps struct {
 	gh git.GH
 	// exec replaces this process with a command (rig attach); nil means syscall.Exec.
 	exec func(argv []string) error
-	// isTerminal says whether to show the TUI (nil means: stdin and stdout are
+	// isTerminal says whether a person is at a terminal, for the TUI and pagers (nil means: stdin and stdout are
 	// terminals); runTUI shows it (nil means the real one).
 	isTerminal func() bool
+	// page shows text through a pager (rig attach --read); nil means $PAGER, else less.
+	page func(text string) error
 	// jiraHTTP replaces the HTTP client used to read Jira issues (tests).
 	jiraHTTP ticket.HTTPDoer
 	runTUI   func(ctx context.Context, o tui.Options) error

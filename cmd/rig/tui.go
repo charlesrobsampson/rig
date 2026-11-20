@@ -18,18 +18,18 @@ import (
 	"github.com/charlesrobsampson/rig/internal/tui"
 )
 
+// interactive says whether a person is at a terminal: stdin and stdout both are.
+func (a *app) interactive() bool {
+	if a.deps.isTerminal != nil {
+		return a.deps.isTerminal()
+	}
+	return term.IsTerminal(os.Stdout.Fd()) && term.IsTerminal(os.Stdin.Fd())
+}
+
 // rootRun is bare `rig`: the TUI on a terminal, the same table as `rig list` anywhere
 // else (a pipe, a script, --json), so output stays scriptable.
 func (a *app) rootRun(cmd *cobra.Command, _ []string) error {
-	interactive := !a.json
-	if interactive {
-		if a.deps.isTerminal != nil {
-			interactive = a.deps.isTerminal()
-		} else {
-			interactive = term.IsTerminal(os.Stdout.Fd()) && term.IsTerminal(os.Stdin.Fd())
-		}
-	}
-	if !interactive {
+	if a.json || !a.interactive() {
 		return newListCmd(a).RunE(cmd, nil)
 	}
 	opts := tui.Options{Source: daemonSource{a}, Version: version}
