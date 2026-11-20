@@ -262,7 +262,12 @@ func (m *Manager) Attach(ctx context.Context, p api.AgentAttachParams) (api.Agen
 	if ss.Agent.PaneID == "" || m.opts.Backend == nil {
 		return api.AgentAttachResult{}, &api.Error{Code: api.CodeNotRunning, Message: fmt.Sprintf("service %q has no agent running; start the ticket first", service)}
 	}
-	cmd, err := m.opts.Backend.Attach(ctx, terminal.PaneID(ss.Agent.PaneID))
+	pane := terminal.PaneID(ss.Agent.PaneID)
+	cmd, err := m.opts.Backend.Attach(ctx, pane)
+	var screen string
+	if err == nil && p.Read {
+		screen, err = m.opts.Backend.Read(ctx, pane, p.Lines)
+	}
 	switch {
 	case errors.Is(err, terminal.ErrNotFound):
 		return api.AgentAttachResult{}, &api.Error{Code: api.CodeNotRunning, Message: fmt.Sprintf("the agent of service %q is no longer running; start the ticket again", service)}
@@ -271,5 +276,5 @@ func (m *Manager) Attach(ctx context.Context, p api.AgentAttachParams) (api.Agen
 	case err != nil:
 		return api.AgentAttachResult{}, err
 	}
-	return api.AgentAttachResult{Service: service, Command: cmd}, nil
+	return api.AgentAttachResult{Service: service, Command: cmd, Screen: screen}, nil
 }

@@ -71,6 +71,7 @@ rig start add-locale
 # 5. See and talk to what is running.
 rig                       # the TUI (or `rig list` for a table)
 rig attach add-locale     # jump into the agent's terminal
+rig attach add-locale --read   # or just look: its recent output in a pager, nothing typed
 rig msg add-locale api "also cover the 404 case"
 
 # 6. Move the work through its phases; gates need you.

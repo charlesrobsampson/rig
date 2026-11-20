@@ -1234,7 +1234,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Manual check: the field test 03 setup as one profile, and a ticket that names only the profile installs and verifies with no plan instructions.
 
 ### 95 · A read-only look at an agent's screen
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/95-attach-read` · Depends: none
 - Read: `docs/formats.md` §8 (`agent.attach`)
@@ -1242,3 +1242,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: `rig attach <ticket> [service] --read` prints the agent's screen and exits; `--lines N` prints the last N lines instead of what is visible. Nothing is typed into the pane. `agent.attach` gains params `read` and `lines` and result `screen` (additive).
 - Tests: the screen is printed and nothing is run or typed; `--lines` limits the output; `--json` carries the screen; the same errors as attach when no agent runs.
 - Manual check: `rig attach <ticket> --read` on a running real agent shows its screen.
+  - Passed 2026-11-20 (container, Claude Code 2.1.328): `--read --lines 12` showed the agent's reply and input box, `--read` printed the visible screen (40 lines), `--json` carried it as `screen`, and `messages.jsonl` stayed empty: nothing was typed.
+- Notes (as built):
+  - In a terminal `--read` opens a pager (`$PAGER`, else `less -R -F +G`, at the end) on the agent's last 2000 lines, so a long history does not flood the window; `--no-pager`, `--json`, or output that is not a terminal prints instead. The terminal check is shared with the TUI (`app.interactive`).
+  - An empty screen prints a hint to restart the daemon: a daemon from before this task ignores `read` and sends none.

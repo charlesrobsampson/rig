@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"encoding/json"
 	"strings"
@@ -113,6 +114,85 @@ func TestAttachRunsTheBackendsCommand(t *testing.T) {
 	}
 }
 
+func TestAttachReadShowsTheScreenWithoutTouchingThePane(t *testing.T) {
+	_, d, repo, term := newEnvWithTerminal(t)
+	newTicket(t, d, "demo", repo)
+	rig(t, d, "start", "demo", "--sandbox", "host")
+	panes, _ := term.List(ctx)
+	term.Print(panes[0].ID, "line one\nline two\nline three\n")
+	d.exec = func([]string) error { t.Error("--read ran the attach command"); return nil }
+
+	stdout, stderr, code := rig(t, d, "attach", "demo", "--read")
+	if code != 0 || !strings.Contains(stdout, "line one") || !strings.Contains(stdout, "line three") {
+		t.Fatalf("code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	stdout, _, _ = rig(t, d, "attach", "demo", "svc1", "--read", "--lines", "1")
+	if strings.Contains(stdout, "line two") || !strings.Contains(stdout, "line three") {
+		t.Errorf("--lines 1: %q", stdout)
+	}
+	stdout, _, _ = rig(t, d, "attach", "demo", "--read", "--json")
+	var res api.AgentAttachResult
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil || !strings.Contains(res.Screen, "line two") {
+		t.Errorf("--read --json: %q, %v", stdout, err)
+	}
+	stdout, _, _ = rig(t, d, "attach", "demo", "--json")
+	if strings.Contains(stdout, "screen") {
+		t.Errorf("attach without --read carries the screen: %q", stdout)
+	}
+	if in := term.Input(panes[0].ID); len(in) != 0 {
+		t.Errorf("reading typed into the pane: %v", in)
+	}
+	if _, stderr, code := rig(t, d, "attach", "demo", "--lines", "3"); code != 2 || !strings.Contains(stderr, "--read") {
+		t.Errorf("--lines without --read: code %d, %q", code, stderr)
+	}
+}
+
+func TestAttachReadPagesTheScrollbackInATerminal(t *testing.T) {
+	_, d, repo, term := newEnvWithTerminal(t)
+	newTicket(t, d, "demo", repo)
+	rig(t, d, "start", "demo", "--sandbox", "host")
+	panes, _ := term.List(ctx)
+	var screen strings.Builder
+	for i := 1; i <= 2500; i++ {
+		fmt.Fprintf(&screen, "line %d\n", i)
+	}
+	term.Print(panes[0].ID, screen.String())
+	d.isTerminal = func() bool { return true }
+	var paged []string
+	d.page = func(text string) error { paged = append(paged, text); return nil }
+
+	stdout, stderr, code := rig(t, d, "attach", "demo", "--read")
+	if code != 0 || len(paged) != 1 || stdout != "" {
+		t.Fatalf("code %d, paged %d times, stdout %q, stderr %q", code, len(paged), stdout, stderr)
+	}
+	if !strings.Contains(paged[0], "line 2500") || !strings.Contains(paged[0], "line 501\n") || strings.Contains(paged[0], "line 500\n") {
+		t.Errorf("the pager did not get the last 2000 lines")
+	}
+
+	paged = nil
+	rig(t, d, "attach", "demo", "--read", "--lines", "3")
+	if len(paged) != 1 || strings.Count(paged[0], "line") != 3 {
+		t.Errorf("--lines 3 paged %q", paged)
+	}
+	paged = nil
+	if stdout, _, _ := rig(t, d, "attach", "demo", "--read", "--json"); len(paged) != 0 || !strings.Contains(stdout, `line 1\n`) {
+		t.Errorf("--json paged (%d) or did not carry the whole screen", len(paged))
+	}
+	paged = nil
+	if stdout, _, _ := rig(t, d, "attach", "demo", "--read", "--no-pager"); len(paged) != 0 || !strings.Contains(stdout, "line 2500") {
+		t.Errorf("--no-pager paged (%d) or printed nothing", len(paged))
+	}
+}
+
+func TestAttachReadSaysWhenTheScreenIsEmpty(t *testing.T) {
+	_, d, repo, _ := newEnvWithTerminal(t)
+	newTicket(t, d, "demo", repo)
+	rig(t, d, "start", "demo", "--sandbox", "host")
+	if _, stderr, code := rig(t, d, "attach", "demo", "--read"); code != 0 || !strings.Contains(stderr, "rig daemon stop") {
+		t.Errorf("code %d, stderr %q", code, stderr)
+	}
+}
+
 func TestAttachErrors(t *testing.T) {
 	_, d, repo, _ := newEnvWithTerminal(t)
 	newTicket(t, d, "demo", repo)
@@ -124,6 +204,7 @@ func TestAttachErrors(t *testing.T) {
 		msg  string
 	}{
 		{"no agent yet", []string{"attach", "demo"}, 4, "start the ticket"},
+		{"no agent yet, read", []string{"attach", "demo", "--read"}, 4, "start the ticket"},
 		{"an unknown service", []string{"attach", "demo", "nope"}, 5, "nope"},
 		{"an unknown ticket", []string{"attach", "ghost"}, 5, "ghost"},
 		{"no arguments", []string{"attach"}, 2, ""},
