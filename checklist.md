@@ -949,7 +949,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 75 · Tell the agent when the phase changes
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/75-phase-notice` · Depends: 72
 - Read: `docs/field-tests/01-host-dummy-tickets.md` finding 5; `docs/formats.md` §13
 - Build: On `phase.changed`, type a notice into each running agent with the new phase and that phase's rules (including the manual-tests rules from implement on), following the injection rules used for contract notices (never into a blocked agent, logged in messages.jsonl).
