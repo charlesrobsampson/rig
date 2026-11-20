@@ -44,6 +44,9 @@ type Checkout interface {
 	// clone (refusing to rewrite the main repo's branch unless force), nothing for a
 	// worktree, whose branch already lives there.
 	Import(ctx context.Context, force bool) error
+	// Place writes a file the agent needs into the checkout and makes git ignore it,
+	// never following a link (docs/formats.md §4 services[].files).
+	Place(ctx context.Context, rel string, data []byte) error
 	// Remove deletes the checkout, keeping the branch. Without force it refuses with a
 	// *DirtyError while any work in it would be lost. Removing a missing checkout is a no-op.
 	Remove(ctx context.Context, force bool) error

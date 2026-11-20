@@ -82,3 +82,20 @@ func (r *Resolver) describe() string {
 	}
 	return strings.Join(parts, ", then ")
 }
+
+// Leaked returns the name of a secret whose value appears in data, checking names in
+// order so the answer is stable. Values shorter than 8 bytes are skipped: they would
+// match by chance and say nothing.
+func Leaked(data []byte, values map[string]string) (string, bool) {
+	names := make([]string, 0, len(values))
+	for name := range values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if v := values[name]; len(v) >= 8 && strings.Contains(string(data), v) {
+			return name, true
+		}
+	}
+	return "", false
+}

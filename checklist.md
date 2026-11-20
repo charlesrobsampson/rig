@@ -1175,7 +1175,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Manual check: a Dockerfile with `RUN --mount=type=secret,id=NODE_AUTH_TOKEN` builds.
 
 ### 91 · Files rig places in a checkout, ignored by git
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/91-checkout-files` · Depends: 84
 - Read: `docs/field-tests/03-private-node-app.md` finding 3; `docs/formats.md` §4, §7
@@ -1184,7 +1184,12 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - `services[].files: [{path, from}]`: rig copies `from` (an absolute host path) to `path` inside the checkout at every start, and adds `path` to the checkout's `.git/info/exclude`. Refused, before anything is made, if `from` contains the value of a secret rig knows (the same check as task 73), or `path` leaves the checkout.
   - A new clone gets the main repository's `.git/info/exclude` entries.
 - Tests: the file arrives and is ignored (`git status` clean); a secret value in `from` is refused by name; a path outside the checkout is refused; a clone inherits the main repository's excludes.
+- Notes (as built):
+  - `git.Checkout.Place(ctx, rel, data)` writes the file and makes git ignore it (`check-ignore` first; otherwise `/path` appended to the excludes file). A clone is agent-writable, so nothing there is followed: a link at the file is replaced, a linked directory or excludes file is refused, and the file is created with O_EXCL. A worktree's exclusion goes into the main repository's `info/exclude`, the only place git reads it from.
+  - `checkAgentConfig` also checks files (exists, regular, at most 1 MB, no secret value) before anything is made; `placeFiles` runs in `Start` after the checkouts are recorded and before services and agents. The secret check moved to `secrets.Leaked`, shared with task 73's templates.
+  - A clone made before this task does not have the main repository's excludes; placed files are still ignored, because they are added one by one.
 - Manual check: a container agent runs `npm ci` with the private registry and no hand-written `.npmrc`.
+  - Passed 2026-11-19 on a copy of the private Node app from field test 03 (container, node:24-slim base, proxy CA, NODE_AUTH_TOKEN from an env file). `files: [{path: .npmrc, from: <template with the ${NODE_AUTH_TOKEN} reference>}]`: the file was in the checkout before the agent started, ignored through the inherited `.git/info/exclude`, and `git status` stayed empty. `npm ci` and `npm run verify` both exited 0 with nothing written by hand. $0.07.
 
 ### 92 · The agent base image per service
 - [ ] Done

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -235,6 +236,11 @@ func provisionClone(ctx context.Context, spec Spec) (c Checkout, err error) {
 	if _, err := Trusted().Run(ctx, spec.Repo, "clone", "-q", "--shared", "--no-checkout", "--no-tags", source, spec.Path); err != nil {
 		return nil, err
 	}
+	// What the main repository ignores locally (an .npmrc, a .env.local) stays ignored in
+	// the clone, or the agent could commit it.
+	if err := inheritExcludes(ctx, spec.Repo, spec.Path); err != nil {
+		return nil, err
+	}
 	// From here on the directory is agent-writable territory: hardened runner only.
 	if _, err := Hardened().Run(ctx, spec.Path, "checkout", "-q", "-b", spec.Branch, start); err != nil {
 		return nil, err
@@ -271,4 +277,22 @@ func discard(path string, keepDir bool) {
 	for _, e := range entries {
 		os.RemoveAll(filepath.Join(path, e.Name()))
 	}
+}
+
+// inheritExcludes copies the main repository's info/exclude into a clone rig just made.
+func inheritExcludes(ctx context.Context, repo, clonePath string) error {
+	common, err := Trusted().Run(ctx, repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(filepath.Join(common, "info", "exclude"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Join(clonePath, ".git", "info"), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(clonePath, ".git", "info", "exclude"), data, 0o644)
 }

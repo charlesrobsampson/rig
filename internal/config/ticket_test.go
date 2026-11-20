@@ -123,6 +123,11 @@ func TestParseTicketRejectsInvalidTickets(t *testing.T) {
 		{"service missing name", "id: d\ntitle: T\nservices:\n  - {repo: /r, branch: b}\n", []string{"services[0].name"}},
 		{"bad service name", "id: d\ntitle: T\nservices:\n  - {name: API, repo: /r, branch: b}\n", []string{"services[0].name", "API"}},
 		{"relative repo", "id: d\ntitle: T\nservices:\n  - {name: api, repo: ../r, branch: b}\n", []string{"services[0].repo", "absolute"}},
+		{"file path outside the checkout", minimal + "    files: [{path: ../x, from: /f}]\n", []string{"services[0].files[0].path", "inside"}},
+		{"file path in .git", minimal + "    files: [{path: .git/config, from: /f}]\n", []string{"services[0].files[0].path", ".git"}},
+		{"absolute file path", minimal + "    files: [{path: /etc/x, from: /f}]\n", []string{"services[0].files[0].path"}},
+		{"relative file source", minimal + "    files: [{path: .npmrc, from: npmrc}]\n", []string{"services[0].files[0].from", "absolute"}},
+		{"the same file twice", minimal + "    files: [{path: .npmrc, from: /a}, {path: ./.npmrc, from: /b}]\n", []string{"services[0].files[1].path", "twice"}},
 		{"relative agent config", minimal + "agent_config: [roles]\n", []string{"agent_config[0]", "absolute"}},
 		{"duplicate service names", "id: d\ntitle: T\nservices:\n  - {name: api, repo: /r, branch: b}\n  - {name: api, repo: /s, branch: c, path: ./other}\n", []string{"duplicate name", "api"}},
 		{"service and dependency share a name", minimal + "dependencies:\n  - {name: api, image: x}\n", []string{"duplicate name", "api"}},
@@ -255,5 +260,15 @@ func TestParseTicketKeepsAnEmptyAgentConfigApartFromAnAbsentOne(t *testing.T) {
 	set, err := parse(t, minimal+"agent_config: [/roles/claude]\n")
 	if err != nil || len(set.AgentConfig) != 1 || set.AgentConfig[0] != "/roles/claude" {
 		t.Errorf("agent_config = %#v, %v", set.AgentConfig, err)
+	}
+}
+
+func TestParseTicketReadsServiceFiles(t *testing.T) {
+	got, err := parse(t, minimal+"    files: [{path: .npmrc, from: /secrets/npmrc}]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := got.Services[0].Files; len(f) != 1 || f[0].Path != ".npmrc" || f[0].From != "/secrets/npmrc" {
+		t.Errorf("files = %+v", f)
 	}
 }
