@@ -948,13 +948,18 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Passed 2026-11-19 (container, Claude Code 2.1.328): the plan-phase agent refined the plan, left its checkout untouched, journaled a `transition.request` ("Plan ready for approval"), and `rig list` showed `plan (app asks for implement)`. After `rig approve` and `rig phase`, the marker was gone. $0.05.
 
 ### 75 · Tell the agent when the phase changes
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/75-phase-notice` · Depends: 72
 - Read: `docs/field-tests/01-host-dummy-tickets.md` finding 5; `docs/formats.md` §13
 - Build: On `phase.changed`, type a notice into each running agent with the new phase and that phase's rules (including the manual-tests rules from implement on), following the injection rules used for contract notices (never into a blocked agent, logged in messages.jsonl).
 - Tests: notice typed after a forward and a backward move; not typed into a blocked agent (retried later); the text carries the new phase's rules.
+- Notes (as built):
+  - The lifecycle manager builds one notice per running agent (`Options.OnPhaseChanged`, called after every successful move), naming the ticket directory as that agent sees it; `harness.PhaseNotice` writes the same rules sections a prompt for the new phase has, plus the move and its reason.
+  - The new `phasenotify` package delivers them through the injector. Contract notices are dropped when refused; a phase notice is retried (15s, doubling to 5 minutes) while the agent is blocked, still starting, or timed out, until delivered, replaced by a newer move for that service, or the agent is gone.
+  - Contract rules are not repeated in the notice: they do not change with the phase.
 - Manual check: move a running real agent from plan to implement and see it start without being messaged.
+  - Passed 2026-11-20 (container, Claude Code 2.1.328): the plan-phase agent journaled a `transition.request`; after `rig approve` and `rig phase t75 implement`, `messages.jsonl` showed the notice delivered from `rig`, and without any `rig msg` the agent committed a failing test, then `greeting.txt`, then a docs commit, and wrote manual-tests.md. $0.10.
 
 ### 76 · Prompt rules: ticket files, committing, and a dirty-checkout warning
 - [x] Done

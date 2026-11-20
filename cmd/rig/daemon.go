@@ -29,6 +29,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/inject"
 	"github.com/charlesrobsampson/rig/internal/lifecycle"
+	"github.com/charlesrobsampson/rig/internal/phasenotify"
 	"github.com/charlesrobsampson/rig/internal/reconcile"
 	"github.com/charlesrobsampson/rig/internal/registry"
 	"github.com/charlesrobsampson/rig/internal/secrets"
@@ -160,10 +161,13 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		}})
 	injector := inject.New(inject.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Readiness: sup, Clock: clk})
 	notifier := &contractnotify.Notifier{Dir: g.TicketsDir(), Sender: injector, Logger: logger}
+	phaseNotifier := phasenotify.New(phasenotify.Options{Sender: injector, Clock: clk, Logger: logger})
+	defer phaseNotifier.Close()
 	lc = lifecycle.New(lifecycle.Options{
 		Dir: g.TicketsDir(), States: states, Global: g, Bus: bus, Clock: clk,
 		Backend: backend, BackendName: g.Defaults.TerminalBackend, RigBinary: rigBinary, AgentEnv: agentEnv, Docker: dk, Secrets: secretValues(g, a.deps.keychain), GH: a.deps.gh,
 		OnContractResolved: notifier.Resolved,
+		OnPhaseChanged:     phaseNotifier.PhaseChanged,
 	})
 	daemon.RegisterLifecycleHandlers(srv, lc)
 	summaries.SetInputs(summaryInputs{lc: lc, reg: reg})

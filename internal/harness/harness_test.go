@@ -433,3 +433,42 @@ func TestThePromptSaysHowToRequestAPhase(t *testing.T) {
 		}
 	}
 }
+
+func TestAPhaseNoticeCarriesTheNewPhasesRules(t *testing.T) {
+	r := harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhaseImplement, TicketDir: "/host/t", AgentTicketDir: "/rig/ticket"}
+	notice := harness.PhaseNotice(r, domain.PhasePlan, "")
+	for _, want := range []string{
+		"from plan to implement", "Current phase: implement.", "## This phase (implement)",
+		"Work through tasks.md", "Commit each change", "## manual-tests.md", "{{<service>.url}}",
+		"/rig/ticket), plan.md, tasks.md and manual-tests.md", `"transition.request"`,
+	} {
+		if !strings.Contains(notice, want) {
+			t.Errorf("notice lacks %q:\n%s", want, notice)
+		}
+	}
+	for _, unwanted := range []string{"Refine plan.md", "## plan.md", "## Journal", "Reason:"} {
+		if strings.Contains(notice, unwanted) {
+			t.Errorf("notice has %q:\n%s", unwanted, notice)
+		}
+	}
+
+	back := harness.PhaseNotice(harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhasePlan, TicketDir: "/t"}, domain.PhaseReview, "the API  shape\nchanged")
+	for _, want := range []string{"from review back to plan", "Reason: the API shape changed.", "Refine plan.md"} {
+		if !strings.Contains(back, want) {
+			t.Errorf("backward notice lacks %q:\n%s", want, back)
+		}
+	}
+	if strings.Contains(back, "## manual-tests.md") || strings.Contains(back, "Commit each change") {
+		t.Errorf("a plan notice carries later phases' rules:\n%s", back)
+	}
+}
+
+func TestThePromptStillCarriesTheSameRulesAsANotice(t *testing.T) {
+	r := harness.Request{Ticket: ticket("api", "web"), Service: "api", Phase: domain.PhaseTest, TicketDir: ticketDir(t, artifacts), Dir: "/w"}
+	prompt := promptOf(launch(t, r))
+	notice := harness.PhaseNotice(r, domain.PhaseImplement, "")
+	rules := notice[strings.Index(notice, "## Rules"):]
+	if !strings.Contains(prompt, rules) {
+		t.Errorf("the prompt's rules differ from the notice's:\nnotice rules:\n%s\nprompt:\n%s", rules, prompt)
+	}
+}

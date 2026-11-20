@@ -9,6 +9,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/gates"
 	"github.com/charlesrobsampson/rig/internal/git"
+	"github.com/charlesrobsampson/rig/internal/harness"
 	"github.com/charlesrobsampson/rig/internal/state"
 )
 
@@ -134,6 +135,11 @@ func (m *Manager) moveLocked(l loaded, id, by string, to domain.Phase, reason, s
 	}
 
 	m.publish(api.EventPhaseChanged, id, "", api.PhaseChangedData{From: made.From, To: made.To, By: by, Reason: reason})
+	if m.opts.OnPhaseChanged != nil {
+		if notices := phaseNotices(l, made); len(notices) > 0 {
+			m.opts.OnPhaseChanged(id, notices)
+		}
+	}
 	res, err := m.reg.Get(id)
 	if err != nil {
 		return api.TransitionResult{}, err
@@ -207,4 +213,22 @@ func planGateRequired(m *Manager, l loaded) bool {
 		}
 	}
 	return false
+}
+
+// phaseNotices tell each running agent about a move, with the ticket files named where
+// that agent sees them.
+func phaseNotices(l loaded, made state.Transition) map[string]string {
+	notices := map[string]string{}
+	for _, svc := range l.ticket.Services {
+		agent := l.state.Services[svc.Name].Agent
+		if agent.PaneID == "" || agent.State == domain.AgentExited {
+			continue
+		}
+		req := harness.Request{Ticket: l.ticket, Service: svc.Name, Phase: made.To, TicketDir: l.dir}
+		if agent.ContainerID != "" {
+			req.AgentTicketDir = agentTicketDir
+		}
+		notices[svc.Name] = harness.PhaseNotice(req, made.From, made.Reason)
+	}
+	return notices
 }

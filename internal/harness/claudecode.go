@@ -9,6 +9,7 @@ import (
 
 	"github.com/charlesrobsampson/rig/internal/config"
 	"github.com/charlesrobsampson/rig/internal/domain"
+	"github.com/charlesrobsampson/rig/internal/state"
 )
 
 // ClaudeCode launches Claude Code interactively with hooks that report its state.
@@ -177,22 +178,7 @@ func Prompt(r Request) (string, error) {
 	fmt.Fprintf(&b, "You are the agent for service %q of rig ticket %s: %s.\n", r.Service, r.Ticket.ID, r.Ticket.Title)
 	fmt.Fprintf(&b, "Current phase: %s.\n\n", r.Phase)
 
-	b.WriteString("## Rules\n")
-	for _, rule := range commonRules(r) {
-		b.WriteString("- " + rule + "\n")
-	}
-	if rules, ok := phaseRules[r.Phase]; ok {
-		b.WriteString("\n## This phase (" + string(r.Phase) + ")\n")
-		for _, rule := range rules {
-			b.WriteString("- " + rule + "\n")
-		}
-	}
-	if !beforeImplement(r.Phase) {
-		b.WriteString("\n## manual-tests.md\n")
-		for _, rule := range manualTestsRules {
-			b.WriteString("- " + rule + "\n")
-		}
-	}
+	writeRules(&b, r)
 
 	b.WriteString("\n## Journal\n")
 	for _, rule := range journalRules(hookCommandOf(r)) {
@@ -218,6 +204,45 @@ func Prompt(r Request) (string, error) {
 		fmt.Fprintf(&b, "\n## %s\n\n%s\n", name, indent(string(content)))
 	}
 	return b.String(), nil
+}
+
+// PhaseNotice is what an agent that is already running is told when its ticket moves
+// from one phase to r.Phase: the move, and the rules that apply now. Its prompt was
+// built at launch, so without this it would carry on under the old phase's rules.
+func PhaseNotice(r Request, from domain.Phase, reason string) string {
+	var b strings.Builder
+	direction := "to"
+	if state.IsBackward(from, r.Phase) {
+		direction = "back to"
+	}
+	fmt.Fprintf(&b, "This ticket moved from %s %s %s.", from, direction, r.Phase)
+	if reason = strings.Join(strings.Fields(reason), " "); reason != "" {
+		fmt.Fprintf(&b, " Reason: %s.", strings.TrimSuffix(reason, "."))
+	}
+	fmt.Fprintf(&b, " Current phase: %s. The rules below replace the ones you were given before; carry on under them now.\n\n", r.Phase)
+	writeRules(&b, r)
+	return b.String()
+}
+
+// writeRules writes the rules for r.Phase: the ones every agent gets, the phase's own,
+// and how to write manual-tests.md once there is something to test by hand.
+func writeRules(b *strings.Builder, r Request) {
+	b.WriteString("## Rules\n")
+	for _, rule := range commonRules(r) {
+		b.WriteString("- " + rule + "\n")
+	}
+	if rules, ok := phaseRules[r.Phase]; ok {
+		b.WriteString("\n## This phase (" + string(r.Phase) + ")\n")
+		for _, rule := range rules {
+			b.WriteString("- " + rule + "\n")
+		}
+	}
+	if !beforeImplement(r.Phase) {
+		b.WriteString("\n## manual-tests.md\n")
+		for _, rule := range manualTestsRules {
+			b.WriteString("- " + rule + "\n")
+		}
+	}
 }
 
 // commonRules name the ticket files the agent may edit, where it sees them: the plan
