@@ -22,6 +22,7 @@ const (
 	NeedContractChange                    // a proposed contract change awaits a decision
 	NeedError                             // the ticket's files or a service are broken
 	NeedDrift                             // what exists no longer matches state.json
+	NeedRequest                           // an agent asked to move the ticket to another phase
 	NeedGate                              // an approval stands between the ticket and its next phase
 )
 
@@ -38,6 +39,8 @@ func (n Need) Marker() string {
 		return "ERROR"
 	case NeedDrift:
 		return "DRIFT"
+	case NeedRequest:
+		return "REQUEST"
 	case NeedGate:
 		return "APPROVE"
 	}
@@ -68,6 +71,9 @@ func Needs(t api.TicketSummary) []Need {
 	}
 	if len(t.Drift) > 0 {
 		out = append(out, NeedDrift)
+	}
+	if t.PhaseRequest != nil {
+		out = append(out, NeedRequest)
 	}
 	if t.PendingGate != "" {
 		out = append(out, NeedGate)
@@ -339,8 +345,11 @@ func needsCell(t api.TicketSummary) string {
 	var parts []string
 	for _, n := range Needs(t) {
 		m := n.Marker()
-		if n == NeedGate {
+		switch n {
+		case NeedGate:
 			m = fmt.Sprintf("%s %s", m, t.PendingGate)
+		case NeedRequest:
+			m = fmt.Sprintf("%s %s (%s)", m, t.PhaseRequest.To, t.PhaseRequest.Service)
 		}
 		parts = append(parts, m)
 	}

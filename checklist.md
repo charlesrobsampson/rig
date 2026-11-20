@@ -940,6 +940,10 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Read: `docs/field-tests/01-host-dummy-tickets.md` findings 3, 4; `docs/formats.md` §8 (`transition.request`), §14
 - Build: A record of kind `transition.request` with `data: {"to": "<phase>", "reason"?}`, from either sandbox, is turned by the daemon into the existing `transition.request` (never an approval). The prompt names it in each phase's rules. A pending request shows as APPROVE on `rig list`, `ticket.list` and the TUI until a human acts.
 - Tests: a record becomes a request; a bad `to` is rejected with a `record.rejected` reason; a request never moves the phase or approves a gate; the summary shows it pending, then clears it after `phase.set`.
+- Notes (as built):
+  - "Turned into the existing `transition.request`" was not followed literally: that API method moves the ticket when the gate is already approved, and this task's tests say a request never moves the phase. Instead the daemon records `state.phase_request` (`AskForPhase`), and a human acts with `rig approve` / `rig phase`; any move clears it. The `transition.request` API method is unchanged.
+  - `rig list` already had no APPROVE column (only the TUI shows needs), and the TUI shows APPROVE for the whole plan phase from the start, so a request gets its own marker: `(svc asks for implement)` on `rig list`, `REQUEST implement (svc)` in the TUI, ranked above APPROVE. New event `phase.requested`.
+  - The supervisor hands both sandboxes' records to `Options.PhaseRequest`; its error becomes a `record.rejected` record. The common prompt rule names the record and says to stop and wait.
 - Manual check: a real agent in plan asks for implement and the request shows on `rig list`.
 
 ### 75 · Tell the agent when the phase changes

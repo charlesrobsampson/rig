@@ -106,6 +106,7 @@ Shape per manifest §5, plus:
 - `push.status`: `pending | done | failed`.
 - `contract.pending` is true while some proposal is open; `agreed_hash` is the hash of the agreed section as rig last knew it to be right (set from the template when the ticket is created; follows edits freely during the `plan` phase); `seen` lists the proposal ids already announced; `resolved` lists proposals resolved through rig (their `contract.resolved` event was already published, so the file watcher skips them); `violation` is non-empty after the agreed section was edited directly once the plan phase is over, and stays until it is resolved.
 - `egress_network` is present only in `network_mode: internal` (the proxy's outward network); absent otherwise.
+- `phase_request` (absent when none): `{to, service, reason?, at}`, an agent's open request to move the ticket, made through its journal (§14). It never moves the phase or approves a gate; any phase move clears it. Ticket summaries carry it as `phase_request` `{to, service, reason?}`; `rig list` shows `(<service> asks for <phase>)` after the phase, and the TUI a `REQUEST <phase> (<service>)` marker, ranked just above APPROVE.
 - Writes are atomic (temp file + rename) and serialized per ticket.
 
 ## 6. Lifecycle rules
@@ -181,6 +182,7 @@ Envelope: `{"type":"phase.changed","ticket":"ticket-412","service":"","at":"..."
 | `ticket.created`, `ticket.started`, `ticket.stopped` | `{}` |
 | `service.status` | `{"status":"running"}` |
 | `phase.changed` | `{"from","to","by","reason"}` |
+| `phase.requested` | `{"to","reason"?}`: an agent asked to move the ticket (`service` is the agent's) |
 | `gate.approved` | `{"gate","service"}` |
 | `agent.cost` | `{"usd"}`: an agent's running cost changed by at least a cent |
 | `agent.state` | `{"state","previous"}` |
@@ -259,5 +261,7 @@ A ticket's journal is what its agents chose to record: feedback about rig or the
 **`journal.jsonl`** (in the ticket directory, 0600, one JSON object per line, append-only): `{at, ticket, service, source, kind, text?, data?}`. `source` is `container`, `host`, or `rig`. rig writes a `record.rejected` record (source `rig`, `text` saying why, `data: {"line": <first 200 bytes>}`) for each malformed record a container agent wrote, so a mistake is visible instead of lost. Readers skip a damaged line.
 
 **Exactly once:** the daemon journals the complete record lines of each events file from the offset saved in `journal.offsets.json` (`{"<service>": <byte offset>}`), then saves the new offset, so a restarted daemon neither loses nor repeats records (a crash between the two repeats them rather than losing them). A file shorter than its offset was truncated and is read from the start. Unlike states, records are not reduced to the last one when a file is first seen.
+
+**Phase requests:** a record of kind `transition.request` with `data: {"to": "<phase>", "reason"?: "..."}`, from either sandbox, is journaled as usual and then recorded as the ticket's `phase_request` (§5). A missing or unknown `to`, or a request for the phase the ticket is already in, adds a `record.rejected` record saying why. The prompt's common rules name this record.
 
 **Trust:** records are what an agent said, not facts rig checked. rig guarantees who wrote them and when, not that they are true, and does not scrub them: an agent that holds a secret can write it into a record.

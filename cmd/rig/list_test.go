@@ -181,3 +181,39 @@ func TestListShowsAPendingContractChangeAndADirectEditOfTheAgreedSection(t *test
 		t.Errorf("--json lacks contract_violation: %s", jsonOut)
 	}
 }
+
+func TestListShowsAnAgentsPhaseRequest(t *testing.T) {
+	home, d, repo := newEnv(t)
+	newTicket(t, d, "demo", repo)
+	statePath := filepath.Join(home, "tickets", "demo", "state.json")
+	raw, _ := os.ReadFile(statePath)
+	var st map[string]any
+	json.Unmarshal(raw, &st)
+	st["phase_request"] = map[string]any{"to": "implement", "service": "svc1", "at": "2026-11-19T00:00:00Z"}
+	out, _ := json.Marshal(st)
+	os.WriteFile(statePath, out, 0o600)
+
+	if listing, _, code := rig(t, d, "list"); code != 0 || !strings.Contains(listing, "plan (svc1 asks for implement)") {
+		t.Errorf("code %d, list:\n%s", code, listing)
+	}
+}
+
+func TestAnAgentsTransitionRequestRecordShowsOnList(t *testing.T) {
+	_, d, repo := newEnv(t)
+	newTicket(t, d, "demo", repo)
+	t.Setenv("RIG_TICKET", "demo")
+	t.Setenv("RIG_SERVICE", "svc1")
+	if _, stderr, code := rig(t, d, "agent-event", `{"kind":"transition.request","data":{"to":"implement","reason":"plan ready"}}`); code != 0 {
+		t.Fatalf("agent-event: %s", stderr)
+	}
+	if listing, _, _ := rig(t, d, "list"); !strings.Contains(listing, "plan (svc1 asks for implement)") {
+		t.Errorf("list:\n%s", listing)
+	}
+	if _, stderr, code := rig(t, d, "approve", "demo", "plan_approval"); code != 0 {
+		t.Fatal(stderr)
+	}
+	rig(t, d, "phase", "demo", "implement")
+	if listing, _, _ := rig(t, d, "list"); strings.Contains(listing, "asks for") {
+		t.Errorf("the request stayed after the move:\n%s", listing)
+	}
+}

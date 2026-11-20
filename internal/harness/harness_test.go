@@ -424,3 +424,12 @@ func TestThePromptSaysToCommitAndWhy(t *testing.T) {
 		t.Error("the plan phase must say the checkout stays as it is")
 	}
 }
+
+func TestThePromptSaysHowToRequestAPhase(t *testing.T) {
+	prompt := promptOf(launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhasePlan, TicketDir: ticketDir(t, artifacts), Dir: "/w", HookCommand: "rig agent-event"}))
+	for _, want := range []string{`"transition.request"`, `{"to": "<phase>"`, "Request the implement phase"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("prompt lacks %q", want)
+		}
+	}
+}

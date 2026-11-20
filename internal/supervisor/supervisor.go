@@ -41,6 +41,9 @@ type Options struct {
 	HookTTL time.Duration
 	// MaxBackoff caps the wait after repeated backend failures (default 30s).
 	MaxBackoff time.Duration
+	// PhaseRequest receives an agent's journal record of kind transition.request, for a
+	// human to act on; its error is journaled as record.rejected. Nil ignores requests.
+	PhaseRequest func(ticket, service string, to domain.Phase, reason string) error
 }
 
 type Supervisor struct {
@@ -412,7 +415,11 @@ func (s *Supervisor) journalEvents(ticket, service string, complete []byte) {
 			s.rejectRecord(ticketDir, ticket, service, line, err)
 			continue
 		}
-		s.appendRecord(ticketDir, ticket, service, api.JournalSourceContainer, entry)
+		if s.appendRecord(ticketDir, ticket, service, api.JournalSourceContainer, entry) == nil {
+			if err := s.askForPhase(ticket, service, entry); err != nil {
+				s.rejectRecord(ticketDir, ticket, service, line, err)
+			}
+		}
 	}
 	if err := journal.SetOffset(ticketDir, service, int64(len(complete))); err != nil {
 		s.opts.Logger.Warn("save the journal offset", "ticket", ticket, "service", service, "err", err)
@@ -468,7 +475,43 @@ func (s *Supervisor) Record(ctx context.Context, p api.AgentRecordParams) error 
 	}
 	s.journalMu.Lock()
 	defer s.journalMu.Unlock()
-	return s.appendRecord(filepath.Join(s.opts.Dir, p.Ticket), p.Ticket, p.Service, api.JournalSourceHost, entry)
+	ticketDir := filepath.Join(s.opts.Dir, p.Ticket)
+	if err := s.appendRecord(ticketDir, p.Ticket, p.Service, api.JournalSourceHost, entry); err != nil {
+		return err
+	}
+	if err := s.askForPhase(p.Ticket, p.Service, entry); err != nil {
+		line, _ := json.Marshal(entry)
+		s.rejectRecord(ticketDir, p.Ticket, p.Service, string(line), err)
+	}
+	return nil
+}
+
+// TransitionRequestKind is the record kind an agent leaves to ask for a phase
+// (docs/formats.md §14).
+const TransitionRequestKind = "transition.request"
+
+// askForPhase hands a transition.request record on; any other record is left alone.
+func (s *Supervisor) askForPhase(ticket, service string, e journal.Entry) error {
+	if e.Kind != TransitionRequestKind || s.opts.PhaseRequest == nil {
+		return nil
+	}
+	var d struct {
+		To     string `json:"to"`
+		Reason string `json:"reason"`
+	}
+	if len(e.Data) > 0 {
+		if err := json.Unmarshal(e.Data, &d); err != nil {
+			return fmt.Errorf("a transition.request needs data like {\"to\": \"implement\", \"reason\": \"...\"}: %v", err)
+		}
+	}
+	if d.To == "" {
+		return errors.New(`a transition.request needs data like {"to": "implement", "reason": "..."}`)
+	}
+	to := domain.Phase(d.To)
+	if !to.Valid() {
+		return fmt.Errorf("%q is not a phase (plan, implement, test, review, push, done)", d.To)
+	}
+	return s.opts.PhaseRequest(ticket, service, to, d.Reason)
 }
 
 // Journal handles journal.list: the records of one ticket, or of every ticket.

@@ -339,3 +339,18 @@ func TestSummariesCarryTheAISummaryWhenOneIsConfigured(t *testing.T) {
 		t.Error("ticket.get lacks the summary")
 	}
 }
+
+func TestSummariesCarryAnAgentsPhaseRequest(t *testing.T) {
+	f := newFixture(t)
+	f.writeYAML("alpha", yaml("alpha", "A", "api"))
+	f.writeState("alpha", state.State{Phase: domain.PhasePlan, PhaseRequest: &state.PhaseRequest{To: domain.PhaseImplement, Service: "api", Reason: "plan ready"}})
+	f.writeYAML("beta", yaml("beta", "B", "api"))
+	f.writeState("beta", state.State{Phase: domain.PhasePlan})
+	got := f.list()
+	if r := got[0].PhaseRequest; r == nil || r.To != domain.PhaseImplement || r.Service != "api" || r.Reason != "plan ready" {
+		t.Errorf("alpha's request = %+v", r)
+	}
+	if got[1].PhaseRequest != nil {
+		t.Errorf("beta has no request, got %+v", got[1].PhaseRequest)
+	}
+}

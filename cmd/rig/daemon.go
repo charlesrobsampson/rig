@@ -153,10 +153,14 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	if a.configPath != "" {
 		agentEnv["RIG_CONFIG"] = a.configPath
 	}
-	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Logger: logger, Interval: time.Second})
+	var lc *lifecycle.Manager // set below; the supervisor starts polling only after it is
+	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Logger: logger, Interval: time.Second,
+		PhaseRequest: func(ticket, service string, to domain.Phase, reason string) error {
+			return lc.AskForPhase(ticket, service, to, reason)
+		}})
 	injector := inject.New(inject.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Readiness: sup, Clock: clk})
 	notifier := &contractnotify.Notifier{Dir: g.TicketsDir(), Sender: injector, Logger: logger}
-	lc := lifecycle.New(lifecycle.Options{
+	lc = lifecycle.New(lifecycle.Options{
 		Dir: g.TicketsDir(), States: states, Global: g, Bus: bus, Clock: clk,
 		Backend: backend, BackendName: g.Defaults.TerminalBackend, RigBinary: rigBinary, AgentEnv: agentEnv, Docker: dk, Secrets: secretValues(g, a.deps.keychain), GH: a.deps.gh,
 		OnContractResolved: notifier.Resolved,

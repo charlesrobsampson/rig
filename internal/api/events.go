@@ -16,6 +16,7 @@ const (
 	EventTicketStopped     EventType = "ticket.stopped"
 	EventServiceStatus     EventType = "service.status"
 	EventPhaseChanged      EventType = "phase.changed"
+	EventPhaseRequested    EventType = "phase.requested"
 	EventGateApproved      EventType = "gate.approved"
 	EventAgentState        EventType = "agent.state"
 	EventAgentCost         EventType = "agent.cost"
@@ -84,6 +85,12 @@ type AgentStateData struct {
 // cent (the harness reports far more often than that).
 type AgentCostData struct {
 	USD float64 `json:"usd"`
+}
+
+// PhaseRequestedData announces an agent's request to move its ticket; a human acts on it.
+type PhaseRequestedData struct {
+	To     domain.Phase `json:"to"`
+	Reason string       `json:"reason,omitempty"`
 }
 
 // AgentRecordData announces a record an agent added to its ticket's journal.
