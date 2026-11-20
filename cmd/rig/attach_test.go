@@ -113,6 +113,39 @@ func TestAttachRunsTheBackendsCommand(t *testing.T) {
 	}
 }
 
+func TestAttachReadShowsTheScreenWithoutTouchingThePane(t *testing.T) {
+	_, d, repo, term := newEnvWithTerminal(t)
+	newTicket(t, d, "demo", repo)
+	rig(t, d, "start", "demo", "--sandbox", "host")
+	panes, _ := term.List(ctx)
+	term.Print(panes[0].ID, "line one\nline two\nline three\n")
+	d.exec = func([]string) error { t.Error("--read ran the attach command"); return nil }
+
+	stdout, stderr, code := rig(t, d, "attach", "demo", "--read")
+	if code != 0 || !strings.Contains(stdout, "line one") || !strings.Contains(stdout, "line three") {
+		t.Fatalf("code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	stdout, _, _ = rig(t, d, "attach", "demo", "svc1", "--read", "--lines", "1")
+	if strings.Contains(stdout, "line two") || !strings.Contains(stdout, "line three") {
+		t.Errorf("--lines 1: %q", stdout)
+	}
+	stdout, _, _ = rig(t, d, "attach", "demo", "--read", "--json")
+	var res api.AgentAttachResult
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil || !strings.Contains(res.Screen, "line two") {
+		t.Errorf("--read --json: %q, %v", stdout, err)
+	}
+	stdout, _, _ = rig(t, d, "attach", "demo", "--json")
+	if strings.Contains(stdout, "screen") {
+		t.Errorf("attach without --read carries the screen: %q", stdout)
+	}
+	if in := term.Input(panes[0].ID); len(in) != 0 {
+		t.Errorf("reading typed into the pane: %v", in)
+	}
+	if _, stderr, code := rig(t, d, "attach", "demo", "--lines", "3"); code != 2 || !strings.Contains(stderr, "--read") {
+		t.Errorf("--lines without --read: code %d, %q", code, stderr)
+	}
+}
+
 func TestAttachErrors(t *testing.T) {
 	_, d, repo, _ := newEnvWithTerminal(t)
 	newTicket(t, d, "demo", repo)
@@ -124,6 +157,7 @@ func TestAttachErrors(t *testing.T) {
 		msg  string
 	}{
 		{"no agent yet", []string{"attach", "demo"}, 4, "start the ticket"},
+		{"no agent yet, read", []string{"attach", "demo", "--read"}, 4, "start the ticket"},
 		{"an unknown service", []string{"attach", "demo", "nope"}, 5, "nope"},
 		{"an unknown ticket", []string{"attach", "ghost"}, 5, "ghost"},
 		{"no arguments", []string{"attach"}, 2, ""},

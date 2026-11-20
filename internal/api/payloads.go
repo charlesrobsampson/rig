@@ -160,12 +160,18 @@ type AgentInfo struct {
 type AgentAttachParams struct {
 	Ticket  string `json:"ticket"`
 	Service string `json:"service,omitempty"`
+	// Read asks for the pane's text as well: a look that types nothing into it.
+	Read bool `json:"read,omitempty"`
+	// Lines is how many of the last lines to read; 0 means what is visible.
+	Lines int `json:"lines,omitempty"`
 }
 
-// AgentAttachResult is the command a human runs to see the agent's pane.
+// AgentAttachResult is the command a human runs to see the agent's pane, and with
+// Read, what the pane shows.
 type AgentAttachResult struct {
 	Service string   `json:"service"`
 	Command []string `json:"command"`
+	Screen  string   `json:"screen,omitempty"`
 }
 
 // LaunchInfo is what would start a service's agent. Environment values that come from
