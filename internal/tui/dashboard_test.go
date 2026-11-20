@@ -33,8 +33,9 @@ func TestRowsSortByAttentionThenByID(t *testing.T) {
 		{ID: "f-violation", ContractViolation: true},
 		{ID: "g-quiet"},
 		{ID: "h-blocked", Services: []api.ServiceSummary{svc("api", domain.AgentBlocked, 0)}},
+		{ID: "i-asked", Phase: domain.PhasePlan, PendingGate: domain.GatePlanApproval, PhaseRequest: &api.PhaseRequestSummary{To: domain.PhaseImplement, Service: "api"}},
 	})
-	if got, want := ids(d), "e-blocked,h-blocked,f-violation,d-contract,c-error,b-gate,a-quiet,g-quiet"; got != want {
+	if got, want := ids(d), "e-blocked,h-blocked,f-violation,d-contract,c-error,i-asked,b-gate,a-quiet,g-quiet"; got != want {
 		t.Errorf("order = %s\nwant    %s", got, want)
 	}
 }
@@ -52,6 +53,7 @@ func TestEveryNeedRendersItsMarker(t *testing.T) {
 		{"contract edited", api.TicketSummary{ID: "t", ContractViolation: true}, []string{"CONTRACT EDITED"}},
 		{"ticket error", api.TicketSummary{ID: "t", Title: "T", Error: "state.json not found"}, []string{"ERROR", "T  ! state.json not found"}},
 		{"service error", api.TicketSummary{ID: "t", Services: []api.ServiceSummary{{Name: "api", Status: domain.ServiceError}}}, []string{"ERROR"}},
+		{"phase request", api.TicketSummary{ID: "t", PendingGate: domain.GatePlanApproval, PhaseRequest: &api.PhaseRequestSummary{To: domain.PhaseImplement, Service: "api"}}, []string{"REQUEST implement (api), APPROVE plan_approval"}},
 		{"several at once", api.TicketSummary{ID: "t", ContractPending: true, PendingGate: domain.GatePlanApproval}, []string{"CONTRACT CHANGE, APPROVE plan_approval"}},
 		{"nothing needed", api.TicketSummary{ID: "t", Services: []api.ServiceSummary{svc("api", domain.AgentWorking, 4000)}}, []string{"● api", "4000"}},
 	}

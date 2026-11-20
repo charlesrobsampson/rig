@@ -17,6 +17,36 @@ func (m *Manager) SetPhase(ctx context.Context, p api.PhaseSetParams) (api.Trans
 	return m.transition(ctx, p.ID, "human", p.To, p.Reason, "")
 }
 
+// AskForPhase records an agent's request, left in its journal, to move the ticket, so
+// the human sees it waiting. It never moves the phase or approves anything: the human
+// does that, and any move clears the request.
+func (m *Manager) AskForPhase(id, service string, to domain.Phase, reason string) error {
+	if !to.Valid() {
+		return invalid("invalid phase %q", string(to))
+	}
+	l, unlock, err := m.begin(id)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if !hasService(l.ticket, service) {
+		return invalid("ticket %q has no service %q", id, service)
+	}
+	reason = strings.TrimSpace(reason)
+	err = m.opts.States.Update(l.statePath, func(s *state.State) error {
+		if s.Phase == to {
+			return invalid("ticket %q is already in %s", id, to)
+		}
+		s.PhaseRequest = &state.PhaseRequest{To: to, Service: service, Reason: reason, At: m.opts.Clock.Now().UTC()}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	m.publish(api.EventPhaseRequested, id, service, api.PhaseRequestedData{To: to, Reason: reason})
+	return nil
+}
+
 // RequestTransition is an agent asking for a move. It is judged by exactly the rules a
 // human's move is: the gate for a forward step must already be approved (an agent can
 // never grant one), and a backward step needs a reason.
@@ -92,6 +122,7 @@ func (m *Manager) moveLocked(l loaded, id, by string, to domain.Phase, reason, s
 			s.Approvals = withoutGates(s.Approvals, gates.InvalidatedByMovingTo(to))
 		}
 		s.Phase = to
+		s.PhaseRequest = nil
 		s.Transitions = append(s.Transitions, made)
 		return nil
 	})

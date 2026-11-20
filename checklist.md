@@ -934,13 +934,18 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Passed 2026-11-19 (Claude Code 2.1.328, container, oauth_token profile). `/agents` is gone in this version, so the user asked the agent to "use the pirate-reviewer subagent"; it ran the template's subagent. Writing to `/rig/claude/agents/...` in the container failed with "Read-only file system".
 
 ### 74 · Agents request phase transitions through the journal
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/74-transition-requests` · Depends: 72
 - Read: `docs/field-tests/01-host-dummy-tickets.md` findings 3, 4; `docs/formats.md` §8 (`transition.request`), §14
 - Build: A record of kind `transition.request` with `data: {"to": "<phase>", "reason"?}`, from either sandbox, is turned by the daemon into the existing `transition.request` (never an approval). The prompt names it in each phase's rules. A pending request shows as APPROVE on `rig list`, `ticket.list` and the TUI until a human acts.
 - Tests: a record becomes a request; a bad `to` is rejected with a `record.rejected` reason; a request never moves the phase or approves a gate; the summary shows it pending, then clears it after `phase.set`.
+- Notes (as built):
+  - "Turned into the existing `transition.request`" was not followed literally: that API method moves the ticket when the gate is already approved, and this task's tests say a request never moves the phase. Instead the daemon records `state.phase_request` (`AskForPhase`), and a human acts with `rig approve` / `rig phase`; any move clears it. The `transition.request` API method is unchanged.
+  - `rig list` already had no APPROVE column (only the TUI shows needs), and the TUI shows APPROVE for the whole plan phase from the start, so a request gets its own marker: `(svc asks for implement)` on `rig list`, `REQUEST implement (svc)` in the TUI, ranked above APPROVE. New event `phase.requested`.
+  - The supervisor hands both sandboxes' records to `Options.PhaseRequest`; its error becomes a `record.rejected` record. The common prompt rule names the record and says to stop and wait.
 - Manual check: a real agent in plan asks for implement and the request shows on `rig list`.
+  - Passed 2026-11-19 (container, Claude Code 2.1.328): the plan-phase agent refined the plan, left its checkout untouched, journaled a `transition.request` ("Plan ready for approval"), and `rig list` showed `plan (app asks for implement)`. After `rig approve` and `rig phase`, the marker was gone. $0.05.
 
 ### 75 · Tell the agent when the phase changes
 - [ ] Done

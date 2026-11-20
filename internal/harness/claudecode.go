@@ -235,7 +235,7 @@ func commonRules(r Request) []string {
 	return []string{
 		"Edit only your own service's checkout (your working directory) and, in the ticket directory (" + firstNonEmpty(r.AgentTicketDir, r.TicketDir) + "), " + files + ".",
 		"Never edit state.json or ticket.yaml.",
-		"Request phase transitions; never assume them. Gates are approved by a human only.",
+		"Request phase transitions; never assume them. Gates are approved by a human only. To request one, leave a journal record (see Journal) of kind \"transition.request\" with data {\"to\": \"<phase>\", \"reason\": \"...\"}, then stop and wait; a human approves and moves the ticket, and you will be told.",
 	}
 }
 

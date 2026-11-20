@@ -405,3 +405,50 @@ func TestMovingToTestOrReviewWarnsAboutUncommittedWork(t *testing.T) {
 		t.Errorf("a clean checkout warned: %v", moved.Warnings)
 	}
 }
+
+func TestAnAgentsPhaseRequestWaitsForAHumanAndNeverMoves(t *testing.T) {
+	f := newFixtureWithGates(t, domain.SandboxContainer, strict)
+	f.create("demo", testkit.NewRepo(t))
+	f.events()
+
+	if err := f.lc.AskForPhase("demo", "svc1", domain.PhaseImplement, "plan is ready"); err != nil {
+		t.Fatal(err)
+	}
+	st := f.state("demo")
+	if st.Phase != domain.PhasePlan || len(st.Approvals) != 0 || len(st.Transitions) != 0 {
+		t.Fatalf("state = phase %s, approvals %v, transitions %v; a request never moves or approves", st.Phase, st.Approvals, st.Transitions)
+	}
+	if r := st.PhaseRequest; r == nil || r.To != domain.PhaseImplement || r.Service != "svc1" || r.Reason != "plan is ready" {
+		t.Fatalf("phase_request = %+v", r)
+	}
+	evs := f.events()
+	if len(evs) != 1 || evs[0].Type != api.EventPhaseRequested || evs[0].Service != "svc1" {
+		t.Errorf("events = %+v, want one phase.requested", evs)
+	}
+
+	f.mustApprove("demo", domain.GatePlanApproval, "")
+	f.mustSet("demo", domain.PhaseImplement, "")
+	if r := f.state("demo").PhaseRequest; r != nil {
+		t.Errorf("phase_request = %+v after the human moved the ticket; any move clears it", r)
+	}
+}
+
+func TestAPhaseRequestIsRefusedWhenItCannotMean(t *testing.T) {
+	f := newFixtureWithGates(t, domain.SandboxContainer, strict)
+	f.create("demo", testkit.NewRepo(t))
+	for _, c := range []struct {
+		service string
+		to      domain.Phase
+		want    string
+	}{
+		{"svc1", domain.PhasePlan, "already"},
+		{"nope", domain.PhaseImplement, "nope"},
+	} {
+		if err := f.lc.AskForPhase("demo", c.service, c.to, ""); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("ask %s for %s: err = %v, want %q", c.service, c.to, err, c.want)
+		}
+	}
+	if f.state("demo").PhaseRequest != nil {
+		t.Error("a refused request was recorded")
+	}
+}

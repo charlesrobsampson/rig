@@ -146,6 +146,9 @@ func (r *Registry) load(id string) api.TicketGetResult {
 		res.Summary.Phase = st.Phase
 		res.Summary.ContractPending = st.Contract.Pending
 		res.Summary.ContractViolation = st.Contract.Violation != ""
+		if r := st.PhaseRequest; r != nil {
+			res.Summary.PhaseRequest = &api.PhaseRequestSummary{To: r.To, Service: r.Service, Reason: r.Reason}
+		}
 	}
 
 	if res.Ticket != nil && res.State != nil && r.pendingGate != nil {

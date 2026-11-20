@@ -24,8 +24,11 @@ type State struct {
 	EgressNetwork *Network    `json:"egress_network,omitempty"`
 	Contract      Contract    `json:"contract"`
 	ManualTests   ManualTests `json:"manual_tests"`
-	CreatedAt     time.Time   `json:"created_at"`
-	UpdatedAt     time.Time   `json:"updated_at"`
+	// PhaseRequest is an agent's open request to move the ticket, waiting for a human;
+	// any move clears it.
+	PhaseRequest *PhaseRequest `json:"phase_request,omitempty"`
+	CreatedAt    time.Time     `json:"created_at"`
+	UpdatedAt    time.Time     `json:"updated_at"`
 
 	unknown map[string]json.RawMessage
 }
@@ -36,6 +39,14 @@ type Approval struct {
 	Service string      `json:"service"`
 	By      string      `json:"by"`
 	At      time.Time   `json:"at"`
+}
+
+// PhaseRequest is what an agent asked for through its journal.
+type PhaseRequest struct {
+	To      domain.Phase `json:"to"`
+	Service string       `json:"service"`
+	Reason  string       `json:"reason,omitempty"`
+	At      time.Time    `json:"at"`
 }
 
 // Transition.By is "human" or "agent:<service>"; Reason is required for backward moves.

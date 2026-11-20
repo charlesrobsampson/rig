@@ -32,6 +32,8 @@ type TicketSummary struct {
 	// PendingGate is the approval a human still has to give to move the ticket out of
 	// its current phase; empty when none is waiting.
 	PendingGate domain.Gate `json:"pending_gate,omitempty"`
+	// PhaseRequest is an agent's open request to move the ticket, waiting for a human.
+	PhaseRequest *PhaseRequestSummary `json:"phase_request,omitempty"`
 	// AISummary is the language model's note on the ticket, when a summarizer is
 	// configured and has produced one. It is advisory.
 	AISummary *SummaryInfo `json:"ai_summary,omitempty"`
@@ -257,6 +259,13 @@ type TransitionRequestParams struct {
 	ID      string       `json:"id"`
 	Service string       `json:"service"`
 	To      domain.Phase `json:"to"`
+	Reason  string       `json:"reason,omitempty"`
+}
+
+// PhaseRequestSummary is the move an agent asked for and who asked.
+type PhaseRequestSummary struct {
+	To      domain.Phase `json:"to"`
+	Service string       `json:"service"`
 	Reason  string       `json:"reason,omitempty"`
 }
 
