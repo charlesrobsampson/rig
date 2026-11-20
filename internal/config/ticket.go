@@ -142,6 +142,23 @@ func validateService(i int, s *domain.Service, repoCheck func(string) error) []s
 	} else if clean := filepath.Clean(s.Path); s.Path != "" && (clean == "." || clean == ".." || strings.HasPrefix(clean, "../")) {
 		field("path", "%s must stay inside the ticket directory", s.Path)
 	}
+	placed := map[string]bool{}
+	for j, f := range s.Files {
+		name := fmt.Sprintf("files[%d]", j)
+		clean := filepath.Clean(f.Path)
+		switch {
+		case f.Path == "" || filepath.IsAbs(f.Path) || clean == "." || clean == ".." || strings.HasPrefix(clean, "../"):
+			field(name+".path", "%q must be a relative path that stays inside the checkout", f.Path)
+		case clean == ".git" || strings.HasPrefix(clean, ".git/"):
+			field(name+".path", "%q is inside .git", f.Path)
+		case placed[clean]:
+			field(name+".path", "%q is placed twice", f.Path)
+		}
+		placed[clean] = true
+		if !filepath.IsAbs(f.From) {
+			field(name+".from", "%q must be an absolute path", f.From)
+		}
+	}
 	if s.InternalPort != 0 && (s.InternalPort < 1 || s.InternalPort > 65535) {
 		field("internal_port", "%d must be between 1 and 65535", s.InternalPort)
 	}

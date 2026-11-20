@@ -218,3 +218,13 @@ func TestEnvFilePermissionsAndAbsence(t *testing.T) {
 		t.Errorf("a read-only owner file = %q, %v, %v", v, found, err)
 	}
 }
+
+func TestLeakedNamesASecretWhoseValueAppears(t *testing.T) {
+	values := map[string]string{"B_TOKEN": "bbbbbbbbbb", "A_TOKEN": "aaaaaaaaaa", "SHORT": "abc"}
+	if name, ok := secrets.Leaked([]byte("x aaaaaaaaaa bbbbbbbbbb"), values); !ok || name != "A_TOKEN" {
+		t.Errorf("Leaked = %q, %v; want A_TOKEN, the first by name", name, ok)
+	}
+	if name, ok := secrets.Leaked([]byte("abc is a word"), values); ok {
+		t.Errorf("a value under 8 bytes matched: %s", name)
+	}
+}

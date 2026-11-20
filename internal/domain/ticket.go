@@ -43,6 +43,15 @@ type Service struct {
 	Auth         string  `json:"auth,omitempty" yaml:"auth,omitempty"`
 	Egress       Egress  `json:"egress" yaml:"egress,omitempty"`
 	Policy       Policy  `json:"policy" yaml:"policy,omitempty"`
+	// Files are copied into the checkout at every start and ignored by git: what the
+	// service needs to run but the repository does not carry (an .npmrc).
+	Files []PlacedFile `json:"files,omitempty" yaml:"files,omitempty"`
+}
+
+// PlacedFile is a host file (From, absolute) copied to Path inside a service's checkout.
+type PlacedFile struct {
+	Path string `json:"path" yaml:"path"`
+	From string `json:"from" yaml:"from"`
 }
 
 type Build struct {

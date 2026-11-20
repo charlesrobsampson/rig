@@ -1,17 +1,16 @@
 package harness
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/charlesrobsampson/rig/internal/fsutil"
+	rigsecrets "github.com/charlesrobsampson/rig/internal/secrets"
 )
 
 // templateEntries are what a template may give an agent. Everything else in a Claude Code
@@ -183,11 +182,6 @@ func checkTemplate(tmpl string, secrets map[string]string) error {
 	case !info.IsDir():
 		return errors.New("is not a directory")
 	}
-	names := make([]string, 0, len(secrets))
-	for name := range secrets {
-		names = append(names, name)
-	}
-	sort.Strings(names)
 	for _, e := range templateEntries {
 		root := filepath.Join(tmpl, e.name)
 		info, err := os.Lstat(root)
@@ -218,11 +212,8 @@ func checkTemplate(tmpl string, secrets map[string]string) error {
 			if err != nil {
 				return err
 			}
-			for _, name := range names {
-				// Short values would match by chance and say nothing.
-				if v := secrets[name]; len(v) >= 8 && bytes.Contains(data, []byte(v)) {
-					return fmt.Errorf("%s contains the value of the secret %s", rel, name)
-				}
+			if name, leaked := rigsecrets.Leaked(data, secrets); leaked {
+				return fmt.Errorf("%s contains the value of the secret %s", rel, name)
 			}
 			return nil
 		})

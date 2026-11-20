@@ -228,6 +228,9 @@ func (m *Manager) Start(ctx context.Context, p api.TicketStartParams) (api.Ticke
 		m.publish(api.EventTicketStarted, p.ID, "", api.EmptyData{})
 	}
 
+	if err := m.placeFiles(ctx, l, infos, p.Sandbox); err != nil {
+		return api.TicketStartResult{}, err
+	}
 	if err := m.validateServices(l, infos); err != nil {
 		return api.TicketStartResult{}, err
 	}

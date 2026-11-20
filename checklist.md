@@ -1184,6 +1184,10 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - `services[].files: [{path, from}]`: rig copies `from` (an absolute host path) to `path` inside the checkout at every start, and adds `path` to the checkout's `.git/info/exclude`. Refused, before anything is made, if `from` contains the value of a secret rig knows (the same check as task 73), or `path` leaves the checkout.
   - A new clone gets the main repository's `.git/info/exclude` entries.
 - Tests: the file arrives and is ignored (`git status` clean); a secret value in `from` is refused by name; a path outside the checkout is refused; a clone inherits the main repository's excludes.
+- Notes (as built):
+  - `git.Checkout.Place(ctx, rel, data)` writes the file and makes git ignore it (`check-ignore` first; otherwise `/path` appended to the excludes file). A clone is agent-writable, so nothing there is followed: a link at the file is replaced, a linked directory or excludes file is refused, and the file is created with O_EXCL. A worktree's exclusion goes into the main repository's `info/exclude`, the only place git reads it from.
+  - `checkAgentConfig` also checks files (exists, regular, at most 1 MB, no secret value) before anything is made; `placeFiles` runs in `Start` after the checkouts are recorded and before services and agents. The secret check moved to `secrets.Leaked`, shared with task 73's templates.
+  - A clone made before this task does not have the main repository's excludes; placed files are still ignored, because they are added one by one.
 - Manual check: a container agent runs `npm ci` with the private registry and no hand-written `.npmrc`.
 
 ### 92 · The agent base image per service
