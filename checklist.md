@@ -1232,3 +1232,13 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - The agent's prompt gets the install and verify commands, so a plan no longer has to explain them.
 - Tests: fields come from the profile; ticket fields win; relative paths resolve against the repository; an invalid profile is refused by file and field before any checkout; secrets in a profile are names only (values that look like secrets are rejected, as in `env`).
 - Manual check: the field test 03 setup as one profile, and a ticket that names only the profile installs and verifies with no plan instructions.
+
+### 95 · A read-only look at an agent's screen
+- [ ] Done
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
+- Branch: `task/95-attach-read` · Depends: none
+- Read: `docs/formats.md` §8 (`agent.attach`)
+- Why: during the pilot the human wants to see how an agent is doing without attaching, where a stray key can approve a permission prompt, interrupt the agent or end it, and where typed text is never logged.
+- Build: `rig attach <ticket> [service] --read` prints the agent's screen and exits; `--lines N` prints the last N lines instead of what is visible. Nothing is typed into the pane. `agent.attach` gains params `read` and `lines` and result `screen` (additive).
+- Tests: the screen is printed and nothing is run or typed; `--lines` limits the output; `--json` carries the screen; the same errors as attach when no agent runs.
+- Manual check: `rig attach <ticket> --read` on a running real agent shows its screen.
