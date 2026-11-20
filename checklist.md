@@ -934,7 +934,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Passed 2026-11-19 (Claude Code 2.1.328, container, oauth_token profile). `/agents` is gone in this version, so the user asked the agent to "use the pirate-reviewer subagent"; it ran the template's subagent. Writing to `/rig/claude/agents/...` in the container failed with "Read-only file system".
 
 ### 74 · Agents request phase transitions through the journal
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/74-transition-requests` · Depends: 72
 - Read: `docs/field-tests/01-host-dummy-tickets.md` findings 3, 4; `docs/formats.md` §8 (`transition.request`), §14
@@ -945,6 +945,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - `rig list` already had no APPROVE column (only the TUI shows needs), and the TUI shows APPROVE for the whole plan phase from the start, so a request gets its own marker: `(svc asks for implement)` on `rig list`, `REQUEST implement (svc)` in the TUI, ranked above APPROVE. New event `phase.requested`.
   - The supervisor hands both sandboxes' records to `Options.PhaseRequest`; its error becomes a `record.rejected` record. The common prompt rule names the record and says to stop and wait.
 - Manual check: a real agent in plan asks for implement and the request shows on `rig list`.
+  - Passed 2026-11-19 (container, Claude Code 2.1.328): the plan-phase agent refined the plan, left its checkout untouched, journaled a `transition.request` ("Plan ready for approval"), and `rig list` showed `plan (app asks for implement)`. After `rig approve` and `rig phase`, the marker was gone. $0.05.
 
 ### 75 · Tell the agent when the phase changes
 - [ ] Done
