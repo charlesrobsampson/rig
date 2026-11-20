@@ -1175,7 +1175,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Manual check: a Dockerfile with `RUN --mount=type=secret,id=NODE_AUTH_TOKEN` builds.
 
 ### 91 · Files rig places in a checkout, ignored by git
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/91-checkout-files` · Depends: 84
 - Read: `docs/field-tests/03-private-node-app.md` finding 3; `docs/formats.md` §4, §7
@@ -1189,6 +1189,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - `checkAgentConfig` also checks files (exists, regular, at most 1 MB, no secret value) before anything is made; `placeFiles` runs in `Start` after the checkouts are recorded and before services and agents. The secret check moved to `secrets.Leaked`, shared with task 73's templates.
   - A clone made before this task does not have the main repository's excludes; placed files are still ignored, because they are added one by one.
 - Manual check: a container agent runs `npm ci` with the private registry and no hand-written `.npmrc`.
+  - Passed 2026-11-19 on a copy of the private Node app from field test 03 (container, node:24-slim base, proxy CA, NODE_AUTH_TOKEN from an env file). `files: [{path: .npmrc, from: <template with the ${NODE_AUTH_TOKEN} reference>}]`: the file was in the checkout before the agent started, ignored through the inherited `.git/info/exclude`, and `git status` stayed empty. `npm ci` and `npm run verify` both exited 0 with nothing written by hand. $0.07.
 
 ### 92 · The agent base image per service
 - [ ] Done
