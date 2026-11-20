@@ -935,7 +935,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 74 · Agents request phase transitions through the journal
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/74-transition-requests` · Depends: 72
 - Read: `docs/field-tests/01-host-dummy-tickets.md` findings 3, 4; `docs/formats.md` §8 (`transition.request`), §14
 - Build: A record of kind `transition.request` with `data: {"to": "<phase>", "reason"?}`, from either sandbox, is turned by the daemon into the existing `transition.request` (never an approval). The prompt names it in each phase's rules. A pending request shows as APPROVE on `rig list`, `ticket.list` and the TUI until a human acts.
