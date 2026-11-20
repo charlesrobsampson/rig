@@ -69,6 +69,10 @@ type Options struct {
 	// OnContractResolved is called after a human accepts or rejects a proposal (the
 	// daemon uses it to tell the agents); reason is the rejection reason.
 	OnContractResolved func(ticket string, p contract.Proposal, outcome, reason string)
+	// OnPhaseChanged is called after a move with a notice for each service whose agent
+	// is running: the move and the new phase's rules (the daemon types them in). It is called with the
+	// ticket locked, so it must not block.
+	OnPhaseChanged func(ticket string, notices map[string]string)
 }
 
 type Manager struct {

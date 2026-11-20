@@ -65,3 +65,23 @@ func TestMsgReadsStdinAndReportsErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestMovingThePhaseTellsTheRunningAgent(t *testing.T) {
+	_, d, repo, term := newEnvWithTerminal(t)
+	newTicket(t, d, "demo", repo)
+	rig(t, d, "start", "demo", "--sandbox", "host")
+	t.Setenv("RIG_TICKET", "demo")
+	t.Setenv("RIG_SERVICE", "svc1")
+	rig(t, d, "agent-event", "idle")
+	panes, _ := term.List(ctx)
+
+	rig(t, d, "approve", "demo", "plan_approval")
+	if _, stderr, code := rig(t, d, "phase", "demo", "implement"); code != 0 {
+		t.Fatalf("code %d, %q", code, stderr)
+	}
+	waitFor(t, "the phase notice", func() bool { return len(term.Input(panes[0].ID)) >= 2 })
+	input := term.Input(panes[0].ID)
+	if len(input) != 2 || !input[1].Submit || !strings.HasPrefix(input[0].Text, "[rig] This ticket moved from plan to implement.") || !strings.Contains(input[0].Text, "Commit each change") {
+		t.Errorf("input = %v", input)
+	}
+}
