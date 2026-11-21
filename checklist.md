@@ -1290,3 +1290,37 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Tests: a skipped-phase request is refused and the agent told; the next phase is still recorded; wait returns on each condition and times out.
 - Manual check: none beyond the tests (both are daemon-side and exercised end to end by the CLI tests).
 - Notes (as built): `grantable` (lifecycle) refuses what a human could not grant as asked and says what to ask for; it also refuses a reviewed coder leaving implement before its review passes, pointing at `review.ready`. Refusals are typed back to the agent through `Options.Deliver`. `rig wait` polls `ticket.get` and `journal.list` every 500ms on the injected clock rather than subscribing to events, because journal records have no event of their own.
+
+### 99 · Checks a coder must pass before a review round
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/99-review-checks` · Depends: 97
+- Read: `docs/formats.md` §4 (`review`), §14; `internal/lifecycle/reviewer.go`
+- Why: much of what a reviewer agent is asked to find (failing tests, lint, secrets in the diff, vulnerable dependencies, project rules already written as tests) is found better, cheaper and the same way every time by a command. Running those first means reviewer time goes only to judgement, and a round never starts on work that does not pass its own checks.
+- Build: `review.checks`: a list of `{name, run}` commands rig runs in the reviewer's copy (in the reviewer's container, before the reviewer is briefed) at the start of each round. A failing check ends the round at once without the reviewer: its name and the last lines of its output go to the coder as a blocking finding (`id` `C-<name>`), counted like any other for caps. Passing checks are listed in the round brief as already run.
+- Tests: a failing check sends the coder its output and does not brief the reviewer; passing checks are named in the brief; a check's failure counts toward the round cap; a check that hangs is stopped at a timeout.
+- Manual check: a ticket whose check (`npm run verify`) fails goes back to the coder with the failure before any reviewer tokens are spent.
+
+### 100 · Several reviewers in one round
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/100-reviewers` · Depends: 97, 99
+- Read: `docs/formats.md` §4 (`review`), §5, §14; `internal/lifecycle/reviewer.go`
+- Why: a general reviewer spreads its attention thin; specialists with their own standards and context (security against a threat model, architecture against recorded decisions, accessibility for UI) find what it skims. Wait for evidence before building: the field pilot tags what the human still finds by lens, and this task is for when those misses cluster.
+- Build (shape to confirm against that evidence):
+  - `review.reviewers: [{name, agent_config, model?, when?}]`; the current single reviewer is the default when absent. `when` is a list of path globs: the reviewer runs in a round only if the change touches a matching path (rules in code, never an agent's judgement). Choosing reviewers and their standards is the caller's policy (the larger tool), not rig's.
+  - All selected reviewers review the same pinned commit in parallel, each in its own copy. The round closes when every one has a verdict. Their blocking and should-fix findings go to the coder as one message grouped by reviewer, ids prefixed by the reviewer's name; replies route back to the owner.
+  - Every selected reviewer runs every round (a fix for one can break another's area). The review passes when all pass. A dispute with any reviewer's blocking finding stops the loop as today; a reviewer can be marked `veto: true`, so its blocking findings stop the loop for a person rather than going to the coder at all.
+  - `rig reviewer` shows each reviewer's findings, verdicts and cost; caps and budget stay per loop.
+- Tests: two reviewers' findings arrive as one message; the round waits for both verdicts; a reviewer whose `when` does not match is skipped and named as skipped; a veto reviewer's blocking finding stops the loop; ids from two reviewers never collide.
+- Manual check: a change touching an auth path runs the general and the security reviewer together and the coder iterates once per round.
+
+### 101 · Who acted: a person, a supervising agent, or rig
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/101-actor` · Depends: none
+- Read: `docs/formats.md` §5 (`transitions`, `approvals`), §8
+- Why: every move made through the CLI is recorded as `human`, including those a supervising agent makes on a person's behalf, so a field log cannot tell a person's decision from an orchestrator's, which is the evidence an autonomy ladder needs.
+- Build: an optional `--as <actor>` on mutating commands (and `RIG_ACTOR` in the environment), recorded as `by` on transitions, approvals and review decisions, for example `operator` or `human:<name>`. An actor that is not a person is refused for gate approvals unless the global config lists it under `delegates` for that gate.
+- Tests: the actor is recorded; a non-person approval is refused without a delegation and recorded with one; the default stays `human`.
+- Manual check: a supervising session's moves show as its actor in `state.json`.
