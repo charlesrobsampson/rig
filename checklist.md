@@ -1246,3 +1246,38 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Notes (as built):
   - In a terminal `--read` opens a pager (`$PAGER`, else `less -R -F +G`, at the end) on the agent's last 2000 lines, so a long history does not flood the window; `--no-pager`, `--json`, or output that is not a terminal prints instead. The terminal check is shared with the TUI (`app.interactive`).
   - An empty screen prints a hint to restart the daemon: a daemon from before this task ignores `read` and sends none.
+
+### 96 · Agent configuration and model per service
+- [ ] Done
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
+- Branch: `task/96-service-agent-config` · Depends: 73
+- Read: `docs/formats.md` §4 (`agent_config`), §13
+- Why: a reviewer works under different standards from a coder (and may later use a different model); `agent_config` is ticket-level, so two roles in one ticket cannot have two rule sets.
+- Build: `services[].agent_config` (overrides the ticket's and the global default for that service; same checks and refusals) and `services[].model` (passed to Claude Code as `--model` for that service's agent only).
+- Tests: two services get different `.rig-agent-config/<svc>/` contents; `[]` on a service means none even with a ticket-level list; the model reaches one service's launch only; a missing template on a service is refused at start naming the service.
+- Manual check: covered by task 97's manual check (the reviewer runs on its own `agent_config`).
+
+### 97 · A reviewer agent in the ticket, with review rounds rig controls
+- [ ] Done
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
+- Branch: `task/97-reviewer` · Depends: 96, 72, 74, 75
+- Read: `docs/formats.md` §4, §5, §6, §13, §14; `internal/git/clone.go` (`Import`, hardened runner); `internal/phasenotify`
+- Why: field use showed a coder's own definition-of-done check misses what a second reader finds, and the human wants to review only what a reviewer has already passed. The loop (coder done, reviewer reviews, coder fixes, until the reviewer passes) must be controlled by rig, not by asking agents nicely: the reviewer cannot change the coder's work, the coder cannot leave `implement` before the review passes, and caps stop a loop that is going nowhere.
+- Build:
+  - `review:` in `ticket.yaml`: `of` (the service reviewed; default the only service), `agent_config`, `model`, `copy` (paths the repository ignores, such as `node_modules`, copied from the coder's checkout into each round's copy), `max_rounds` (default 3), `budget_usd` (default none). A container sandbox only. A service may not be named `review`.
+  - A round: rig fetches the coder's branch into the main repository under a hidden ref (`refs/rig/review/<ticket>`) the way `Import` does, resets the reviewer's own clone (`<ticket>/review`) to that commit through the hardened runner, rewrites its alternates, and copies the `copy` paths (copy-on-write where the filesystem allows). The reviewer gets a writable copy pinned to one commit; nothing it does reaches the coder.
+  - The reviewer agent (state service `review`) is launched at the first round with a reviewer prompt (find what is wrong; never commit; report only by records) and later rounds are typed into it, with the earlier findings and the coder's replies.
+  - Records: the coder's `review.ready` starts a round; the reviewer's `review.result` (one per finding) and `verdict` close it; the coder's `review.reply` answers a finding. Findings that are `blocking` or `should-fix` go to the coder as one message; none left means `passed`. A `disagree` on a blocking finding, the round cap or the budget stops the loop for a human.
+  - `state.review` holds the loop (`status`: reviewing, fixing, passed, stopped; round, commit, reason). A forward move out of `implement` is refused until the review has passed; `rig reviewer pass|stop <ticket> --reason` records a human's or operator's decision; `rig reviewer start <ticket>` starts a round; `rig reviewer <ticket>` shows the rounds, findings, replies and cost per agent. A backward move to `implement` starts a new loop.
+  - Stop closes the reviewer and removes its clone and the hidden ref.
+- Tests: a round pins the coder's commit and a later coder commit does not change it; planted files in the reviewer's copy are gone next round; the copy paths arrive; the reviewer launches once and later rounds are typed; findings reach the coder; a pass with only nits; the forward move refused before a pass and allowed after; caps and a dispute stop the loop; `review.ready` while reviewing, or with uncommitted work, is refused and the coder told; pass, stop and start from the CLI; stop removes the reviewer, its clone and the ref.
+- Manual check: a real coder and reviewer on a small change go through at least one fix round and pass, with nothing typed by a person.
+
+### 98 · Phase requests rig cannot grant, and `rig wait`
+- [ ] Done
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
+- Branch: `task/98-request-advice-and-wait` · Depends: 74, 75
+- Why: an agent asked for `review` from `implement`; rig recorded a request it could never grant and the agent was not told. And a supervising session polls journals in a shell loop to learn when something happens.
+- Build: a `transition.request` for a phase that is not the next one (or the previous ones a backward move allows) is refused with a `record.rejected` saying which phase to ask for, and the agent is told. `rig wait <ticket> [--record <kind>] [--phase-request] [--phase <p>] [--review <status>] [--timeout <d>]` exits 0 with what happened, 1 on timeout.
+- Tests: a skipped-phase request is refused and the agent told; the next phase is still recorded; wait returns on each condition and times out.
+- Manual check: none beyond the tests (both are daemon-side and exercised end to end by the CLI tests).
