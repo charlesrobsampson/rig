@@ -27,8 +27,10 @@ type State struct {
 	// PhaseRequest is an agent's open request to move the ticket, waiting for a human;
 	// any move clears it.
 	PhaseRequest *PhaseRequest `json:"phase_request,omitempty"`
-	CreatedAt    time.Time     `json:"created_at"`
-	UpdatedAt    time.Time     `json:"updated_at"`
+	// Review is the ticket's review loop, when its ticket.yaml has a review.
+	Review    *Review   `json:"review,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 
 	unknown map[string]json.RawMessage
 }
@@ -47,6 +49,33 @@ type PhaseRequest struct {
 	Service string       `json:"service"`
 	Reason  string       `json:"reason,omitempty"`
 	At      time.Time    `json:"at"`
+}
+
+// Review is where a ticket's review loop stands. A backward move to implement starts a
+// new loop, so Round counts within one loop.
+type Review struct {
+	Status domain.ReviewStatus `json:"status"`
+	Round  int                 `json:"round"`
+	// Commit is the coder's commit the current round reviews, and Base where its
+	// change starts (the merge base with the service's base branch).
+	Commit string `json:"commit,omitempty"`
+	Base   string `json:"base,omitempty"`
+	// Reason says why it passed or stopped; By says who decided ("rig" for a cap).
+	Reason string `json:"reason,omitempty"`
+	By     string `json:"by,omitempty"`
+	// CostAtStart is what the ticket's agents had spent when the loop began, so the
+	// budget counts only the loop.
+	CostAtStart float64       `json:"cost_at_start"`
+	Rounds      []ReviewRound `json:"rounds,omitempty"`
+	At          time.Time     `json:"at"`
+}
+
+type ReviewRound struct {
+	Round  int       `json:"round"`
+	Commit string    `json:"commit"`
+	At     time.Time `json:"at"`
+	// Verdict is the reviewer's closing line for the round, once it has one.
+	Verdict string `json:"verdict,omitempty"`
 }
 
 // Transition.By is "human" or "agent:<service>"; Reason is required for backward moves.

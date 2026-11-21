@@ -48,3 +48,13 @@ func (m *Manager) begin(id string) (l loaded, unlock func(), err error) {
 	}
 	return l, release, nil
 }
+
+// load reads a ticket as begin does, for a caller that only reads it.
+func (m *Manager) load(id string) (loaded, error) {
+	l, unlock, err := m.begin(id)
+	if err != nil {
+		return loaded{}, err
+	}
+	unlock()
+	return l, nil
+}

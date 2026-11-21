@@ -72,6 +72,7 @@ rig start add-locale
 rig                       # the TUI (or `rig list` for a table)
 rig attach add-locale     # jump into the agent's terminal
 rig attach add-locale --read   # or just look: its recent output in a pager, nothing typed
+rig reviewer add-locale   # with `review:` in ticket.yaml: the reviewer's rounds, findings and answers
 rig msg add-locale api "also cover the 404 case"
 
 # 6. Move the work through its phases; gates need you.
@@ -131,6 +132,14 @@ Phases are `plan → implement → test → review → push → done`. Moving fo
 phase's gate approved by a human (which gates apply is policy: default `plan_approval` and
 `review_approval`); moving back needs a reason. Agents can ask for a move
 (`transition.request`) but never grant one.
+
+A ticket can have a reviewer: `review: {of: api}` in `ticket.yaml` (optionally with its
+own `agent_config` and `model`). When the coder journals `review.ready`, rig gives a
+reviewer agent its own copy of the coder's commit, types the reviewer's blocking and
+should-fix findings back to the coder, and repeats until nothing is left, a round cap or
+budget is hit, or the coder disputes a blocking finding. The ticket cannot leave
+`implement` until the review passes; `rig reviewer <id> --pass|--stop --reason` lets a
+person decide.
 
 `rig push` publishes each service the way its policy says: `none`, `push-branch`, `merge`
 (fast-forward, optionally a merge commit) or `pr` (through `gh`). It runs on the host with

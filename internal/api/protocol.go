@@ -36,6 +36,9 @@ const (
 	MethodContractAck       = "contract.ack"
 	MethodContractPropose   = "contract.propose"
 	MethodReviewDiff        = "review.diff"
+	MethodReviewerStatus    = "reviewer.status"
+	MethodReviewerStart     = "reviewer.start"
+	MethodReviewerDecide    = "reviewer.decide"
 	MethodPushRun           = "push.run"
 	MethodTestsRender       = "tests.render"
 	MethodTestsStep         = "tests.step"
@@ -52,7 +55,7 @@ var methods = map[string]bool{
 	MethodTicketStop: true, MethodGateList: true, MethodGateApprove: true, MethodPhaseSet: true,
 	MethodTransitionRequest: true, MethodAgentAttach: true, MethodAgentMessage: true,
 	MethodAgentEvent: true, MethodAgentRecord: true, MethodJournalList: true, MethodContractList: true, MethodContractAccept: true,
-	MethodContractReject: true, MethodContractAck: true, MethodContractPropose: true, MethodReviewDiff: true, MethodPushRun: true, MethodTestsRender: true, MethodTestsStep: true, MethodTestsSignoff: true,
+	MethodContractReject: true, MethodContractAck: true, MethodContractPropose: true, MethodReviewDiff: true, MethodReviewerStatus: true, MethodReviewerStart: true, MethodReviewerDecide: true, MethodPushRun: true, MethodTestsRender: true, MethodTestsStep: true, MethodTestsSignoff: true,
 	MethodLogsStream: true, MethodEventsSubscribe: true, MethodReconcileRun: true, MethodDaemonStop: true,
 }
 

@@ -122,6 +122,9 @@ func (m *Manager) moveLocked(l loaded, id, by string, to domain.Phase, reason, s
 		if state.IsBackward(s.Phase, to) {
 			s.Approvals = withoutGates(s.Approvals, gates.InvalidatedByMovingTo(to))
 		}
+		if to == domain.PhaseImplement && state.IsBackward(s.Phase, to) {
+			s.Review = nil // work sent back is reviewed again, in a new loop
+		}
 		s.Phase = to
 		s.PhaseRequest = nil
 		s.Transitions = append(s.Transitions, made)
@@ -159,6 +162,16 @@ func (m *Manager) decide(id string, t domain.Ticket, st state.State, to domain.P
 			return invalid("moving %s back to %s needs a reason", from, to)
 		}
 		return nil
+	}
+	if t.Review != nil && from == domain.PhaseImplement && (st.Review == nil || st.Review.Status != domain.ReviewPassed) {
+		status := "no review round has run"
+		if st.Review != nil {
+			status = fmt.Sprintf("the review is %s (round %d)", st.Review.Status, st.Review.Round)
+			if st.Review.Reason != "" {
+				status += ": " + st.Review.Reason
+			}
+		}
+		return &api.Error{Code: api.CodeBlocked, Message: fmt.Sprintf("ticket %q leaves implement only after its review passes; %s. A person can decide with: rig reviewer %s --pass --reason \"...\"", id, status, id)}
 	}
 	gate, guarded := gates.GateFor(from, to)
 	if !guarded {
@@ -224,7 +237,7 @@ func phaseNotices(l loaded, made state.Transition) map[string]string {
 		if agent.PaneID == "" || agent.State == domain.AgentExited {
 			continue
 		}
-		req := harness.Request{Ticket: l.ticket, Service: svc.Name, Phase: made.To, TicketDir: l.dir}
+		req := harness.Request{Ticket: l.ticket, Service: svc.Name, Phase: made.To, TicketDir: l.dir, Reviewed: l.ticket.Review != nil && svc.Name == l.ticket.Review.Of}
 		if agent.ContainerID != "" {
 			req.AgentTicketDir = agentTicketDir
 		}

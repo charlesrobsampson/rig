@@ -486,3 +486,42 @@ func TestAModelIsPassedOnlyWhenSet(t *testing.T) {
 		t.Errorf("command = %v, want --model claude-sonnet-5-5 before --", cmd)
 	}
 }
+
+func TestAReviewerGetsAReviewersPromptNotACodersRules(t *testing.T) {
+	r := harness.Request{Ticket: ticket("api"), Service: "review", ReviewOf: "api", Phase: domain.PhaseImplement, TicketDir: ticketDir(t, artifacts), AgentTicketDir: "/rig/ticket", Dir: "/w", HookCommand: "rig agent-event"}
+	prompt := promptOf(launch(t, r))
+	for _, want := range []string{
+		`reviewer of service "api"`, "find what is wrong", "Never commit", `"review.result"`, `"severity": "blocking" | "should-fix" | "nit"`,
+		`"verdict"`, "No blocking findings", "Keep a finding's id", "/rig/ticket", "a claim to check", "## Journal", "Use a locale header", "first round",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("reviewer prompt lacks %q:\n%s", want, prompt)
+		}
+	}
+	for _, unwanted := range []string{"Commit each change", "Request the implement phase", "Work through tasks.md", "review.ready"} {
+		if strings.Contains(prompt, unwanted) {
+			t.Errorf("reviewer prompt has the coder's %q", unwanted)
+		}
+	}
+}
+
+func TestAReviewedCoderIsToldHowTheLoopWorksInImplement(t *testing.T) {
+	r := harness.Request{Ticket: ticket("api"), Service: "api", Reviewed: true, Phase: domain.PhaseImplement, TicketDir: ticketDir(t, artifacts), Dir: "/w"}
+	prompt := promptOf(launch(t, r))
+	for _, want := range []string{`"review.ready"`, `"review.reply"`, `"status": "fixed" | "disagree" | "question"`, "until the review passes"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("coder prompt lacks %q", want)
+		}
+	}
+	if notice := harness.PhaseNotice(r, domain.PhaseReview, "fix the empty case"); !strings.Contains(notice, `"review.ready"`) {
+		t.Error("a phase notice back to implement does not carry the review rules")
+	}
+	r.Reviewed = false
+	if strings.Contains(promptOf(launch(t, r)), "review.ready") {
+		t.Error("an unreviewed coder is told about a review")
+	}
+	r.Reviewed, r.Phase = true, domain.PhasePlan
+	if strings.Contains(promptOf(launch(t, r)), "review.ready") {
+		t.Error("the review rules appear outside implement")
+	}
+}

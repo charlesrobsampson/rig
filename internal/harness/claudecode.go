@@ -62,7 +62,7 @@ func (c ClaudeCode) Command(r Request) (Launch, error) {
 			svc = &r.Ticket.Services[i]
 		}
 	}
-	if svc == nil {
+	if svc == nil && r.ReviewOf == "" {
 		return Launch{}, fmt.Errorf("ticket %s has no service %q", r.Ticket.ID, r.Service)
 	}
 	r.HookCommand = hookCommandOf(r)
@@ -177,6 +177,9 @@ func (ClaudeCode) AuthEnv(p config.AuthProfile, secrets map[string]string) (map[
 // Prompt builds the text that seeds the agent: who and what, the phase's rules, and the
 // ticket's artifacts. It never contains secret values.
 func Prompt(r Request) (string, error) {
+	if r.ReviewOf != "" {
+		return reviewerPrompt(r)
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are the agent for service %q of rig ticket %s: %s.\n", r.Service, r.Ticket.ID, r.Ticket.Title)
 	fmt.Fprintf(&b, "Current phase: %s.\n\n", r.Phase)
@@ -236,6 +239,9 @@ func writeRules(b *strings.Builder, r Request) {
 	}
 	if rules, ok := phaseRules[r.Phase]; ok {
 		b.WriteString("\n## This phase (" + string(r.Phase) + ")\n")
+		if r.Reviewed && r.Phase == domain.PhaseImplement {
+			rules = append(rules, reviewedRules...)
+		}
 		for _, rule := range rules {
 			b.WriteString("- " + rule + "\n")
 		}
@@ -323,4 +329,45 @@ var manualTestsRules = []string{
 	"Each step is a heading `### <id>: <title>` (the id uses lowercase letters, digits and dashes and is unique), followed by what to do and, where it helps, shell commands in code blocks.",
 	"Never write host addresses or ports. Use placeholders: {{<service>.url}}, {{<service>.port}} and {{<service>.internal_url}} for your services, {{<dependency>.host}} for a database or other sidecar, {{ticket.id}}; rig fills them in from the running ticket.",
 	"Use only those placeholders: an unknown one makes the whole file unreadable for the human.",
+}
+
+// reviewedRules tell a coder whose work a reviewer checks how to hand it over and answer
+// (docs/formats.md §13); rig refuses to move the ticket on until the review passes.
+var reviewedRules = []string{
+	"A reviewer checks your work before a human sees it, and rig does not move the ticket on until the review passes. When the work in tasks.md is done, its tests pass and everything is committed, leave a journal record of kind \"review.ready\" saying what is ready, instead of requesting a phase.",
+	"The reviewer's findings are typed to you. Answer each with one journal record of kind \"review.reply\" and data {\"id\": \"F1\", \"status\": \"fixed\" | \"disagree\" | \"question\", \"commit\": \"<sha>\", \"reason\": \"...\"}: fix it and commit, or say why you disagree. Then leave \"review.ready\" again.",
+}
+
+// reviewerPrompt seeds a reviewer: the opposite job to the coder's, the same ticket, and
+// findings only through journal records rig counts (docs/formats.md §13, §14).
+func reviewerPrompt(r Request) (string, error) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "You are the reviewer of service %q of rig ticket %s: %s.\n", r.ReviewOf, r.Ticket.ID, r.Ticket.Title)
+	b.WriteString("Another agent, the coder, made the change. Your job is to find what is wrong with it: not to make it work, and not to approve it.\n\n## Rules\n")
+	for _, rule := range []string{
+		"Each round, rig puts the coder's commit in your working directory: a copy of your own, made again at the start of every round. Run, build and break anything in it to check a finding (plant a defect, change a test); nothing you do there reaches the coder. Never commit.",
+		"The ticket directory (" + firstNonEmpty(r.AgentTicketDir, r.TicketDir) + ") holds the coder's plan.md and tasks.md: what it was asked to do, and its work log, which is a claim to check, not a fact. You cannot change them.",
+		"Report only through journal records (see Journal): one of kind \"review.result\" per finding, with data {\"id\": \"F1\", \"severity\": \"blocking\" | \"should-fix\" | \"nit\", \"file\": \"path\", \"line\": 12, \"what\": \"...\", \"scenario\": \"the input or state, and the wrong result\", \"fix\": \"...\"}; then one of kind \"verdict\" with text \"No blocking findings\" or \"Blocking findings: <n>\" and data {\"round\": <n>}. Then stop and wait: the next round, or the coder's answers, are typed to you.",
+		"blocking: wrong, unsafe, or against the ticket or the project's rules. should-fix: a real gap or brittleness. nit: taste; a nit never sends the work back. Five real findings beat twenty weak ones, and no findings is a valid answer if you checked.",
+		"Keep a finding's id when you check it again in a later round; number new ones after the last.",
+		"You have no phase to ask for and no gate to approve. Your own instructions set the review standards.",
+	} {
+		b.WriteString("- " + rule + "\n")
+	}
+	b.WriteString("\n## Journal\n")
+	for _, rule := range journalRules(hookCommandOf(r)) {
+		b.WriteString("- " + rule + "\n")
+	}
+	for _, name := range []string{"plan.md", "tasks.md"} {
+		content, err := os.ReadFile(filepath.Join(r.TicketDir, name))
+		switch {
+		case os.IsNotExist(err):
+			continue
+		case err != nil:
+			return "", fmt.Errorf("read %s: %w", name, err)
+		}
+		fmt.Fprintf(&b, "\n## %s (the coder's)\n\n%s\n", name, indent(string(content)))
+	}
+	b.WriteString("\nWait for the first round; it is typed to you.\n")
+	return b.String(), nil
 }

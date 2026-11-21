@@ -108,6 +108,9 @@ func writeTicketTable(w io.Writer, tickets []api.TicketSummary) {
 		if r := t.PhaseRequest; r != nil {
 			phase += fmt.Sprintf(" (%s asks for %s)", r.Service, r.To)
 		}
+		if r := t.Review; r != nil {
+			phase += fmt.Sprintf(" (review %s, round %d)", r.Status, r.Round)
+		}
 		if t.ContractPending {
 			phase += " (contract change pending)"
 		}

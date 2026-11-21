@@ -73,6 +73,9 @@ type Options struct {
 	// is running: the move and the new phase's rules (the daemon types them in). It is called with the
 	// ticket locked, so it must not block.
 	OnPhaseChanged func(ticket string, notices map[string]string)
+	// Deliver types a message from rig into a running agent, retrying while it is busy
+	// or blocked; it must not block. The review loop speaks to its agents through it.
+	Deliver func(ticket, service, text string)
 }
 
 type Manager struct {
@@ -89,6 +92,11 @@ type Manager struct {
 	// is not yet recorded in state.json, so two starts at once cannot both take the last slot.
 	capMu    sync.Mutex
 	starting map[string]bool
+
+	// bg runs the review rounds an agent's record starts, which outlive the call.
+	bg       sync.WaitGroup
+	bgCtx    context.Context
+	bgCancel context.CancelFunc
 }
 
 func New(o Options) *Manager {
@@ -96,6 +104,7 @@ func New(o Options) *Manager {
 		o.Clock = clock.Real()
 	}
 	m := &Manager{opts: o, reg: registry.New(o.Dir, o.States), locks: map[string]*sync.Mutex{}, starting: map[string]bool{}}
+	m.bgCtx, m.bgCancel = context.WithCancel(context.Background())
 	if o.Docker != nil {
 		min, max := o.Global.Docker.PortRange.Min, o.Global.Docker.PortRange.Max
 		if min == 0 && max == 0 { // a Global built without the defaults

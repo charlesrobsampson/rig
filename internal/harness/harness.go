@@ -38,6 +38,10 @@ type Request struct {
 	ConfigDir string
 	// Model is passed as --model; empty leaves Claude Code's default.
 	Model string
+	// ReviewOf names the service this agent reviews: it gets a reviewer's prompt.
+	ReviewOf string
+	// Reviewed says a reviewer checks this agent's work, which changes how it finishes.
+	Reviewed bool
 }
 
 // Launch is what a terminal backend needs to start the agent.

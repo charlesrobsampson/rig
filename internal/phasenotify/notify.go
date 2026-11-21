@@ -9,6 +9,7 @@ package phasenotify
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"sync"
@@ -41,8 +42,9 @@ type Notifier struct {
 
 	mu      sync.Mutex
 	closed  bool
-	pending map[string]*notice     // by ticket/service: the notice still to deliver
-	order   map[string]*sync.Mutex // by ticket/service: one attempt at a time, in order
+	pending map[string]*notice     // still to deliver: a phase notice keyed by ticket/service/phase
+	order   map[string]*sync.Mutex // by ticket/service: one attempt at a time
+	seq     int                    // numbers messages, which never replace each other
 	wg      sync.WaitGroup
 }
 
@@ -81,7 +83,7 @@ func (n *Notifier) PhaseChanged(ticket string, notices map[string]string) {
 		return
 	}
 	for service, text := range notices {
-		key := ticket + "/" + service
+		key := ticket + "/" + service + "/phase"
 		if old := n.pending[key]; old != nil && old.timer != nil {
 			old.timer.Stop()
 		}
@@ -89,6 +91,21 @@ func (n *Notifier) PhaseChanged(ticket string, notices map[string]string) {
 		n.pending[key] = nt
 		n.startLocked(key, nt)
 	}
+}
+
+// Deliver types any other message from rig into an agent, with the same retries as a
+// phase notice; unlike one, a message never replaces another. It never blocks.
+func (n *Notifier) Deliver(ticket, service, text string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.closed {
+		return
+	}
+	n.seq++
+	key := fmt.Sprintf("%s/%s/message-%d", ticket, service, n.seq)
+	nt := &notice{ticket: ticket, service: service, text: text}
+	n.pending[key] = nt
+	n.startLocked(key, nt)
 }
 
 // Wait blocks until every attempt started so far has finished (tests use it).
@@ -110,10 +127,11 @@ func (n *Notifier) Close() {
 }
 
 func (n *Notifier) startLocked(key string, nt *notice) {
-	lock, ok := n.order[key]
+	agent := nt.ticket + "/" + nt.service
+	lock, ok := n.order[agent]
 	if !ok {
 		lock = &sync.Mutex{}
-		n.order[key] = lock
+		n.order[agent] = lock
 	}
 	n.wg.Add(1)
 	go func() {

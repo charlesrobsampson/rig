@@ -58,7 +58,11 @@ func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domai
 		base = "debian:bookworm-slim"
 	}
 	if runsInDocker(svc) {
-		base = m.imageTag(l.id, svc.Name) // the service's own toolchain
+		toolchain := svc.Name
+		if svc.Name == domain.ReviewerService && l.ticket.Review != nil {
+			toolchain = l.ticket.Review.Of // the reviewer uses the reviewed service's image
+		}
+		base = m.imageTag(l.id, toolchain) // the service's own toolchain
 	}
 	image, _, err := m.agentImages.Ensure(ctx, base)
 	if err != nil {
@@ -83,7 +87,9 @@ func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domai
 	}
 	for _, name := range ticketFiles {
 		if info, err := os.Stat(filepath.Join(l.dir, name)); err == nil && info.Mode().IsRegular() {
-			mounts = append(mounts, docker.Mount{Source: filepath.Join(l.dir, name), Target: agentTicketDir + "/" + name})
+			// The reviewer reads the coder's ticket files; only the coder writes them.
+			readOnly := svc.Name == domain.ReviewerService && l.ticket.Review != nil
+			mounts = append(mounts, docker.Mount{Source: filepath.Join(l.dir, name), Target: agentTicketDir + "/" + name, ReadOnly: readOnly})
 		}
 	}
 	events := EventsDir(l.dir, svc.Name)
@@ -207,7 +213,7 @@ func (m *Manager) removeAgentContainers(ctx context.Context, id string, t domain
 		return nil
 	}
 	var failures []error
-	for _, svc := range t.Services {
+	for _, svc := range agentServices(t) {
 		name := AgentContainerName(id, svc.Name)
 		err := m.opts.Docker.RemoveContainer(ctx, name, true)
 		switch {

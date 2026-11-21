@@ -130,6 +130,14 @@ func TestParseTicketRejectsInvalidTickets(t *testing.T) {
 		{"relative service agent config", minimal + "    agent_config: [roles]\n", []string{"services[0].agent_config[0]", "absolute"}},
 		{"the same file twice", minimal + "    files: [{path: .npmrc, from: /a}, {path: ./.npmrc, from: /b}]\n", []string{"services[0].files[1].path", "twice"}},
 		{"relative agent config", minimal + "agent_config: [roles]\n", []string{"agent_config[0]", "absolute"}},
+		{"review of an unknown service", minimal + "review: {of: web}\n", []string{"review.of", "web"}},
+		{"review needs of with several services", "id: d\ntitle: T\nservices:\n  - {name: api, repo: /r, branch: b}\n  - {name: web, repo: /s, branch: c}\nreview: {}\n", []string{"review.of", "required"}},
+		{"a service named review", "id: d\ntitle: T\nservices:\n  - {name: review, repo: /r, branch: b}\nreview: {}\n", []string{"reviewer's name"}},
+		{"review copy outside the checkout", minimal + "review: {copy: [../x]}\n", []string{"review.copy[0]", "inside"}},
+		{"review copy in .git", minimal + "review: {copy: [.git/hooks]}\n", []string{"review.copy[0]", ".git"}},
+		{"review relative agent config", minimal + "review: {agent_config: [roles]}\n", []string{"review.agent_config[0]", "absolute"}},
+		{"review negative rounds", minimal + "review: {max_rounds: -1}\n", []string{"review.max_rounds"}},
+		{"review negative budget", minimal + "review: {budget_usd: -2}\n", []string{"review.budget_usd"}},
 		{"duplicate service names", "id: d\ntitle: T\nservices:\n  - {name: api, repo: /r, branch: b}\n  - {name: api, repo: /s, branch: c, path: ./other}\n", []string{"duplicate name", "api"}},
 		{"service and dependency share a name", minimal + "dependencies:\n  - {name: api, image: x}\n", []string{"duplicate name", "api"}},
 		{"dependency without image", minimal + "dependencies:\n  - {name: db}\n", []string{"dependencies[0].image", "required"}},
@@ -271,5 +279,16 @@ func TestParseTicketReadsServiceFiles(t *testing.T) {
 	}
 	if f := got.Services[0].Files; len(f) != 1 || f[0].Path != ".npmrc" || f[0].From != "/secrets/npmrc" {
 		t.Errorf("files = %+v", f)
+	}
+}
+
+func TestAReviewDefaultsToTheOnlyServiceAndThreeRounds(t *testing.T) {
+	tk, err := config.ParseTicket([]byte(minimal+"review: {copy: [node_modules], budget_usd: 4}\n"), config.TicketOptions{RepoCheck: func(string) error { return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := tk.Review
+	if r == nil || r.Of != tk.Services[0].Name || r.MaxRounds != 3 || r.BudgetUSD != 4 || r.Copy[0] != "node_modules" {
+		t.Errorf("review = %+v", r)
 	}
 }

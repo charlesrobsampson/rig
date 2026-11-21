@@ -53,6 +53,16 @@ const (
 	AgentExited  AgentState = "exited"
 )
 
+// ReviewStatus is where a ticket's review loop stands (docs/formats.md §5).
+type ReviewStatus string
+
+const (
+	ReviewReviewing ReviewStatus = "reviewing" // a round is running: the reviewer has the code
+	ReviewFixing    ReviewStatus = "fixing"    // the coder has the findings
+	ReviewPassed    ReviewStatus = "passed"    // nothing blocking or should-fix is left
+	ReviewStopped   ReviewStatus = "stopped"   // a cap, a dispute or a person stopped it
+)
+
 var agentStates = []AgentState{AgentWorking, AgentBlocked, AgentIdle, AgentUnknown, AgentExited}
 
 func (a AgentState) Valid() bool                  { return slices.Contains(agentStates, a) }
