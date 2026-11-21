@@ -35,13 +35,15 @@ func (m *Manager) AskForPhase(id, service string, to domain.Phase, reason string
 	}
 	reason = strings.TrimSpace(reason)
 	err = m.opts.States.Update(l.statePath, func(s *state.State) error {
-		if s.Phase == to {
-			return invalid("ticket %q is already in %s", id, to)
+		if e := grantable(l.ticket, *s, service, to); e != nil {
+			return e
 		}
 		s.PhaseRequest = &state.PhaseRequest{To: to, Service: service, Reason: reason, At: m.opts.Clock.Now().UTC()}
 		return nil
 	})
 	if err != nil {
+		// The agent would otherwise wait for a move that can never come.
+		m.deliver(id, service, fmt.Sprintf("Your request for %s was not recorded: %v", to, err))
 		return err
 	}
 	m.publish(api.EventPhaseRequested, id, service, api.PhaseRequestedData{To: to, Reason: reason})
@@ -244,4 +246,22 @@ func phaseNotices(l loaded, made state.Transition) map[string]string {
 		notices[svc.Name] = harness.PhaseNotice(req, made.From, made.Reason)
 	}
 	return notices
+}
+
+// grantable refuses a request a human could never grant as asked: a skipped phase, the
+// phase the ticket is in, or a reviewed coder leaving implement, which goes through the
+// review loop instead. It says what to ask for.
+func grantable(t domain.Ticket, st state.State, service string, to domain.Phase) *api.Error {
+	if err := state.CanTransition(st.Phase, to); err != nil {
+		msg := err.Error()
+		if next, ok := state.NextPhase(st.Phase); ok && !state.IsBackward(st.Phase, to) && st.Phase != to {
+			msg += "; ask for " + string(next)
+		}
+		return invalid("%s", msg)
+	}
+	if t.Review != nil && service == t.Review.Of && st.Phase == domain.PhaseImplement && !state.IsBackward(st.Phase, to) &&
+		(st.Review == nil || st.Review.Status != domain.ReviewPassed) {
+		return invalid("a reviewer checks this work first: leave a review.ready record instead of asking for %s", to)
+	}
+	return nil
 }

@@ -73,6 +73,7 @@ rig                       # the TUI (or `rig list` for a table)
 rig attach add-locale     # jump into the agent's terminal
 rig attach add-locale --read   # or just look: its recent output in a pager, nothing typed
 rig reviewer add-locale   # with `review:` in ticket.yaml: the reviewer's rounds, findings and answers
+rig wait add-locale --phase-request   # block until an agent asks for something (or --record, --phase, --review)
 rig msg add-locale api "also cover the 404 case"
 
 # 6. Move the work through its phases; gates need you.

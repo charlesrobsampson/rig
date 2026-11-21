@@ -1282,10 +1282,11 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Seen: the coder's first `review.ready` came 13 seconds after the move to implement, so it had probably written the code in plan, against the plan rule. Not this task's concern; noted for the pilot.
 
 ### 98 · Phase requests rig cannot grant, and `rig wait`
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/98-request-advice-and-wait` · Depends: 74, 75
 - Why: an agent asked for `review` from `implement`; rig recorded a request it could never grant and the agent was not told. And a supervising session polls journals in a shell loop to learn when something happens.
 - Build: a `transition.request` for a phase that is not the next one (or the previous ones a backward move allows) is refused with a `record.rejected` saying which phase to ask for, and the agent is told. `rig wait <ticket> [--record <kind>] [--phase-request] [--phase <p>] [--review <status>] [--timeout <d>]` exits 0 with what happened, 1 on timeout.
 - Tests: a skipped-phase request is refused and the agent told; the next phase is still recorded; wait returns on each condition and times out.
 - Manual check: none beyond the tests (both are daemon-side and exercised end to end by the CLI tests).
+- Notes (as built): `grantable` (lifecycle) refuses what a human could not grant as asked and says what to ask for; it also refuses a reviewed coder leaving implement before its review passes, pointing at `review.ready`. Refusals are typed back to the agent through `Options.Deliver`. `rig wait` polls `ticket.get` and `journal.list` every 500ms on the injected clock rather than subscribing to events, because journal records have no event of their own.
