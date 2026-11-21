@@ -20,6 +20,26 @@ type Ticket struct {
 	// every agent of the ticket gets. Nil inherits the global default; empty means none.
 	AgentConfig []string `json:"agent_config,omitempty" yaml:"agent_config,omitempty"`
 	Policy      Policy   `json:"policy" yaml:"policy,omitempty"`
+	// Review puts a reviewer agent on one service: rig runs rounds of review between
+	// it and that service's own agent (docs/formats.md §4).
+	Review *Review `json:"review,omitempty" yaml:"review,omitempty"`
+}
+
+// ReviewerService is the name the reviewer's agent goes by in state, events and
+// commands; no service of a ticket with a review may use it.
+const ReviewerService = "review"
+
+type Review struct {
+	// Of is the service under review; empty means the ticket's only service.
+	Of          string   `json:"of,omitempty" yaml:"of,omitempty"`
+	AgentConfig []string `json:"agent_config,omitempty" yaml:"agent_config,omitempty"`
+	Model       string   `json:"model,omitempty" yaml:"model,omitempty"`
+	// Copy lists paths the repository ignores (installed dependencies) copied from the
+	// coder's checkout into each round's copy, so the reviewer can run the code at once.
+	Copy      []string `json:"copy,omitempty" yaml:"copy,omitempty"`
+	MaxRounds int      `json:"max_rounds,omitempty" yaml:"max_rounds,omitempty"`
+	// BudgetUSD caps what the coder and reviewer may spend in one review loop; 0 is no cap.
+	BudgetUSD float64 `json:"budget_usd,omitempty" yaml:"budget_usd,omitempty"`
 }
 
 type Source struct {
@@ -46,6 +66,11 @@ type Service struct {
 	// Files are copied into the checkout at every start and ignored by git: what the
 	// service needs to run but the repository does not carry (an .npmrc).
 	Files []PlacedFile `json:"files,omitempty" yaml:"files,omitempty"`
+	// AgentConfig replaces the ticket's agent configuration for this service's agent
+	// (nil inherits it, empty means none): how two roles get two rule sets.
+	AgentConfig []string `json:"agent_config,omitempty" yaml:"agent_config,omitempty"`
+	// Model is passed to this service's agent; empty leaves the harness's default.
+	Model string `json:"model,omitempty" yaml:"model,omitempty"`
 }
 
 // PlacedFile is a host file (From, absolute) copied to Path inside a service's checkout.

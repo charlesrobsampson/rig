@@ -3,6 +3,7 @@ package phasenotify_test
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -159,5 +160,24 @@ func TestClosingDropsWaitingNotices(t *testing.T) {
 	n.Wait()
 	if s.tries() != 1 {
 		t.Errorf("tries = %d after Close", s.tries())
+	}
+}
+
+func TestMessagesAreDeliveredAndNeverReplaceEachOtherOrANotice(t *testing.T) {
+	s := &fakeSender{refuse: map[string][]error{"api": {blocked()}}}
+	n, c := setup(t, s)
+	n.PhaseChanged("demo", map[string]string{"api": "to implement"})
+	n.Deliver("demo", "api", "finding F1")
+	n.Deliver("demo", "api", "finding F2")
+	n.Wait()
+	c.Advance(time.Hour)
+	n.Wait()
+	var texts []string
+	for _, a := range s.got() {
+		texts = append(texts, a.text)
+	}
+	sort.Strings(texts)
+	if strings.Join(texts, ",") != "finding F1,finding F2,to implement" {
+		t.Errorf("delivered %v, want all three", texts)
 	}
 }

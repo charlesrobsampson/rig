@@ -267,3 +267,21 @@ func TestResolveAgentConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestAServiceAgentConfigAndModelWin(t *testing.T) {
+	g := baseGlobal()
+	g.Defaults.AgentConfig = []string{"/g"}
+	tk := domain.Ticket{AgentConfig: []string{"/t"}}
+	if got := resolve(g, tk, domain.Service{AgentConfig: []string{"/s"}}, policy.Flags{}).AgentConfig; !reflect.DeepEqual(got, []string{"/s"}) {
+		t.Errorf("service list = %v, want /s", got)
+	}
+	if got := resolve(g, tk, domain.Service{AgentConfig: []string{}}, policy.Flags{}).AgentConfig; len(got) != 0 {
+		t.Errorf("an empty service list = %v, want none", got)
+	}
+	if got := resolve(g, tk, domain.Service{}, policy.Flags{}).AgentConfig; !reflect.DeepEqual(got, []string{"/t"}) {
+		t.Errorf("no service list = %v, want the ticket's", got)
+	}
+	if got := resolve(g, tk, domain.Service{Model: "opus"}, policy.Flags{}).Model; got != "opus" {
+		t.Errorf("model = %q", got)
+	}
+}

@@ -44,6 +44,10 @@ type Options struct {
 	// PhaseRequest receives an agent's journal record of kind transition.request, for a
 	// human to act on; its error is journaled as record.rejected. Nil ignores requests.
 	PhaseRequest func(ticket, service string, to domain.Phase, reason string) error
+	// Review receives every other record after it is journaled; the review loop acts on
+	// its own kinds (review.ready, review.result, review.reply, verdict) and ignores the
+	// rest. Its error is recorded as a record.rejected record.
+	Review func(ticket, service, kind, text string, data json.RawMessage) error
 }
 
 type Supervisor struct {
@@ -416,7 +420,7 @@ func (s *Supervisor) journalEvents(ticket, service string, complete []byte) {
 			continue
 		}
 		if s.appendRecord(ticketDir, ticket, service, api.JournalSourceContainer, entry) == nil {
-			if err := s.askForPhase(ticket, service, entry); err != nil {
+			if err := s.act(ticket, service, entry); err != nil {
 				s.rejectRecord(ticketDir, ticket, service, line, err)
 			}
 		}
@@ -479,7 +483,7 @@ func (s *Supervisor) Record(ctx context.Context, p api.AgentRecordParams) error 
 	if err := s.appendRecord(ticketDir, p.Ticket, p.Service, api.JournalSourceHost, entry); err != nil {
 		return err
 	}
-	if err := s.askForPhase(p.Ticket, p.Service, entry); err != nil {
+	if err := s.act(p.Ticket, p.Service, entry); err != nil {
 		line, _ := json.Marshal(entry)
 		s.rejectRecord(ticketDir, p.Ticket, p.Service, string(line), err)
 	}
@@ -489,6 +493,17 @@ func (s *Supervisor) Record(ctx context.Context, p api.AgentRecordParams) error 
 // TransitionRequestKind is the record kind an agent leaves to ask for a phase
 // (docs/formats.md §14).
 const TransitionRequestKind = "transition.request"
+
+// act hands a journaled record to whoever acts on its kind.
+func (s *Supervisor) act(ticket, service string, e journal.Entry) error {
+	if e.Kind == TransitionRequestKind {
+		return s.askForPhase(ticket, service, e)
+	}
+	if s.opts.Review != nil {
+		return s.opts.Review(ticket, service, e.Kind, e.Text, e.Data)
+	}
+	return nil
+}
 
 // askForPhase hands a transition.request record on; any other record is left alone.
 func (s *Supervisor) askForPhase(ticket, service string, e journal.Entry) error {

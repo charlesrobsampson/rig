@@ -34,6 +34,8 @@ type TicketSummary struct {
 	PendingGate domain.Gate `json:"pending_gate,omitempty"`
 	// PhaseRequest is an agent's open request to move the ticket, waiting for a human.
 	PhaseRequest *PhaseRequestSummary `json:"phase_request,omitempty"`
+	// Review is where the ticket's review loop stands, once it has begun.
+	Review *ReviewSummary `json:"review,omitempty"`
 	// AISummary is the language model's note on the ticket, when a summarizer is
 	// configured and has produced one. It is advisory.
 	AISummary *SummaryInfo `json:"ai_summary,omitempty"`
@@ -266,6 +268,79 @@ type TransitionRequestParams struct {
 	Service string       `json:"service"`
 	To      domain.Phase `json:"to"`
 	Reason  string       `json:"reason,omitempty"`
+}
+
+// ReviewSummary is a ticket's review loop at a glance.
+type ReviewSummary struct {
+	Status domain.ReviewStatus `json:"status"`
+	Round  int                 `json:"round"`
+	Reason string              `json:"reason,omitempty"`
+}
+
+// ReviewerParams names a ticket with a review.
+type ReviewerParams struct {
+	Ticket string `json:"ticket"`
+}
+
+// ReviewerDecideParams is a person's call on a review loop: "pass" lets the ticket move
+// on, "stop" ends the loop for a human to look at. Reason is required.
+type ReviewerDecideParams struct {
+	Ticket  string `json:"ticket"`
+	Outcome string `json:"outcome"`
+	Reason  string `json:"reason"`
+}
+
+// ReviewerStatus is a ticket's review loop in full: each round's findings and the
+// coder's answers, and what the loop has cost.
+type ReviewerStatus struct {
+	Status      domain.ReviewStatus `json:"status,omitempty"`
+	Round       int                 `json:"round"`
+	MaxRounds   int                 `json:"max_rounds"`
+	Commit      string              `json:"commit,omitempty"`
+	Base        string              `json:"base,omitempty"`
+	Reason      string              `json:"reason,omitempty"`
+	By          string              `json:"by,omitempty"`
+	BudgetUSD   float64             `json:"budget_usd,omitempty"`
+	SpentUSD    float64             `json:"spent_usd"`
+	CoderUSD    float64             `json:"coder_usd"`
+	ReviewerUSD float64             `json:"reviewer_usd"`
+	Rounds      []ReviewerRound     `json:"rounds,omitempty"`
+}
+
+type ReviewerRound struct {
+	Round    int             `json:"round"`
+	Commit   string          `json:"commit"`
+	At       time.Time       `json:"at"`
+	Verdict  string          `json:"verdict,omitempty"`
+	Findings []ReviewFinding `json:"findings,omitempty"`
+}
+
+// ReviewFinding is a reviewer's review.result record, with the coder's answer to it.
+type ReviewFinding struct {
+	ID       string       `json:"id"`
+	Severity string       `json:"severity"`
+	File     string       `json:"file,omitempty"`
+	Line     int          `json:"line,omitempty"`
+	What     string       `json:"what"`
+	Scenario string       `json:"scenario,omitempty"`
+	Fix      string       `json:"fix,omitempty"`
+	Reply    *ReviewReply `json:"reply,omitempty"`
+}
+
+// ReviewReply is the coder's review.reply record for one finding.
+type ReviewReply struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+	Commit string `json:"commit,omitempty"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// ReviewUpdatedData is the review.updated event's data.
+type ReviewUpdatedData struct {
+	Status domain.ReviewStatus `json:"status"`
+	Round  int                 `json:"round"`
+	Commit string              `json:"commit,omitempty"`
+	Reason string              `json:"reason,omitempty"`
 }
 
 // PhaseRequestSummary is the move an agent asked for and who asked.

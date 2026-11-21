@@ -106,6 +106,9 @@ func validateTicket(t *domain.Ticket, repoCheck func(string) error) []string {
 			add("agent_config[%d]: %s must be an absolute path", i, p)
 		}
 	}
+	if t.Review != nil {
+		problems = append(problems, validateReview(t)...)
+	}
 	return problems
 }
 
@@ -157,6 +160,11 @@ func validateService(i int, s *domain.Service, repoCheck func(string) error) []s
 		placed[clean] = true
 		if !filepath.IsAbs(f.From) {
 			field(name+".from", "%q must be an absolute path", f.From)
+		}
+	}
+	for j, p := range s.AgentConfig {
+		if !filepath.IsAbs(p) {
+			field(fmt.Sprintf("agent_config[%d]", j), "%s must be an absolute path", p)
 		}
 	}
 	if s.InternalPort != 0 && (s.InternalPort < 1 || s.InternalPort > 65535) {
@@ -222,6 +230,51 @@ func checkSecrets(prefix string, secrets []string) []string {
 			problems = append(problems, fmt.Sprintf("%s: duplicate %q", prefix, s))
 		}
 		seen = append(seen, s)
+	}
+	return problems
+}
+
+func validateReview(t *domain.Ticket) []string {
+	var problems []string
+	add := func(format string, args ...any) { problems = append(problems, "review."+fmt.Sprintf(format, args...)) }
+	r := t.Review
+	if r.Of == "" && len(t.Services) == 1 {
+		r.Of = t.Services[0].Name
+	}
+	found := false
+	for _, s := range t.Services {
+		found = found || s.Name == r.Of
+		if s.Name == domain.ReviewerService {
+			problems = append(problems, fmt.Sprintf("services: %q is the reviewer's name in a ticket with a review; rename the service", s.Name))
+		}
+	}
+	switch {
+	case r.Of == "":
+		add("of: required when the ticket has several services")
+	case !found:
+		add("of: %q is not a service of this ticket", r.Of)
+	}
+	for i, p := range r.AgentConfig {
+		if !filepath.IsAbs(p) {
+			add("agent_config[%d]: %s must be an absolute path", i, p)
+		}
+	}
+	for i, p := range r.Copy {
+		clean := filepath.Clean(p)
+		switch {
+		case p == "" || filepath.IsAbs(p) || clean == "." || clean == ".." || strings.HasPrefix(clean, "../"):
+			add("copy[%d]: %q must be a relative path that stays inside the checkout", i, p)
+		case clean == ".git" || strings.HasPrefix(clean, ".git/"):
+			add("copy[%d]: %q is inside .git", i, p)
+		}
+	}
+	if r.MaxRounds == 0 {
+		r.MaxRounds = 3
+	} else if r.MaxRounds < 0 {
+		add("max_rounds: %d must be at least 1", r.MaxRounds)
+	}
+	if r.BudgetUSD < 0 {
+		add("budget_usd: %v must not be negative", r.BudgetUSD)
 	}
 	return problems
 }

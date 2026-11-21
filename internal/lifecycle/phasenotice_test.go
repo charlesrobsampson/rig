@@ -1,6 +1,7 @@
 package lifecycle_test
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -70,5 +71,52 @@ func TestAFailedMoveTellsNoAgent(t *testing.T) {
 	}
 	if called {
 		t.Error("an agent was told about a move that did not happen")
+	}
+}
+
+func TestARequestRigCanNeverGrantIsRefusedAndTheAgentTold(t *testing.T) {
+	f := newFixture(t, domain.SandboxContainer)
+	var told []string
+	f.lc = lifecycle.New(lifecycle.Options{
+		Dir: f.dir, States: f.states, Bus: f.bus, Clock: testkit.NewFakeClock(epoch), Global: config.Global{Defaults: config.Defaults{BranchPrefix: "rig/"}},
+		Deliver: func(ticket, service, text string) { told = append(told, service+": "+text) },
+	})
+	f.create("demo", testkit.NewRepo(t))
+	f.advanceTo("demo", domain.PhaseImplement)
+
+	err := f.lc.AskForPhase("demo", "svc1", domain.PhaseReview, "all done")
+	if err == nil || !strings.Contains(err.Error(), "ask for test") {
+		t.Fatalf("err = %v, want advice to ask for test", err)
+	}
+	if len(told) != 1 || !strings.HasPrefix(told[0], "svc1: ") || !strings.Contains(told[0], "ask for test") {
+		t.Errorf("told = %q", told)
+	}
+	if f.state("demo").PhaseRequest != nil {
+		t.Error("an impossible request was recorded")
+	}
+	if err := f.lc.AskForPhase("demo", "svc1", domain.PhaseTest, ""); err != nil {
+		t.Errorf("the next phase: %v", err)
+	}
+	if err := f.lc.AskForPhase("demo", "svc1", domain.PhasePlan, "rethink"); err != nil {
+		t.Errorf("a step back: %v", err)
+	}
+}
+
+func TestAReviewedCoderIsToldToLeaveReviewReadyInstead(t *testing.T) {
+	f := newFixture(t, domain.SandboxContainer)
+	var told []string
+	f.lc = lifecycle.New(lifecycle.Options{
+		Dir: f.dir, States: f.states, Bus: f.bus, Clock: testkit.NewFakeClock(epoch), Global: config.Global{Defaults: config.Defaults{BranchPrefix: "rig/"}},
+		Deliver: func(ticket, service, text string) { told = append(told, text) },
+	})
+	path := f.create("demo", testkit.NewRepo(t))
+	raw, _ := os.ReadFile(filepath.Join(path, "ticket.yaml"))
+	os.WriteFile(filepath.Join(path, "ticket.yaml"), append(raw, []byte("review: {}\n")...), 0o600)
+	f.advanceTo("demo", domain.PhaseImplement)
+	if err := f.lc.AskForPhase("demo", "svc1", domain.PhaseTest, ""); err == nil || !strings.Contains(err.Error(), "review.ready") {
+		t.Errorf("err = %v", err)
+	}
+	if len(told) != 1 || !strings.Contains(told[0], "review.ready") {
+		t.Errorf("told = %q", told)
 	}
 }

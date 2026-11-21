@@ -79,3 +79,31 @@ func TestABadTransitionRequestIsRejectedWithTheReason(t *testing.T) {
 		})
 	}
 }
+
+func TestOtherRecordsGoToTheReviewLoopAndItsRefusalIsRecorded(t *testing.T) {
+	f := newFixture(t)
+	var got []string
+	f.sup = supervisor.New(supervisor.Options{
+		Dir: f.dir, States: f.states, Backend: f.term, Bus: f.bus, Clock: f.clock,
+		Interval: time.Second, HookTTL: time.Minute, MaxBackoff: 8 * time.Second,
+		Review: func(ticket, service, kind, text string, data json.RawMessage) error {
+			got = append(got, ticket+"/"+service+"/"+kind+"/"+text+"/"+string(data))
+			if kind == "verdict" {
+				return errors.New("no review round is waiting for a verdict")
+			}
+			return nil
+		},
+	})
+	f.launch("demo", "api")
+	appendTo(t, f.eventsFile("demo", "api"), `{"kind":"review.ready","text":"done"}`+"\n")
+	f.poll()
+	if err := f.sup.Record(ctx, api.AgentRecordParams{Ticket: "demo", Service: "api", Kind: "verdict", Text: "No blocking findings", Data: json.RawMessage(`{"round":1}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != "demo/api/review.ready/done/" || got[1] != `demo/api/verdict/No blocking findings/{"round":1}` {
+		t.Errorf("review loop got %q", got)
+	}
+	if k := kinds(f.journal("demo")); k != "review.ready,verdict,record.rejected" {
+		t.Errorf("journal = %s", k)
+	}
+}

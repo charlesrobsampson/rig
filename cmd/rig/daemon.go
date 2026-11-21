@@ -158,6 +158,9 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Logger: logger, Interval: time.Second,
 		PhaseRequest: func(ticket, service string, to domain.Phase, reason string) error {
 			return lc.AskForPhase(ticket, service, to, reason)
+		},
+		Review: func(ticket, service, kind, text string, data json.RawMessage) error {
+			return lc.ReviewRecord(ticket, service, kind, text, data)
 		}})
 	injector := inject.New(inject.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Readiness: sup, Clock: clk})
 	notifier := &contractnotify.Notifier{Dir: g.TicketsDir(), Sender: injector, Logger: logger}
@@ -168,7 +171,9 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		Backend: backend, BackendName: g.Defaults.TerminalBackend, RigBinary: rigBinary, AgentEnv: agentEnv, Docker: dk, Secrets: secretValues(g, a.deps.keychain), GH: a.deps.gh,
 		OnContractResolved: notifier.Resolved,
 		OnPhaseChanged:     phaseNotifier.PhaseChanged,
+		Deliver:            phaseNotifier.Deliver,
 	})
+	defer lc.Close()
 	daemon.RegisterLifecycleHandlers(srv, lc)
 	summaries.SetInputs(summaryInputs{lc: lc, reg: reg})
 	reconciler = reconcile.New(reconcile.Options{Dir: g.TicketsDir(), States: states, Docker: dk, Backend: backend, Bus: bus, Clock: clk, Logger: logger, Busy: lc.Busy})

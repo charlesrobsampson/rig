@@ -17,6 +17,7 @@ const (
 	EventServiceStatus     EventType = "service.status"
 	EventPhaseChanged      EventType = "phase.changed"
 	EventPhaseRequested    EventType = "phase.requested"
+	EventReviewUpdated     EventType = "review.updated"
 	EventGateApproved      EventType = "gate.approved"
 	EventAgentState        EventType = "agent.state"
 	EventAgentCost         EventType = "agent.cost"

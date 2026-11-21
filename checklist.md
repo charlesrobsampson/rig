@@ -1248,7 +1248,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - An empty screen prints a hint to restart the daemon: a daemon from before this task ignores `read` and sends none.
 
 ### 96 · Agent configuration and model per service
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/96-service-agent-config` · Depends: 73
 - Read: `docs/formats.md` §4 (`agent_config`), §13
@@ -1256,9 +1256,10 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: `services[].agent_config` (overrides the ticket's and the global default for that service; same checks and refusals) and `services[].model` (passed to Claude Code as `--model` for that service's agent only).
 - Tests: two services get different `.rig-agent-config/<svc>/` contents; `[]` on a service means none even with a ticket-level list; the model reaches one service's launch only; a missing template on a service is refused at start naming the service.
 - Manual check: covered by task 97's manual check (the reviewer runs on its own `agent_config`).
+- Notes (as built): `services[].agent_config` resolves first (service, ticket, global) in `policy.Resolve`, so every existing check (`checkAgentConfig`, template refusals, the snapshot per service) applies per service unchanged. `policy.Effective.Model` reaches `harness.Request.Model`, passed as `--model` before `--`.
 
 ### 97 · A reviewer agent in the ticket, with review rounds rig controls
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/97-reviewer` · Depends: 96, 72, 74, 75
 - Read: `docs/formats.md` §4, §5, §6, §13, §14; `internal/git/clone.go` (`Import`, hardened runner); `internal/phasenotify`
@@ -1272,12 +1273,20 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - Stop closes the reviewer and removes its clone and the hidden ref.
 - Tests: a round pins the coder's commit and a later coder commit does not change it; planted files in the reviewer's copy are gone next round; the copy paths arrive; the reviewer launches once and later rounds are typed; findings reach the coder; a pass with only nits; the forward move refused before a pass and allowed after; caps and a dispute stop the loop; `review.ready` while reviewing, or with uncommitted work, is refused and the coder told; pass, stop and start from the CLI; stop removes the reviewer, its clone and the ref.
 - Manual check: a real coder and reviewer on a small change go through at least one fix round and pass, with nothing typed by a person.
+  - Passed 2026-11-20 (container, Claude Code 2.1.328): a shell-script ticket with test review standards (missing argument must exit 2, every behaviour tested). After a human approved the plan and moved it to implement, nobody typed anything: the coder journaled `review.ready`; round 1 found F1 blocking (exit 1 instead of 2) and F2 should-fix (the test did not check the code, message or stream); the coder fixed both in two commits and replied to each; round 2 passed. The reviewer was launched once and briefed by message in round 2; the move to test was refused before the pass and allowed after; stop removed the reviewer, its copy and the hidden ref. Coder $0.14, reviewer $0.11.
+- Notes (as built):
+  - The reviewer is not a service in `ticket.yaml`: a `review` block, and the agent under the reserved state name `review`. So contract, gate, push and import logic, which loop over `services`, are untouched; `agentServices` adds the reviewer only where agents are closed and their containers removed.
+  - Each round empties `<ticket>/review/` and clones again rather than resetting: the reviewer can write its clone's git config (a `core.worktree` or alternates could point the next reset at the host), so nothing of it is reused. The directory itself is kept because the reviewer's container has it mounted.
+  - Round work runs in the background (`Manager.bg`, `Close`) because a `review.ready` arrives through the supervisor, which must not wait for a clone, a copy and a container.
+  - Messages to agents go through `phasenotify.Notifier.Deliver` (`Options.Deliver`): the same retries as phase notices, but a message never replaces another.
+  - Seen: the coder's first `review.ready` came 13 seconds after the move to implement, so it had probably written the code in plan, against the plan rule. Not this task's concern; noted for the pilot.
 
 ### 98 · Phase requests rig cannot grant, and `rig wait`
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/98-request-advice-and-wait` · Depends: 74, 75
 - Why: an agent asked for `review` from `implement`; rig recorded a request it could never grant and the agent was not told. And a supervising session polls journals in a shell loop to learn when something happens.
 - Build: a `transition.request` for a phase that is not the next one (or the previous ones a backward move allows) is refused with a `record.rejected` saying which phase to ask for, and the agent is told. `rig wait <ticket> [--record <kind>] [--phase-request] [--phase <p>] [--review <status>] [--timeout <d>]` exits 0 with what happened, 1 on timeout.
 - Tests: a skipped-phase request is refused and the agent told; the next phase is still recorded; wait returns on each condition and times out.
 - Manual check: none beyond the tests (both are daemon-side and exercised end to end by the CLI tests).
+- Notes (as built): `grantable` (lifecycle) refuses what a human could not grant as asked and says what to ask for; it also refuses a reviewed coder leaving implement before its review passes, pointing at `review.ready`. Refusals are typed back to the agent through `Options.Deliver`. `rig wait` polls `ticket.get` and `journal.list` every 500ms on the injected clock rather than subscribing to events, because journal records have no event of their own.

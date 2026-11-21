@@ -100,7 +100,11 @@ func (m *Manager) agentRequest(l loaded, svc domain.Service, eff policy.Effectiv
 	if err != nil {
 		return nil, harness.Request{}, err
 	}
-	req := harness.Request{Ticket: l.ticket, Service: svc.Name, Phase: l.state.Phase, TicketDir: l.dir, Network: eff.NetworkMode}
+	req := harness.Request{Ticket: l.ticket, Service: svc.Name, Phase: l.state.Phase, TicketDir: l.dir, Network: eff.NetworkMode, Model: eff.Model}
+	if target, _, ok := reviewers(l.ticket); ok {
+		req.ReviewOf = map[bool]string{true: target.Name}[svc.Name == domain.ReviewerService]
+		req.Reviewed = svc.Name == target.Name
+	}
 	names := append([]string(nil), l.ticket.Secrets...)
 	if eff.Auth != "" {
 		profile, ok := m.opts.Global.Auth.Profiles[eff.Auth]
@@ -194,7 +198,7 @@ func (m *Manager) closeAgents(ctx context.Context, id string, l loaded, force bo
 		return m.removeAgentContainers(ctx, id, l.ticket, force)
 	}
 	var closed []string
-	for _, svc := range l.ticket.Services {
+	for _, svc := range agentServices(l.ticket) {
 		pane := l.state.Services[svc.Name].Agent.PaneID
 		if pane == "" {
 			continue

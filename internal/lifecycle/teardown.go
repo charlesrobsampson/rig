@@ -39,6 +39,7 @@ func (m *Manager) teardown(ctx context.Context, id string, l loaded, force bool)
 	step(m.removeDependencyContainers(ctx, id, l.ticket))
 	step(m.removeProxy(ctx, id))
 	step(m.sweepContainers(ctx, id))
+	step(m.removeReviewer(ctx, l))
 
 	if len(failures) == 0 {
 		step(m.removeNetworks(ctx, id, l.state))

@@ -108,6 +108,27 @@ func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 		return m.Start(ctx, p)
 	})
 	registerStop(s, m)
+	s.Handle(api.MethodReviewerStatus, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.ReviewerParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "reviewer.status needs params like {\"ticket\": \"ticket-1\"}"}
+		}
+		return m.ReviewerStatus(ctx, p)
+	})
+	s.Handle(api.MethodReviewerStart, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.ReviewerParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "reviewer.start needs params like {\"ticket\": \"ticket-1\"}"}
+		}
+		return m.ReviewerStart(ctx, p)
+	})
+	s.Handle(api.MethodReviewerDecide, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.ReviewerDecideParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "reviewer.decide needs params like {\"ticket\": \"ticket-1\", \"outcome\": \"pass\", \"reason\": \"...\"}"}
+		}
+		return m.ReviewerDecide(ctx, p)
+	})
 	s.Handle(api.MethodTestsRender, func(ctx context.Context, params json.RawMessage) (any, error) {
 		var p api.TestsRenderParams
 		if err := json.Unmarshal(params, &p); err != nil {

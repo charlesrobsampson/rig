@@ -261,3 +261,37 @@ func TestBadAgentConfigIsRefusedBeforeAnythingStarts(t *testing.T) {
 		})
 	}
 }
+
+func TestEachServiceGetsItsOwnAgentConfigAndModel(t *testing.T) {
+	f, _, term := agentsFixture(t, withAuth(config.AuthProfile{Type: domain.AuthOAuthToken, Secrets: []string{"WORK_TOKEN"}}))
+	path := f.create("demo", testkit.NewRepo(t), testkit.NewRepo(t))
+	agree(t, path)
+	useAuth(t, path)
+	ticketWide := roles(t, map[string]string{"CLAUDE.md": "ticket rules"})
+	own := roles(t, map[string]string{"CLAUDE.md": "svc2 rules"})
+	useAgentConfig(t, path, ticketWide)
+	raw, _ := os.ReadFile(filepath.Join(path, "ticket.yaml"))
+	withService := strings.Replace(string(raw), "- name: svc2\n", "- name: svc2\n      agent_config: ["+own+"]\n      model: claude-sonnet-5-5\n", 1)
+	if withService == string(raw) {
+		t.Fatalf("could not find svc2 in:\n%s", raw)
+	}
+	os.WriteFile(filepath.Join(path, "ticket.yaml"), []byte(withService), 0o600)
+
+	res := f.mustStart("demo", domain.SandboxContainer)
+	for _, a := range res.Agents {
+		if a.Error != "" {
+			t.Fatal(a.Error)
+		}
+	}
+	for svc, want := range map[string]string{"svc1": "ticket rules", "svc2": "svc2 rules"} {
+		if got, _ := os.ReadFile(filepath.Join(path, ".rig-agent-config", svc, "CLAUDE.md")); string(got) != want {
+			t.Errorf("%s CLAUDE.md = %q, want %q", svc, got, want)
+		}
+	}
+	for _, s := range term.Spawned() {
+		has := slices.Contains(s.Command, "claude-sonnet-5-5")
+		if svc2 := s.Env["RIG_SERVICE"] == "svc2" || strings.Contains(strings.Join(s.Command, " "), "rig-demo-svc2-agent"); svc2 != has {
+			t.Errorf("model on %v: %v", s.Command[:6], has)
+		}
+	}
+}
