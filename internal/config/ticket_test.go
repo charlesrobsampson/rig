@@ -127,6 +127,7 @@ func TestParseTicketRejectsInvalidTickets(t *testing.T) {
 		{"file path in .git", minimal + "    files: [{path: .git/config, from: /f}]\n", []string{"services[0].files[0].path", ".git"}},
 		{"absolute file path", minimal + "    files: [{path: /etc/x, from: /f}]\n", []string{"services[0].files[0].path"}},
 		{"relative file source", minimal + "    files: [{path: .npmrc, from: npmrc}]\n", []string{"services[0].files[0].from", "absolute"}},
+		{"relative service agent config", minimal + "    agent_config: [roles]\n", []string{"services[0].agent_config[0]", "absolute"}},
 		{"the same file twice", minimal + "    files: [{path: .npmrc, from: /a}, {path: ./.npmrc, from: /b}]\n", []string{"services[0].files[1].path", "twice"}},
 		{"relative agent config", minimal + "agent_config: [roles]\n", []string{"agent_config[0]", "absolute"}},
 		{"duplicate service names", "id: d\ntitle: T\nservices:\n  - {name: api, repo: /r, branch: b}\n  - {name: api, repo: /s, branch: c, path: ./other}\n", []string{"duplicate name", "api"}},

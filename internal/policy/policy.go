@@ -33,6 +33,8 @@ type Effective struct {
 	Auth string
 	// AgentConfig lists the agent configuration templates, in order; empty means none.
 	AgentConfig []string
+	// Model is the service's agent model; empty means the harness's default.
+	Model string
 }
 
 func Resolve(g config.Global, t domain.Ticket, s domain.Service, f Flags) Effective {
@@ -46,7 +48,8 @@ func Resolve(g config.Global, t domain.Ticket, s domain.Service, f Flags) Effect
 		Harness:         first(f.Harness, s.Harness, t.Harness, d.Harness),
 		TerminalBackend: first(f.TerminalBackend, d.TerminalBackend),
 		Auth:            first(s.Auth, t.Auth, g.Auth.Default),
-		AgentConfig:     firstList(t.AgentConfig, d.AgentConfig),
+		AgentConfig:     firstList(s.AgentConfig, t.AgentConfig, d.AgentConfig),
+		Model:           s.Model,
 	}
 }
 

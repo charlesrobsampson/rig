@@ -100,7 +100,7 @@ func (m *Manager) agentRequest(l loaded, svc domain.Service, eff policy.Effectiv
 	if err != nil {
 		return nil, harness.Request{}, err
 	}
-	req := harness.Request{Ticket: l.ticket, Service: svc.Name, Phase: l.state.Phase, TicketDir: l.dir, Network: eff.NetworkMode}
+	req := harness.Request{Ticket: l.ticket, Service: svc.Name, Phase: l.state.Phase, TicketDir: l.dir, Network: eff.NetworkMode, Model: eff.Model}
 	names := append([]string(nil), l.ticket.Secrets...)
 	if eff.Auth != "" {
 		profile, ok := m.opts.Global.Auth.Profiles[eff.Auth]

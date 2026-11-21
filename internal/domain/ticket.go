@@ -46,6 +46,11 @@ type Service struct {
 	// Files are copied into the checkout at every start and ignored by git: what the
 	// service needs to run but the repository does not carry (an .npmrc).
 	Files []PlacedFile `json:"files,omitempty" yaml:"files,omitempty"`
+	// AgentConfig replaces the ticket's agent configuration for this service's agent
+	// (nil inherits it, empty means none): how two roles get two rule sets.
+	AgentConfig []string `json:"agent_config,omitempty" yaml:"agent_config,omitempty"`
+	// Model is passed to this service's agent; empty leaves the harness's default.
+	Model string `json:"model,omitempty" yaml:"model,omitempty"`
 }
 
 // PlacedFile is a host file (From, absolute) copied to Path inside a service's checkout.

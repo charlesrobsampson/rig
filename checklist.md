@@ -1248,7 +1248,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - An empty screen prints a hint to restart the daemon: a daemon from before this task ignores `read` and sends none.
 
 ### 96 · Agent configuration and model per service
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/96-service-agent-config` · Depends: 73
 - Read: `docs/formats.md` §4 (`agent_config`), §13
@@ -1256,6 +1256,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: `services[].agent_config` (overrides the ticket's and the global default for that service; same checks and refusals) and `services[].model` (passed to Claude Code as `--model` for that service's agent only).
 - Tests: two services get different `.rig-agent-config/<svc>/` contents; `[]` on a service means none even with a ticket-level list; the model reaches one service's launch only; a missing template on a service is refused at start naming the service.
 - Manual check: covered by task 97's manual check (the reviewer runs on its own `agent_config`).
+- Notes (as built): `services[].agent_config` resolves first (service, ticket, global) in `policy.Resolve`, so every existing check (`checkAgentConfig`, template refusals, the snapshot per service) applies per service unchanged. `policy.Effective.Model` reaches `harness.Request.Model`, passed as `--model` before `--`.
 
 ### 97 · A reviewer agent in the ticket, with review rounds rig controls
 - [ ] Done

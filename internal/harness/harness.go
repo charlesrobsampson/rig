@@ -36,6 +36,8 @@ type Request struct {
 	// ConfigDir is the agent's own harness configuration directory, as the agent sees
 	// it. Empty means the agent uses its user's own configuration.
 	ConfigDir string
+	// Model is passed as --model; empty leaves Claude Code's default.
+	Model string
 }
 
 // Launch is what a terminal backend needs to start the agent.

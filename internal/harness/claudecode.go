@@ -111,6 +111,9 @@ func (c ClaudeCode) Command(r Request) (Launch, error) {
 	// The ticket directory holds the files the agent works from and writes to (plan.md,
 	// tasks.md, contract.md, manual-tests.md); without this every edit there would ask.
 	command := []string{"claude", "--settings", settingsJSON}
+	if r.Model != "" {
+		command = append(command, "--model", r.Model)
+	}
 	if addDir := firstNonEmpty(r.AgentTicketDir, r.TicketDir); addDir != "" {
 		command = append(command, "--add-dir", addDir)
 	}

@@ -159,6 +159,11 @@ func validateService(i int, s *domain.Service, repoCheck func(string) error) []s
 			field(name+".from", "%q must be an absolute path", f.From)
 		}
 	}
+	for j, p := range s.AgentConfig {
+		if !filepath.IsAbs(p) {
+			field(fmt.Sprintf("agent_config[%d]", j), "%s must be an absolute path", p)
+		}
+	}
 	if s.InternalPort != 0 && (s.InternalPort < 1 || s.InternalPort > 65535) {
 		field("internal_port", "%d must be between 1 and 65535", s.InternalPort)
 	}

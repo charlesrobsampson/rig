@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -470,5 +471,18 @@ func TestThePromptStillCarriesTheSameRulesAsANotice(t *testing.T) {
 	rules := notice[strings.Index(notice, "## Rules"):]
 	if !strings.Contains(prompt, rules) {
 		t.Errorf("the prompt's rules differ from the notice's:\nnotice rules:\n%s\nprompt:\n%s", rules, prompt)
+	}
+}
+
+func TestAModelIsPassedOnlyWhenSet(t *testing.T) {
+	r := harness.Request{Ticket: ticket("api"), Service: "api", Phase: domain.PhasePlan, TicketDir: ticketDir(t, artifacts), Dir: "/w"}
+	if cmd := strings.Join(launch(t, r).Command, " "); strings.Contains(cmd, "--model") {
+		t.Errorf("command has --model without one set: %s", cmd)
+	}
+	r.Model = "claude-sonnet-5-5"
+	cmd := launch(t, r).Command
+	i := slices.Index(cmd, "--model")
+	if i < 0 || cmd[i+1] != "claude-sonnet-5-5" || i > slices.Index(cmd, "--") {
+		t.Errorf("command = %v, want --model claude-sonnet-5-5 before --", cmd)
 	}
 }
