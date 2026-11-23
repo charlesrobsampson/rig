@@ -1324,3 +1324,49 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: an optional `--as <actor>` on mutating commands (and `RIG_ACTOR` in the environment), recorded as `by` on transitions, approvals and review decisions, for example `operator` or `human:<name>`. An actor that is not a person is refused for gate approvals unless the global config lists it under `delegates` for that gate.
 - Tests: the actor is recorded; a non-person approval is refused without a delegation and recorded with one; the default stays `human`.
 - Manual check: a supervising session's moves show as its actor in `state.json`.
+
+### 102 · Frozen paths: files a ticket's agents may read but never change
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/102-frozen-paths` · Depends: 86, 97
+- Read: `docs/formats.md` §4, §14; `internal/lifecycle/reviewer.go`; `internal/git` (import, pinned start commit)
+- Why: tests written before the code, and formal specs approved by a person, are only worth anything if the coder cannot weaken them. Models rewarded for passing a verifier learn to edit the spec instead of the code, so this has to be refused by rig, not asked for in a prompt.
+- Build: `frozen: [<path globs>]` per ticket (and per service), fixed once the plan is approved: from then on agents can read these paths but not change them. At every review round, import and push, rig diffs the coder's commits since the ticket's pinned start commit (task 86); a change to a frozen path refuses the round (or the import or push) and tells the coder which paths, as a blocking finding: revert it, or dispute it with `review.reply` if the frozen file is wrong (a dispute stops the loop for a person, as today). A person can allow one change with `rig frozen <id> --allow <path> --reason "..."`, recorded with who and why; `rig frozen <id>` lists the paths and any allowed changes.
+- Tests: a commit touching a frozen path is refused at the round, at import and at push; the coder is told which path; a person's allowance lets exactly that change through and is recorded; renames and deletions of frozen files count as changes; globs match as documented.
+- Manual check: a coder asked to make a failing frozen test pass by editing the test is refused, reverts, and fixes the code instead.
+
+### 103 · A formal model of rig's ticket rules, checked in CI
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/103-model` · Depends: 97, 98, 102
+- Read: `manifest.md` (lifecycle, gates); `docs/formats.md` §5, §14; `internal/lifecycle`
+- Why: the rules people trust rig for must hold in every ordering of events, including the ones no test was written for: agents, the supervisor, the reviewer loop and a person all act concurrently. A model checker explores every ordering of a small model; tests cover the cases someone thought of.
+- Build: `spec/rig.qnt`, a Quint model (Quint is a TLA+ dialect; it runs on the TLA+ checkers) of phases and transitions, gates and approvals, phase requests and refusals, the review loop (statuses, rounds, caps, budget, disputes, a person's pass or stop) and frozen paths. Invariants, each named and commented in plain words:
+  - a gate is approved only by a person (or a delegate named for that gate, after task 101);
+  - a reviewed ticket never leaves implement unless its review has passed;
+  - an agent never starts a review loop that a stop ended; only a person does;
+  - no transition skips a phase;
+  - a frozen path never changes without a person's allowance.
+  Temporal properties: every round ends in a pass, a fix request or a stop; every stop is reported. `task spec` runs the checker (`quint verify`, bounded); CI runs it. `process.md` gains a rule: a change to the rules in `internal/lifecycle` or `transition.go` changes the model in the same branch.
+- Tests: `task spec` passes; each invariant fails with a counterexample when the matching guard is removed from the model (planted mutations, kept as a script).
+- Manual check: remove "review passed" from the leave-implement guard in the model; the checker prints the shortest sequence of events that breaks the rule.
+
+### 104 · Real runs checked against the model (trace validation)
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/104-traces` · Depends: 103
+- Read: `docs/formats.md` §5, §8, §14; `spec/rig.qnt`
+- Why: a model nobody checks against the code drifts from it. Checking what rig really did (its state history and journal) against the model catches both a bug in the code and a model that no longer describes it, using runs that already happen: field tests and pilot tickets.
+- Build: `rig trace <ticket> [--out file]` writes the ticket's history (transitions, approvals, requests and refusals, review rounds and decisions, frozen-path refusals) as a trace in the model's terms (Quint's ITF JSON). `task spec:traces` checks every trace in a folder against the model and lists the first step each failing trace cannot take. Field-test runs keep their traces in `docs/field-tests/`.
+- Tests: a trace from the fixture tickets conforms; a trace edited to leave implement before a pass fails at that step; every event type that changes state appears in the export.
+- Manual check: export a real reviewed ticket from a field run; it conforms.
+
+### 105 · The GitHub account to open pull requests as
+- [ ] Done
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
+- Branch: `task/105-github-user` · Depends: none
+- Read: `docs/formats.md` §4 (`policy.push`); `internal/git/pr.go`
+- Why: `gh` can be logged in to several accounts on one host (a work and a personal one) with only one active. rig opened pull requests as whichever was active, so a repository only the other account can see failed with "Could not resolve to a Repository" after the branch had already been pushed with the user's own git credentials.
+- Build: `policy.push.github_user` (service, ticket or global; a GitHub login). In pr mode rig asks gh for that account's token (`gh auth token --user <login>`) and gives it as `GH_TOKEN` to its own gh calls only: never stored, logged, shown or given to an agent, and the active account is not switched. An account gh has no login for refuses the push before anything is pushed. gh's "Could not resolve to a Repository" gets a hint naming `github_user`.
+- Tests: the PR is opened with the named account's token when another is active; the token reaches only rig's gh calls and appears in no error; an unknown account fails before the push; without the setting nothing changes; an invalid login is refused when the config is read; service beats ticket beats global.
+- Manual check: on a machine whose active gh account cannot see the repository, `rig push` opens the PR as `github_user` and `gh auth status` still shows the same active account.
