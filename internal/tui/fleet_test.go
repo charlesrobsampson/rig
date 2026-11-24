@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-var rows = []HomeRow{
+var rows = []VesselRow{
 	{Name: "default", Status: "running (v1)", Tickets: "0"},
 	{Name: "osmo", Status: "stopped", Tickets: "-"},
 	{Name: "portal", Status: "running (v1)", Tickets: "2"},
@@ -35,7 +35,7 @@ func pick(t *testing.T, keys ...string) (Picker, tea.Cmd) {
 	return p, cmd
 }
 
-func TestThePickerListsEveryHomeAndOpensTheSelectedOne(t *testing.T) {
+func TestThePickerListsEveryVesselAndOpensTheSelectedOne(t *testing.T) {
 	p, _ := pick(t)
 	v := p.View()
 	for _, want := range []string{"default", "osmo", "stopped", "portal", "2"} {
@@ -81,10 +81,10 @@ func TestThePickerFiltersAsYouType(t *testing.T) {
 	}
 }
 
-func deepLinked(t *testing.T, target *Target, home string, copied *[]string) Model {
+func deepLinked(t *testing.T, target *Target, vessel string, copied *[]string) Model {
 	t.Helper()
 	src := &fakeSource{tickets: demo, files: files, diff: "the diff"}
-	m := New(Options{Source: src, Home: home, Open: target, RefreshEvery: 1, Copy: func(s string) error { *copied = append(*copied, s); return nil }})
+	m := New(Options{Source: src, Vessel: vessel, Open: target, RefreshEvery: 1, Copy: func(s string) error { *copied = append(*copied, s); return nil }})
 	m, _ = send(m, tea.WindowSizeMsg{Width: 120, Height: 20})
 	m, cmd := load(t, m)
 	m, _ = run(t, m, cmd)
@@ -119,11 +119,11 @@ func TestYCopiesTheCommandForWhatIsOnScreen(t *testing.T) {
 	m = press(t, m, "Y")
 	m = press(t, m, "enter", "Y")
 	m = press(t, m, "4", "Y")
-	want := []string{"rig -H osmo", "rig -H osmo -t demo-1", "rig -H osmo -t demo-1 --tab diff"}
+	want := []string{"rig -V osmo", "rig -V osmo -t demo-1", "rig -V osmo -t demo-1 --tab diff"}
 	if strings.Join(copied, "|") != strings.Join(want, "|") {
 		t.Errorf("copied %q, want %q", copied, want)
 	}
-	if !strings.Contains(m.View(), "rig -H osmo -t demo-1 --tab diff") {
+	if !strings.Contains(m.View(), "rig -V osmo -t demo-1 --tab diff") {
 		t.Errorf("the command is not shown:\n%s", m.View())
 	}
 	copied = nil
@@ -134,21 +134,21 @@ func TestYCopiesTheCommandForWhatIsOnScreen(t *testing.T) {
 	}
 }
 
-func TestHGoesBackToThePickerOnlyWhenThereIsOne(t *testing.T) {
+func TestFGoesBackToTheFleetOnlyWhenThereIsAnother(t *testing.T) {
 	src := &fakeSource{tickets: demo}
-	m := New(Options{Source: src, Home: "osmo", CanSwitch: true})
+	m := New(Options{Source: src, Vessel: "osmo", CanSwitch: true})
 	m, _ = load(t, m)
-	m, cmd := send(m, key("H"))
-	if !m.SwitchHome() || !isQuit(cmd) {
-		t.Errorf("H with a picker: switch %v, quit %v", m.SwitchHome(), isQuit(cmd))
+	m, cmd := send(m, key("F"))
+	if !m.SwitchVessel() || !isQuit(cmd) {
+		t.Errorf("F with a picker: switch %v, quit %v", m.SwitchVessel(), isQuit(cmd))
 	}
-	m = New(Options{Source: src, Home: "osmo"})
+	m = New(Options{Source: src, Vessel: "osmo"})
 	m, _ = load(t, m)
-	m, cmd = send(m, key("H"))
-	if m.SwitchHome() || isQuit(cmd) {
-		t.Error("H quit although there is no other home to pick")
+	m, cmd = send(m, key("F"))
+	if m.SwitchVessel() || isQuit(cmd) {
+		t.Error("F quit although there is no other vessel to pick")
 	}
 	if v := m.View(); !strings.Contains(v, "osmo") {
-		t.Errorf("the header does not name the home:\n%s", v)
+		t.Errorf("the header does not name the vessel:\n%s", v)
 	}
 }

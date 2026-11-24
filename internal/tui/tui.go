@@ -51,13 +51,13 @@ type Options struct {
 	// Copy puts text on the system clipboard (nil means an OSC 52 escape sequence,
 	// which most modern terminals honour, including over ssh).
 	Copy func(text string) error
-	// Home is the name of the rig home shown (empty when it was chosen by config file);
+	// Vessel is the name of the vessel shown (empty when it was chosen by config file);
 	// it is part of the command Y copies.
-	Home string
+	Vessel string
 	// Open is a ticket (and tab) to open as soon as the fleet is known.
 	Open *Target
-	// CanSwitch lets H leave the TUI to choose another home (Run then returns
-	// ErrSwitchHome).
+	// CanSwitch lets F leave the TUI to choose another vessel (Run then returns
+	// ErrSwitchVessel).
 	CanSwitch bool
 }
 
@@ -67,8 +67,8 @@ type Target struct {
 	Tab    Tab
 }
 
-// ErrSwitchHome: the person pressed H to choose another home.
-var ErrSwitchHome = errors.New("switch home")
+// ErrSwitchVessel: the person pressed F to choose another vessel.
+var ErrSwitchVessel = errors.New("switch vessel")
 
 // ParseTab is the tab with that name (plan, tasks, contract, diff, logs, manual).
 func ParseTab(name string) (Tab, error) {
@@ -129,7 +129,7 @@ type Model struct {
 	statusErr bool
 
 	pending   *Target // a deep link waiting for the fleet
-	switching bool    // H was pressed: leave to choose another home
+	switching bool    // F was pressed: leave to choose another vessel
 }
 
 func New(o Options) Model {
@@ -142,14 +142,14 @@ func New(o Options) Model {
 	return Model{opts: o, dash: &dashboard{}, pending: o.Open}
 }
 
-// SwitchHome says the person left to choose another home.
-func (m Model) SwitchHome() bool { return m.switching }
+// SwitchVessel says the person left to choose another vessel.
+func (m Model) SwitchVessel() bool { return m.switching }
 
 // Command is the one line that opens what is on screen now.
 func (m Model) Command() string {
 	parts := []string{"rig"}
-	if m.opts.Home != "" {
-		parts = append(parts, "-H", m.opts.Home)
+	if m.opts.Vessel != "" {
+		parts = append(parts, "-V", m.opts.Vessel)
 	}
 	if m.det != nil {
 		parts = append(parts, "-t", m.det.ticket)
@@ -313,7 +313,7 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.fail("cannot copy %s: %v", command, err), nil
 		}
 		return m.ok("copied: %s", command), nil
-	case "H":
+	case "F":
 		if m.opts.CanSwitch {
 			m.switching = true
 			return m, tea.Quit
@@ -361,7 +361,7 @@ func (m Model) openPending() (tea.Model, tea.Cmd) {
 			return m, tea.Batch(m.loadTab(m.det.tab), m.refreshTick())
 		}
 	}
-	return m.fail("no ticket %q in this home", target.Ticket), nil
+	return m.fail("no ticket %q in this vessel", target.Ticket), nil
 }
 
 // open shows a ticket's detail view, loading its first tab.
@@ -477,8 +477,8 @@ var Keys = []struct{ Key, Help string }{
 	{"t", "attach to a service's agent terminal; come back when it exits"},
 	{"m", "type a message into an agent"},
 	{"c / C", "accept / reject a proposed contract change"},
-	{"Y", "copy the command that opens this view (home, ticket, tab)"},
-	{"H", "choose another home (when there are several)"},
+	{"Y", "copy the command that opens this view (vessel, ticket, tab)"},
+	{"F", "back to the fleet: choose another vessel (when there are several)"},
 	{"r", "refresh now"},
 	{"q", "quit"},
 	{"ctrl+c", "quit from anywhere"},
@@ -522,8 +522,8 @@ func (m Model) header(w int) string {
 	if m.opts.Version != "" {
 		title += " " + m.opts.Version
 	}
-	if m.opts.Home != "" {
-		title += " · home " + m.opts.Home
+	if m.opts.Vessel != "" {
+		title += " · vessel " + m.opts.Vessel
 	}
 	if backend, ok := remoteSummaries(m.tickets); ok {
 		title += " · summaries from a remote model (" + backend + "): ticket content leaves this machine"
@@ -600,8 +600,8 @@ func Run(ctx context.Context, o Options) error {
 		go Pump(pumpCtx, o.Source, p.Send, o.RetryEvery)
 	}
 	final, err := p.Run()
-	if err == nil && final.(Model).SwitchHome() {
-		return ErrSwitchHome
+	if err == nil && final.(Model).SwitchVessel() {
+		return ErrSwitchVessel
 	}
 	return err
 }

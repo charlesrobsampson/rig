@@ -45,8 +45,8 @@ type deps struct {
 	// jiraHTTP replaces the HTTP client used to read Jira issues (tests).
 	jiraHTTP ticket.HTTPDoer
 	runTUI   func(ctx context.Context, o tui.Options) error
-	// pickHome shows the home picker (nil means the real one).
-	pickHome func(ctx context.Context, rows []tui.HomeRow) (string, error)
+	// pickVessel shows the fleet picker (nil means the real one).
+	pickVessel func(ctx context.Context, rows []tui.VesselRow) (string, error)
 }
 
 func main() {
@@ -72,7 +72,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, d deps) i
 type app struct {
 	deps       deps
 	configPath string
-	homeName   string
+	vesselName string
 	json       bool
 }
 
@@ -94,9 +94,9 @@ func newRootCmd(d deps) *cobra.Command {
 	root.Flags().StringVar(&tab, "tab", "", "with --ticket: open this tab (plan, tasks, contract, diff, logs, manual)")
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError(err) })
 	root.PersistentFlags().StringVar(&a.configPath, "config", "", "global config file (default $RIG_CONFIG, then ~/.config/rig/config.json)")
-	root.PersistentFlags().StringVarP(&a.homeName, "home", "H", "", "the rig home to use, by name (default $RIG_HOME_NAME; see rig homes)")
+	root.PersistentFlags().StringVarP(&a.vesselName, "vessel", "V", "", "the vessel (rig instance) to use, by name (default $RIG_VESSEL; see rig fleet)")
 	root.PersistentFlags().BoolVar(&a.json, "json", false, "print machine-readable JSON")
-	root.PersistentPreRunE = func(*cobra.Command, []string) error { return a.chooseHome() }
-	root.AddCommand(newConfigCmd(a), newDaemonCmd(a), newListCmd(a), newEventsCmd(a), newNewCmd(a), newStartCmd(a), newStopCmd(a), newGatesCmd(a), newApproveCmd(a), newPhaseCmd(a), newAgentEventCmd(a), newJournalCmd(a), newAttachCmd(a), newMsgCmd(a), newLogsCmd(a), newReviewCmd(a), newReviewerCmd(a), newWaitCmd(a), newPushCmd(a), newTestsCmd(a), newContractCmd(a), newMCPCmd(a), newReconcileCmd(a), newHomesCmd(a))
+	root.PersistentPreRunE = func(*cobra.Command, []string) error { return a.chooseVessel() }
+	root.AddCommand(newConfigCmd(a), newDaemonCmd(a), newListCmd(a), newEventsCmd(a), newNewCmd(a), newStartCmd(a), newStopCmd(a), newGatesCmd(a), newApproveCmd(a), newPhaseCmd(a), newAgentEventCmd(a), newJournalCmd(a), newAttachCmd(a), newMsgCmd(a), newLogsCmd(a), newReviewCmd(a), newReviewerCmd(a), newWaitCmd(a), newPushCmd(a), newTestsCmd(a), newContractCmd(a), newMCPCmd(a), newReconcileCmd(a), newFleetCmd(a))
 	return root
 }

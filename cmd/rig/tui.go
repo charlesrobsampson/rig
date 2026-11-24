@@ -27,8 +27,8 @@ func (a *app) interactive() bool {
 }
 
 // rootRun is bare `rig`: the TUI on a terminal, the same table as `rig list` anywhere
-// else (a pipe, a script, --json), so output stays scriptable. With several homes and
-// none chosen, a picker comes first, and H in the TUI comes back to it.
+// else (a pipe, a script, --json), so output stays scriptable. With several vessels and
+// none chosen, a picker comes first, and F in the TUI comes back to it.
 func (a *app) rootRun(cmd *cobra.Command, ticket, tab string) error {
 	if a.json || !a.interactive() {
 		return newListCmd(a).RunE(cmd, nil)
@@ -49,44 +49,44 @@ func (a *app) rootRun(cmd *cobra.Command, ticket, tab string) error {
 	}
 	chosen := a.configPath != "" || os.Getenv("RIG_CONFIG") != ""
 	for {
-		opts := tui.Options{Source: daemonSource{a}, Version: version, Home: a.homeName, Open: open}
+		opts := tui.Options{Source: daemonSource{a}, Version: version, Vessel: a.vesselName, Open: open}
 		if !chosen {
-			name, many, err := a.pickHome(cmd)
+			name, many, err := a.pickVessel(cmd)
 			if err != nil || name == "" && many {
 				return err
 			}
-			opts.Home, opts.CanSwitch = name, many
+			opts.Vessel, opts.CanSwitch = name, many
 		}
 		run := tui.Run
 		if a.deps.runTUI != nil {
 			run = a.deps.runTUI
 		}
-		if err := run(cmd.Context(), opts); !errors.Is(err, tui.ErrSwitchHome) {
+		if err := run(cmd.Context(), opts); !errors.Is(err, tui.ErrSwitchVessel) {
 			return err
 		}
-		open = nil // a deep link was for the first home only
+		open = nil // a deep link was for the first vessel only
 	}
 }
 
-// pickHome chooses the home when none was: the only one there is, or the person's pick
+// pickVessel chooses the vessel when none was: the only one there is, or the person's pick
 // from several (many is true then; "" means they quit). The choice becomes the config.
-func (a *app) pickHome(cmd *cobra.Command) (name string, many bool, err error) {
-	homes, user, err := loadHomes()
+func (a *app) pickVessel(cmd *cobra.Command) (name string, many bool, err error) {
+	fleet, user, err := loadFleet()
 	if err != nil {
 		return "", false, err
 	}
-	all := homes.All(user)
+	all := fleet.All(user)
 	switch len(all) {
 	case 0:
 		return "", false, nil
 	case 1:
-		a.configPath, a.homeName = all[0].Config, all[0].Name
+		a.configPath, a.vesselName = all[0].Config, all[0].Name
 		return all[0].Name, false, nil
 	}
-	rows := make([]tui.HomeRow, len(all))
+	rows := make([]tui.VesselRow, len(all))
 	for i, h := range all {
-		info, _ := a.inspectHome(cmd, h)
-		row := tui.HomeRow{Name: h.Name, Status: "stopped", Tickets: "-"}
+		info, _ := a.inspectVessel(cmd, h)
+		row := tui.VesselRow{Name: h.Name, Status: "stopped", Tickets: "-"}
 		switch {
 		case info.Error != "":
 			row.Status = "error: " + info.Error
@@ -98,16 +98,16 @@ func (a *app) pickHome(cmd *cobra.Command) (name string, many bool, err error) {
 		}
 		rows[i] = row
 	}
-	pick := tui.PickHome
-	if a.deps.pickHome != nil {
-		pick = a.deps.pickHome
+	pick := tui.PickVessel
+	if a.deps.pickVessel != nil {
+		pick = a.deps.pickVessel
 	}
 	if name, err = pick(cmd.Context(), rows); err != nil || name == "" {
 		return "", true, err
 	}
 	for _, h := range all {
 		if h.Name == name {
-			a.configPath, a.homeName = h.Config, h.Name
+			a.configPath, a.vesselName = h.Config, h.Name
 		}
 	}
 	return name, true, nil
