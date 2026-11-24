@@ -14,27 +14,27 @@ import (
 	"github.com/charlesrobsampson/rig/internal/config"
 )
 
-// chooseHome turns a home chosen by name into its config. The order is --config,
-// --home, $RIG_CONFIG, $RIG_HOME_NAME, then the default config.
-func (a *app) chooseHome() error {
-	name := a.homeName
+// chooseVessel turns a vessel chosen by name into its config. The order is --config,
+// --vessel, $RIG_CONFIG, $RIG_VESSEL, then the default config.
+func (a *app) chooseVessel() error {
+	name := a.vesselName
 	switch {
 	case name != "" && a.configPath != "":
-		return usageError(errors.New("--config and --home both choose a config; give one"))
+		return usageError(errors.New("--config and --vessel both choose a config; give one"))
 	case name == "" && (a.configPath != "" || os.Getenv("RIG_CONFIG") != ""):
 		return nil
 	case name == "":
-		if name = os.Getenv("RIG_HOME_NAME"); name == "" {
+		if name = os.Getenv("RIG_VESSEL"); name == "" {
 			return nil
 		}
-		a.homeName = name
+		a.vesselName = name
 	}
-	homes, user, err := loadHomes()
+	fleet, user, err := loadFleet()
 	if err != nil {
 		return err
 	}
 	var known []string
-	for _, h := range homes.All(user) {
+	for _, h := range fleet.All(user) {
 		if h.Name == name {
 			a.configPath = h.Config
 			return nil
@@ -42,22 +42,22 @@ func (a *app) chooseHome() error {
 		known = append(known, h.Name)
 	}
 	if len(known) == 0 {
-		return usageError(fmt.Errorf("no home named %q: none are registered (rig homes add <name> <config>)", name))
+		return usageError(fmt.Errorf("no vessel named %q: none are registered (rig fleet add <name> <config>)", name))
 	}
-	return usageError(fmt.Errorf("no home named %q; known homes: %s (rig homes)", name, strings.Join(known, ", ")))
+	return usageError(fmt.Errorf("no vessel named %q; known vessels: %s (rig fleet)", name, strings.Join(known, ", ")))
 }
 
-func loadHomes() (config.Homes, string, error) {
+func loadFleet() (config.Fleet, string, error) {
 	user, err := os.UserHomeDir()
 	if err != nil {
 		return nil, "", fmt.Errorf("find home directory: %w", err)
 	}
-	homes, err := config.LoadHomes(user)
-	return homes, user, err
+	fleet, err := config.LoadFleet(user)
+	return fleet, user, err
 }
 
-// homeInfo is one home as `rig homes` shows it.
-type homeInfo struct {
+// vesselInfo is one vessel as `rig fleet` shows it.
+type vesselInfo struct {
 	Name    string `json:"name"`
 	Config  string `json:"config"`
 	Home    string `json:"home,omitempty"`
@@ -67,12 +67,12 @@ type homeInfo struct {
 	Error   string `json:"error,omitempty"`
 }
 
-// inspectHome looks at a home without starting its daemon; tickets is filled only when
+// inspectVessel looks at a vessel without starting its daemon; tickets is filled only when
 // it runs.
-func (a *app) inspectHome(cmd *cobra.Command, h config.NamedHome) (homeInfo, []api.TicketSummary) {
-	info := homeInfo{Name: h.Name, Config: h.Config}
+func (a *app) inspectVessel(cmd *cobra.Command, h config.NamedVessel) (vesselInfo, []api.TicketSummary) {
+	info := vesselInfo{Name: h.Name, Config: h.Config}
 	sub := *a
-	sub.configPath, sub.homeName = h.Config, ""
+	sub.configPath, sub.vesselName = h.Config, ""
 	g, err := sub.global()
 	if err != nil {
 		info.Error = err.Error()
@@ -100,33 +100,34 @@ func (a *app) inspectHome(cmd *cobra.Command, h config.NamedHome) (homeInfo, []a
 	return info, res.Tickets
 }
 
-func newHomesCmd(a *app) *cobra.Command {
+func newFleetCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "homes",
-		Short: "List the rig homes you can choose with --home, and whether their daemons run",
-		Long: `List the rig homes you can choose with --home (or $RIG_HOME_NAME): each is a
-config with its own home directory and daemon. No daemon is started to find out.
-The default config is the home named "default" when it exists.`,
+		Use:   "fleet",
+		Short: "List your vessels (rig instances) you can choose with --vessel, and whether their daemons run",
+		Long: `List your vessels: the rig instances you can choose with --vessel (or $RIG_VESSEL).
+Each is a config with its own home directory, daemon, agents and record; in jybe, one
+per product. No daemon is started to find out. The default config is the vessel named
+"default" when it exists.`,
 		Args: usageArgs(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			homes, user, err := loadHomes()
+			fleet, user, err := loadFleet()
 			if err != nil {
 				return err
 			}
-			var infos []homeInfo
-			for _, h := range homes.All(user) {
-				info, _ := a.inspectHome(cmd, h)
+			var infos []vesselInfo
+			for _, h := range fleet.All(user) {
+				info, _ := a.inspectVessel(cmd, h)
 				infos = append(infos, info)
 			}
 			if a.json {
 				return printJSON(cmd.OutOrStdout(), infos)
 			}
 			if len(infos) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "no homes: add one with rig homes add <name> <config>")
+				fmt.Fprintln(cmd.OutOrStdout(), "no vessels: add one with rig fleet add <name> <config>")
 				return nil
 			}
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "NAME\tDAEMON\tTICKETS\tHOME\tCONFIG")
+			fmt.Fprintln(tw, "VESSEL\tDAEMON\tTICKETS\tHOME\tCONFIG")
 			for _, i := range infos {
 				daemon, tickets := "stopped", "-"
 				if i.Running {
@@ -145,76 +146,76 @@ The default config is the home named "default" when it exists.`,
 	}
 	cmd.AddCommand(&cobra.Command{
 		Use:   "add <name> <config>",
-		Short: "Register a config as a home you can choose by name",
+		Short: "Register a config as a vessel you can choose by name",
 		Args:  usageArgs(cobra.ExactArgs(2)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			if err := config.CheckHomeName(name); err != nil {
+			if err := config.CheckVesselName(name); err != nil {
 				return usageError(err)
 			}
 			path, err := filepath.Abs(args[1])
 			if err != nil {
 				return err
 			}
-			homes, user, err := loadHomes()
+			fleet, user, err := loadFleet()
 			if err != nil {
 				return err
 			}
-			if old, ok := homes[name]; ok {
-				return fmt.Errorf("a home named %q is already registered (%s); remove it first", name, old)
+			if old, ok := fleet[name]; ok {
+				return fmt.Errorf("a vessel named %q is already registered (%s); remove it first", name, old)
 			}
 			g, err := config.LoadGlobal(config.GlobalOptions{Path: path})
 			if err != nil {
 				return err
 			}
-			homes[name] = path
-			if err := config.SaveHomes(user, homes); err != nil {
+			fleet[name] = path
+			if err := config.SaveFleet(user, fleet); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "home %s: %s (config %s)\n", name, g.Paths.Home, path)
+			fmt.Fprintf(cmd.OutOrStdout(), "vessel %s: home %s (config %s)\n", name, g.Paths.Home, path)
 			return nil
 		},
 	}, &cobra.Command{
 		Use:   "remove <name>",
-		Short: "Forget a home's name (its config, files and daemon are not touched)",
+		Short: "Forget a vessel's name (its config, files and daemon are not touched)",
 		Args:  usageArgs(cobra.ExactArgs(1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			homes, user, err := loadHomes()
+			fleet, user, err := loadFleet()
 			if err != nil {
 				return err
 			}
-			if _, ok := homes[args[0]]; !ok {
-				return fmt.Errorf("no home named %q is registered", args[0])
+			if _, ok := fleet[args[0]]; !ok {
+				return fmt.Errorf("no vessel named %q is registered", args[0])
 			}
-			delete(homes, args[0])
-			if err := config.SaveHomes(user, homes); err != nil {
+			delete(fleet, args[0])
+			if err := config.SaveFleet(user, fleet); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "forgot home %s\n", args[0])
+			fmt.Fprintf(cmd.OutOrStdout(), "forgot vessel %s\n", args[0])
 			return nil
 		},
 	})
 	return cmd
 }
 
-// homeTickets is one home in `rig list --all`.
-type homeTickets struct {
-	Home    string              `json:"home"`
+// vesselTickets is one vessel in `rig list --all`.
+type vesselTickets struct {
+	Vessel  string              `json:"vessel"`
 	Running bool                `json:"running"`
 	Tickets []api.TicketSummary `json:"tickets"`
 	Error   string              `json:"error,omitempty"`
 }
 
-// listAll shows every running home's tickets, one section per home, starting nothing.
+// listAll shows every running vessel's tickets, one section per vessel, starting nothing.
 func (a *app) listAll(cmd *cobra.Command) error {
-	homes, user, err := loadHomes()
+	fleet, user, err := loadFleet()
 	if err != nil {
 		return err
 	}
-	var all []homeTickets
-	for _, h := range homes.All(user) {
-		info, tickets := a.inspectHome(cmd, h)
-		all = append(all, homeTickets{Home: h.Name, Running: info.Running, Tickets: tickets, Error: info.Error})
+	var all []vesselTickets
+	for _, h := range fleet.All(user) {
+		info, tickets := a.inspectVessel(cmd, h)
+		all = append(all, vesselTickets{Vessel: h.Name, Running: info.Running, Tickets: tickets, Error: info.Error})
 	}
 	if a.json {
 		return printJSON(cmd.OutOrStdout(), all)
@@ -226,11 +227,11 @@ func (a *app) listAll(cmd *cobra.Command) error {
 		}
 		switch {
 		case h.Error != "":
-			fmt.Fprintf(out, "%s: %s\n", h.Home, h.Error)
+			fmt.Fprintf(out, "%s: %s\n", h.Vessel, h.Error)
 		case !h.Running:
-			fmt.Fprintf(out, "%s: daemon not running\n", h.Home)
+			fmt.Fprintf(out, "%s: daemon not running\n", h.Vessel)
 		default:
-			fmt.Fprintf(out, "%s\n", h.Home)
+			fmt.Fprintf(out, "%s\n", h.Vessel)
 			writeTicketTable(out, h.Tickets)
 		}
 	}

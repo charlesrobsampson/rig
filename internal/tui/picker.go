@@ -9,14 +9,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// HomeRow is one rig home in the picker.
-type HomeRow struct {
+// VesselRow is one vessel in the picker.
+type VesselRow struct {
 	Name, Status, Tickets string
 }
 
-// Picker chooses a rig home: j/k to move, / to search by name, enter to open.
+// Picker chooses a vessel: j/k to move, / to search by name, enter to open.
 type Picker struct {
-	rows          []HomeRow
+	rows          []VesselRow
 	sel           int
 	filter        []rune
 	typing        bool
@@ -24,10 +24,10 @@ type Picker struct {
 	width, height int
 }
 
-func NewPicker(rows []HomeRow) Picker { return Picker{rows: rows} }
+func NewPicker(rows []VesselRow) Picker { return Picker{rows: rows} }
 
-// PickHome shows the picker until a home is chosen ("" when the person quit).
-func PickHome(ctx context.Context, rows []HomeRow) (string, error) {
+// PickVessel shows the picker until a vessel is chosen ("" when the person quit).
+func PickVessel(ctx context.Context, rows []VesselRow) (string, error) {
 	final, err := tea.NewProgram(NewPicker(rows), tea.WithAltScreen(), tea.WithContext(ctx)).Run()
 	if err != nil {
 		return "", err
@@ -35,19 +35,19 @@ func PickHome(ctx context.Context, rows []HomeRow) (string, error) {
 	return final.(Picker).Chosen(), nil
 }
 
-// Chosen is the home picked, or "" when none was.
+// Chosen is the vessel picked, or "" when none was.
 func (p Picker) Chosen() string { return p.chosen }
 
 func (p Picker) Init() tea.Cmd { return nil }
 
 func (p Picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) { return p.send(msg) }
 
-func (p Picker) visible() []HomeRow {
+func (p Picker) visible() []VesselRow {
 	if len(p.filter) == 0 {
 		return p.rows
 	}
 	want := strings.ToLower(string(p.filter))
-	var out []HomeRow
+	var out []VesselRow
 	for _, r := range p.rows {
 		if strings.Contains(strings.ToLower(r.Name), want) {
 			out = append(out, r)
@@ -121,7 +121,7 @@ func (p Picker) View() string {
 	}
 	var b strings.Builder
 	tw := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "  HOME\tDAEMON\tTICKETS")
+	fmt.Fprintln(tw, "  VESSEL\tDAEMON\tTICKETS")
 	rows := p.visible()
 	for i, r := range rows {
 		mark := " "
@@ -133,11 +133,11 @@ func (p Picker) View() string {
 	tw.Flush()
 	body := b.String()
 	if len(rows) == 0 {
-		body += "  no home matches\n"
+		body += "  no vessel matches\n"
 	}
 	footer := "j/k move · / search · enter open · q quit"
 	if p.typing {
 		footer = "/" + string(p.filter) + "█   enter open · esc clear"
 	}
-	return strings.Join([]string{"rig · choose a home", fit(body, w, h-2), footer}, "\n")
+	return strings.Join([]string{"rig · fleet · choose a vessel", fit(body, w, h-2), footer}, "\n")
 }

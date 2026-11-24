@@ -115,11 +115,28 @@ of the same daemon API as the CLI, and updates live from the daemon's event stre
 - **Actions.** `a` approve, `v` move to review, `p` push, `x` stop, `t` attach (the TUI
   suspends and comes back), `m` message an agent, `c`/`C` accept or reject a contract
   change. Anything destructive asks first. `?` shows every key.
-- **Several homes.** With more than one home (`rig homes`) and none chosen, bare `rig`
-  starts with a picker: `j`/`k`, `/` to search, `enter` to open (a stopped home's daemon
-  starts). `H` goes back to it.
-- **Straight to a view.** `rig -H osmo -t os-3 --tab diff` opens that home, ticket and tab.
+- **The fleet.** With more than one vessel (`rig fleet`) and none chosen, bare `rig`
+  starts with a picker: `j`/`k`, `/` to search, `enter` to open (a stopped vessel's daemon
+  starts). `F` goes back to it.
+- **Straight to a view.** `rig -V osmo -t os-3 --tab diff` opens that vessel, ticket and tab.
   `Y` anywhere copies the command for what is on screen, to come back to it or hand it on.
+
+## Vessels and the fleet
+
+A **vessel** (also called an instance) is one rig setup: a config with its own home
+directory, daemon, agents, credentials and record. Keep things that must not mix on
+separate vessels, for example one per product, or work apart from personal. Register each
+by name, and the set of them is your **fleet**:
+
+```sh
+rig fleet add osmo ~/osmo-plan/rig/config.json
+rig fleet                 # every vessel: daemon running or not, tickets
+rig -V osmo list          # or RIG_VESSEL=osmo; agents always name their vessel
+rig list --all            # the tickets of every running vessel
+```
+
+Vessels share the machine's Docker, but each daemon sees and touches only its own
+containers and networks.
 
 ## How a ticket works
 
@@ -203,12 +220,7 @@ What it does **not** give you, so you can decide with open eyes:
 ## Configuration
 
 `~/.config/rig/config.json` (or `$RIG_CONFIG`, or `--config`). Everything has a default;
-unknown keys are errors.
-
-**Several homes.** To keep work and personal projects apart, give each its own config (with
-its own `paths.home`) and register it by name: `rig homes add work ~/work/rig/config.json`.
-Then `rig -H work list` (or `RIG_HOME_NAME=work`) uses that home and its daemon; `rig homes`
-shows every home and whether its daemon runs; `rig list --all` shows all their tickets. [`examples/config.json`](examples/config.json):
+unknown keys are errors. [`examples/config.json`](examples/config.json):
 
 ```json
 {
