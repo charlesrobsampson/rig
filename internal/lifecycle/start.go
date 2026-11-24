@@ -244,6 +244,9 @@ func (m *Manager) Start(ctx context.Context, p api.TicketStartParams) (api.Ticke
 	if err := m.placeFiles(ctx, l, infos, p.Sandbox); err != nil {
 		return api.TicketStartResult{}, err
 	}
+	if err := ensurePRFile(l); err != nil {
+		return api.TicketStartResult{}, err
+	}
 	if err := m.validateServices(l, infos); err != nil {
 		return api.TicketStartResult{}, err
 	}

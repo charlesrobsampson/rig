@@ -1,6 +1,7 @@
 package lifecycle_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,6 +56,16 @@ func pushFixture(t *testing.T, modes []string, repos ...*testkit.Repo) (*fixture
 	}
 	os.WriteFile(yamlPath, []byte(doc), 0o600)
 	os.WriteFile(filepath.Join(path, "plan.md"), []byte("# Plan\n\nAdd the feature in two steps.\n"), 0o600)
+	var pr strings.Builder
+	for i := range modes {
+		name := "svc" + string(rune('1'+i))
+		fmt.Fprintf(&pr, "## %s\nWhat %s changed, and how it was tested.\n\n", name, name)
+	}
+	if len(modes) == 1 {
+		pr.Reset()
+		pr.WriteString("What changed, and how it was tested.\n")
+	}
+	os.WriteFile(filepath.Join(path, "pr.md"), []byte(pr.String()), 0o600)
 
 	res := f.mustStart("demo", domain.SandboxContainer)
 	for i, co := range res.Checkouts {
@@ -136,7 +147,7 @@ func TestMixedModesEachBehaveAsConfiguredAndTheTicketIsDone(t *testing.T) {
 	if len(prs) != 1 || prs[0].Title != "T demo (svc2)" || prs[0].Base != "main" || prs[0].Head != "rig/demo/svc2" || prs[0].Dir != r2.Dir {
 		t.Fatalf("PRs = %+v", prs)
 	}
-	for _, want := range []string{"Ticket `demo`", "service `svc2`", "Add the feature in two steps.", "feature-2.txt"} {
+	for _, want := range []string{"Ticket `demo`", "service `svc2`", "What svc2 changed", "feature-2.txt"} {
 		if !strings.Contains(prs[0].Body, want) {
 			t.Errorf("the PR body lacks %q:\n%s", want, prs[0].Body)
 		}
@@ -335,5 +346,94 @@ func TestAPullRequestIsOpenedAsTheTicketsGitHubUser(t *testing.T) {
 	}
 	if remoteHas(t, bare, "rig/demo/svc1") != testkit.RunGit(t, res.Checkouts[0].Path, "rev-parse", "HEAD") {
 		t.Error("the branch was not pushed")
+	}
+}
+
+func writePR(t *testing.T, f *fixture, content string) {
+	t.Helper()
+	os.WriteFile(filepath.Join(f.dir, "demo", "pr.md"), []byte(content), 0o600)
+}
+
+func TestThePRBodyIsTheAgentsDescriptionNeverThePlan(t *testing.T) {
+	repo, bare := pushRepo(t)
+	f, gh, _ := pushFixture(t, []string{"pr"}, repo)
+	writePR(t, f, git.PRStub([]string{"svc1"})+"\nAdds the feature, tested with the unit suite.\n")
+	got, err := runPush(t, f, "")
+	if err != nil || !got.Done {
+		t.Fatalf("Push = %+v, %v", got, err)
+	}
+	body := gh.PRs()[0].Body
+	if !strings.Contains(body, "Adds the feature, tested with the unit suite.") || !strings.Contains(body, "feature-1.txt") {
+		t.Errorf("body:\n%s", body)
+	}
+	if strings.Contains(body, "two steps") || strings.Contains(body, "<!--") {
+		t.Errorf("the plan or the stub's comment reached the PR:\n%s", body)
+	}
+	_ = bare
+}
+
+func TestAPushWithNoDescriptionOrALocalPathInItIsRefusedBeforeAnythingIsPushed(t *testing.T) {
+	user, _ := os.UserHomeDir()
+	for name, content := range map[string]func(f *fixture) string{
+		"no pr.md":          nil,
+		"only the stub":     func(*fixture) string { return git.PRStub([]string{"svc1"}) },
+		"the home dir":      func(*fixture) string { return "See " + filepath.Join(user, "notes.md") + "\n" },
+		"the ticket dir":    func(f *fixture) string { return "Plan: " + filepath.Join(f.dir, "demo", "plan.md") + "\n" },
+		"the agent's view":  func(*fixture) string { return "As in /rig/ticket/plan.md\n" },
+		"the tickets' home": func(f *fixture) string { return "Logs in " + f.dir + "\n" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo, bare := pushRepo(t)
+			f, gh, _ := pushFixture(t, []string{"pr"}, repo)
+			os.Remove(filepath.Join(f.dir, "demo", "pr.md"))
+			if content != nil {
+				writePR(t, f, content(f))
+			}
+			got, err := runPush(t, f, "")
+			if err != nil || got.Done || got.Services[0].Status != domain.PushFailed || !strings.Contains(got.Services[0].Error, "pr.md") {
+				t.Errorf("Push = %+v, %v", got, err)
+			}
+			if remoteHas(t, bare, "rig/demo/svc1") != "" || len(gh.PRs()) != 0 {
+				t.Error("something was pushed or opened")
+			}
+		})
+	}
+}
+
+func TestEachServiceGetsItsOwnSectionOfPRMd(t *testing.T) {
+	r1, _ := pushRepo(t)
+	r2, _ := pushRepo(t)
+	f, gh, _ := pushFixture(t, []string{"pr", "pr"}, r1, r2)
+	writePR(t, f, "## svc1\nThe first part.\n\n## svc2\nThe second part.\n")
+	if got, err := runPush(t, f, ""); err != nil || !got.Done {
+		t.Fatalf("Push = %+v, %v", got, err)
+	}
+	prs := gh.PRs()
+	if len(prs) != 2 || !strings.Contains(prs[0].Body+prs[1].Body, "The first part.") {
+		t.Fatalf("PRs = %+v", prs)
+	}
+	for _, pr := range prs {
+		first, second := strings.Contains(pr.Body, "The first part."), strings.Contains(pr.Body, "The second part.")
+		if first == second {
+			t.Errorf("a PR got both sections or neither:\n%s", pr.Body)
+		}
+	}
+}
+
+func TestAStartGivesATicketWithoutPRMdItsStub(t *testing.T) {
+	repo, _ := pushRepo(t)
+	f := newFixture(t, domain.SandboxContainer)
+	path := f.create("demo", repo)
+	os.Remove(filepath.Join(path, "pr.md")) // a ticket made before pr.md existed
+	f.mustStart("demo", domain.SandboxContainer)
+	raw, err := os.ReadFile(filepath.Join(path, "pr.md"))
+	if err != nil || !strings.Contains(string(raw), "<!--") {
+		t.Errorf("pr.md after start = %q, %v", raw, err)
+	}
+	writePR(t, f, "Mine.\n")
+	f.mustStop("demo", false, true)
+	f.mustStart("demo", domain.SandboxContainer)
+	if raw, _ := os.ReadFile(filepath.Join(path, "pr.md")); string(raw) != "Mine.\n" {
+		t.Errorf("a start replaced the agent's pr.md: %q", raw)
 	}
 }

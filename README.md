@@ -165,7 +165,8 @@ budget is hit, or the coder disputes a blocking finding. The ticket cannot leave
 person decide.
 
 `rig push` publishes each service the way its policy says: `none`, `push-branch`, `merge`
-(fast-forward, optionally a merge commit) or `pr` (through `gh`). It runs on the host with
+(fast-forward, optionally a merge commit) or `pr` (through `gh`). A pull request's description
+is the agent's `pr.md`, never the plan, and rig refuses one that mentions local paths. It runs on the host with
 your credentials, one service at a time, and can be re-run after a failure.
 If `gh` is logged in to several accounts (say a work and a personal one), set
 `policy.push.github_user` to the one that can see the repository; rig opens the pull request

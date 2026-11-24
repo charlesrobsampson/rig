@@ -251,6 +251,10 @@ func writeRules(b *strings.Builder, r Request) {
 		for _, rule := range manualTestsRules {
 			b.WriteString("- " + rule + "\n")
 		}
+		b.WriteString("\n## pr.md\n")
+		for _, rule := range prRules(r) {
+			b.WriteString("- " + rule + "\n")
+		}
 	}
 }
 
@@ -260,11 +264,11 @@ func commonRules(r Request) []string {
 	files := "plan.md and tasks.md"
 	switch multi, later := len(r.Ticket.Services) > 1, !beforeImplement(r.Phase); {
 	case multi && later:
-		files = "plan.md, tasks.md, manual-tests.md and proposals under \"## Proposed changes\" in contract.md"
+		files = "plan.md, tasks.md, manual-tests.md and pr.md, and proposals under \"## Proposed changes\" in contract.md"
 	case multi:
 		files = "plan.md, tasks.md and proposals under \"## Proposed changes\" in contract.md"
 	case later:
-		files = "plan.md, tasks.md and manual-tests.md"
+		files = "plan.md, tasks.md, manual-tests.md and pr.md"
 	}
 	return []string{
 		"Edit only your own service's checkout (your working directory) and, in the ticket directory (" + firstNonEmpty(r.AgentTicketDir, r.TicketDir) + "), " + files + ".",
@@ -331,10 +335,24 @@ var manualTestsRules = []string{
 	"Use only those placeholders: an unknown one makes the whole file unreadable for the human.",
 }
 
+// prRules tell the agent how to write the pull request description, which rig
+// publishes as written: it is never built from the plan, which is a private working file.
+func prRules(r Request) []string {
+	rules := []string{
+		"Keep pr.md (in the ticket directory) as the pull request description: what changed and why, how you tested it, and what is not included. rig publishes it as written when the work is pushed, adding the list of changed files, and refuses to push without it.",
+		"It is published text and must stand on its own: no local paths, no ticket directory, and no links to plan.md, tasks.md or any other private file; say the reason in the text itself.",
+	}
+	if len(r.Ticket.Services) > 1 {
+		rules = append(rules, "Write only in your own section, under the heading `## "+r.Service+"`; use ### and deeper inside it.")
+	}
+	return rules
+}
+
 // reviewedRules tell a coder whose work a reviewer checks how to hand it over and answer
 // (docs/formats.md §13); rig refuses to move the ticket on until the review passes.
 var reviewedRules = []string{
 	"A reviewer checks your work before a human sees it, and rig does not move the ticket on until the review passes. When the work in tasks.md is done, its tests pass and everything is committed, leave a journal record of kind \"review.ready\" saying what is ready, instead of requesting a phase.",
+	"Before each \"review.ready\", make pr.md describe the work as it now is; the reviewer checks it too.",
 	"The reviewer's findings are typed to you. Answer each with one journal record of kind \"review.reply\" and data {\"id\": \"F1\", \"status\": \"fixed\" | \"disagree\" | \"question\", \"commit\": \"<sha>\", \"reason\": \"...\"}: fix it and commit, or say why you disagree. Then leave \"review.ready\" again.",
 }
 
@@ -350,6 +368,7 @@ func reviewerPrompt(r Request) (string, error) {
 		"Report only through journal records (see Journal): one of kind \"review.result\" per finding, with data {\"id\": \"F1\", \"severity\": \"blocking\" | \"should-fix\" | \"nit\", \"file\": \"path\", \"line\": 12, \"what\": \"...\", \"scenario\": \"the input or state, and the wrong result\", \"fix\": \"...\"}; then one of kind \"verdict\" with text \"No blocking findings\" or \"Blocking findings: <n>\" and data {\"round\": <n>}. Then stop and wait: the next round, or the coder's answers, are typed to you.",
 		"blocking: wrong, unsafe, or against the ticket or the project's rules. should-fix: a real gap or brittleness. nit: taste; a nit never sends the work back. Five real findings beat twenty weak ones, and no findings is a valid answer if you checked.",
 		"Keep a finding's id when you check it again in a later round; number new ones after the last.",
+		"pr.md is the pull request description rig will publish as written. Check that it says truly what changed and how it was tested, and that it leaks nothing private (local paths, the ticket directory, links to plan.md or other private files): a leak is blocking.",
 		"You have no phase to ask for and no gate to approve. Your own instructions set the review standards.",
 	} {
 		b.WriteString("- " + rule + "\n")
@@ -358,7 +377,7 @@ func reviewerPrompt(r Request) (string, error) {
 	for _, rule := range journalRules(hookCommandOf(r)) {
 		b.WriteString("- " + rule + "\n")
 	}
-	for _, name := range []string{"plan.md", "tasks.md"} {
+	for _, name := range []string{"plan.md", "tasks.md", "pr.md"} {
 		content, err := os.ReadFile(filepath.Join(r.TicketDir, name))
 		switch {
 		case os.IsNotExist(err):

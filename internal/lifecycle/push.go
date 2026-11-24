@@ -2,9 +2,12 @@ package lifecycle
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/domain"
@@ -129,7 +132,17 @@ func (m *Manager) pushService(ctx context.Context, l loaded, svc domain.Service)
 		if gh == nil {
 			gh = git.NewGH("")
 		}
-		result, err = git.PushPR(ctx, gh, git.PROptions{PushOptions: opts, GitHubUser: eff.GitHubUser, Title: git.PRTitle(m.prContent(ctx, l, svc, rec, base)), Body: git.PRBody(m.prContent(ctx, l, svc, rec, base))})
+		content := m.prContent(ctx, l, svc, rec, base)
+		switch {
+		case content.Description == "" && content.Multi:
+			return fail("pr.md has no description for %s: the agent writes it under \"## %s\" in the ticket's pr.md before the work is pushed", svc.Name, svc.Name)
+		case content.Description == "":
+			return fail("pr.md has no description: the agent writes the pull request description in the ticket's pr.md before the work is pushed")
+		}
+		if leak := m.prLeak(l, content.Description); leak != "" {
+			return fail("pr.md mentions the local path %s; it is published as the pull request description, so it must not refer to this machine's files", leak)
+		}
+		result, err = git.PushPR(ctx, gh, git.PROptions{PushOptions: opts, GitHubUser: eff.GitHubUser, Title: git.PRTitle(content), Body: git.PRBody(content)})
 	} else {
 		result, err = git.Push(ctx, eff.PushMode, opts)
 	}
@@ -141,14 +154,40 @@ func (m *Manager) pushService(ctx context.Context, l loaded, svc domain.Service)
 	return out
 }
 
+// ensurePRFile gives a ticket made before pr.md existed its stub, so a container agent
+// can be given the file to write; an existing pr.md is never touched.
+func ensurePRFile(l loaded) error {
+	path := filepath.Join(l.dir, "pr.md")
+	if _, err := os.Lstat(path); !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	var names []string
+	for _, s := range l.ticket.Services {
+		names = append(names, s.Name)
+	}
+	return os.WriteFile(path, []byte(git.PRStub(names)), 0o600)
+}
+
+// prLeak names a local path the description mentions, or "": a PR body is published,
+// and these only make sense on this machine (or show what is private on it).
+func (m *Manager) prLeak(l loaded, description string) string {
+	user, _ := os.UserHomeDir()
+	for _, p := range []string{m.opts.Dir, m.opts.Global.Paths.Home, user, agentTicketDir} {
+		if p != "" && strings.Contains(description, p) {
+			return p
+		}
+	}
+	return ""
+}
+
 // prContent is what the pull request description is built from.
 func (m *Manager) prContent(ctx context.Context, l loaded, svc domain.Service, rec state.ServiceState, base string) git.PRContent {
 	c := git.PRContent{TicketID: l.id, Title: l.ticket.Title, Service: svc.Name, Multi: len(l.ticket.Services) > 1}
 	if l.ticket.Source.Type != "" && l.ticket.Source.Type != "manual" {
 		c.Source = l.ticket.Source.Type + " " + l.ticket.Source.Key
 	}
-	if plan, err := os.ReadFile(filepath.Join(l.dir, "plan.md")); err == nil {
-		c.Plan = string(plan)
+	if raw, err := os.ReadFile(filepath.Join(l.dir, "pr.md")); err == nil {
+		c.Description = git.PRDescription(string(raw), svc.Name, c.Multi)
 	}
 	baseRef := base
 	if rec.Checkout.Kind == domain.CheckoutClone {

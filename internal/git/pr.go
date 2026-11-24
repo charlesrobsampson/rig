@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/charlesrobsampson/rig/internal/domain"
@@ -220,12 +221,14 @@ type PRContent struct {
 	Service  string
 	Multi    bool   // the ticket has several services, each with its own PR
 	Source   string // "jira PROJ-412", empty for a manual ticket
-	Plan     string // plan.md
-	Files    []FileChange
+	// Description is the agent's pr.md for this service (PRDescription), never the plan:
+	// the plan is a private working file, and a PR body is published.
+	Description string
+	Files       []FileChange
 }
 
-// maxPlanChars keeps the description far below GitHub's 65,536-character limit.
-const maxPlanChars = 20000
+// maxDescriptionChars keeps the description far below GitHub's 65,536-character limit.
+const maxDescriptionChars = 20000
 
 // PRTitle is the ticket's title, with the service when there are several PRs.
 func PRTitle(c PRContent) string {
@@ -235,8 +238,8 @@ func PRTitle(c PRContent) string {
 	return c.Title
 }
 
-// PRBody builds the description: where the ticket came from, its plan, and the files
-// this service changed.
+// PRBody builds the description: where the ticket came from, the agent's description,
+// and the files this service changed.
 func PRBody(c PRContent) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Ticket `%s`", c.TicketID)
@@ -248,12 +251,11 @@ func PRBody(c PRContent) string {
 	}
 	b.WriteString("\n")
 
-	if plan := strings.TrimSpace(stripTitle(c.Plan)); plan != "" {
-		b.WriteString("\n## Plan\n\n")
-		if r := []rune(plan); len(r) > maxPlanChars {
-			plan = string(r[:maxPlanChars]) + "\n\n_(plan truncated)_"
+	if d := strings.TrimSpace(c.Description); d != "" {
+		if r := []rune(d); len(r) > maxDescriptionChars {
+			d = string(r[:maxDescriptionChars]) + "\n\n_(description truncated)_"
 		}
-		b.WriteString(plan + "\n")
+		b.WriteString("\n" + d + "\n")
 	}
 
 	if len(c.Files) > 0 {
@@ -273,12 +275,47 @@ func PRBody(c PRContent) string {
 	return b.String()
 }
 
-// stripTitle drops a leading "# Heading" line, which just repeats the PR title.
-func stripTitle(plan string) string {
-	plan = strings.TrimSpace(plan)
-	if strings.HasPrefix(plan, "# ") {
-		_, rest, _ := strings.Cut(plan, "\n")
-		return rest
+var htmlComment = regexp.MustCompile(`(?s)<!--.*?-->`)
+
+// PRStub is the pr.md a ticket starts with: a comment saying what the file is for, and
+// for several services one section each.
+func PRStub(services []string) string {
+	var b strings.Builder
+	b.WriteString(`<!--
+The pull request description, written by the agent from the implement phase on: what
+changed and why, how it was tested, and what is not included. rig publishes it as written
+(it adds the list of changed files), so it must stand on its own: no local paths, no links
+to plan.md, tasks.md or other private files. Comments like this one are not published.
+`)
+	if len(services) > 1 {
+		b.WriteString("Each service writes under its own heading below; use ### and deeper inside it.\n")
 	}
-	return plan
+	b.WriteString("-->\n")
+	if len(services) > 1 {
+		for _, s := range services {
+			b.WriteString("\n## " + s + "\n")
+		}
+	}
+	return b.String()
+}
+
+// PRDescription is what pr.md says for one service, without comments: the whole file, or
+// with several services the service's own "## <service>" section; "" when there is none.
+func PRDescription(file, service string, multi bool) string {
+	text := htmlComment.ReplaceAllString(file, "")
+	if multi {
+		var section []string
+		in := false
+		for _, line := range strings.Split(text, "\n") {
+			if strings.HasPrefix(line, "## ") {
+				in = strings.TrimSpace(strings.TrimPrefix(line, "## ")) == service
+				continue
+			}
+			if in {
+				section = append(section, line)
+			}
+		}
+		text = strings.Join(section, "\n")
+	}
+	return strings.TrimSpace(text)
 }

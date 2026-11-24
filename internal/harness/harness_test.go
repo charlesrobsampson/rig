@@ -441,7 +441,7 @@ func TestAPhaseNoticeCarriesTheNewPhasesRules(t *testing.T) {
 	for _, want := range []string{
 		"from plan to implement", "Current phase: implement.", "## This phase (implement)",
 		"Work through tasks.md", "Commit each change", "## manual-tests.md", "{{<service>.url}}",
-		"/rig/ticket), plan.md, tasks.md and manual-tests.md", `"transition.request"`,
+		"/rig/ticket), plan.md, tasks.md, manual-tests.md and pr.md", `"transition.request"`,
 	} {
 		if !strings.Contains(notice, want) {
 			t.Errorf("notice lacks %q:\n%s", want, notice)
@@ -523,5 +523,45 @@ func TestAReviewedCoderIsToldHowTheLoopWorksInImplement(t *testing.T) {
 	r.Reviewed, r.Phase = true, domain.PhasePlan
 	if strings.Contains(promptOf(launch(t, r)), "review.ready") {
 		t.Error("the review rules appear outside implement")
+	}
+}
+
+func TestFromImplementOnTheAgentKeepsPRMdAsPublishedText(t *testing.T) {
+	dir := ticketDir(t, artifacts)
+	for _, phase := range []domain.Phase{domain.PhasePlan, domain.PhaseImplement, domain.PhaseTest, domain.PhaseReview} {
+		prompt := promptOf(launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Phase: phase, TicketDir: dir, Dir: "/w"}))
+		if phase == domain.PhasePlan {
+			if strings.Contains(prompt, "pr.md") {
+				t.Errorf("the plan phase mentions pr.md:\n%s", prompt)
+			}
+			continue
+		}
+		for _, want := range []string{"## pr.md", "pull request description", "publishes it as written", "no local paths", "plan.md, tasks.md, manual-tests.md and pr.md"} {
+			if !strings.Contains(prompt, want) {
+				t.Errorf("%s prompt lacks %q", phase, want)
+			}
+		}
+		if strings.Contains(prompt, "## api") {
+			t.Errorf("a one-service ticket is told to write a section")
+		}
+	}
+	multi := promptOf(launch(t, harness.Request{Ticket: ticket("api", "web"), Service: "web", Phase: domain.PhaseImplement, TicketDir: dir, Dir: "/w"}))
+	if !strings.Contains(multi, "`## web`") {
+		t.Errorf("a multi-service agent is not told its section:\n%s", multi)
+	}
+	reviewed := promptOf(launch(t, harness.Request{Ticket: ticket("api"), Service: "api", Reviewed: true, Phase: domain.PhaseImplement, TicketDir: dir, Dir: "/w"}))
+	if !strings.Contains(reviewed, "Before each \"review.ready\", make pr.md") {
+		t.Errorf("a reviewed coder is not told to update pr.md before review.ready")
+	}
+}
+
+func TestTheReviewerChecksPRMd(t *testing.T) {
+	files := map[string]string{"plan.md": "# Plan\n", "pr.md": "<!-- stub -->\nAdds a locale header.\n"}
+	r := harness.Request{Ticket: ticket("api"), Service: "review", ReviewOf: "api", Phase: domain.PhaseImplement, TicketDir: ticketDir(t, files), AgentTicketDir: "/rig/ticket", Dir: "/w"}
+	prompt := promptOf(launch(t, r))
+	for _, want := range []string{"## pr.md (the coder's)", "Adds a locale header.", "a leak is blocking"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("reviewer prompt lacks %q:\n%s", want, prompt)
+		}
 	}
 }

@@ -73,6 +73,7 @@ func TestTheAgentContainerHoldsOnlyWhatTheAgentNeeds(t *testing.T) {
 		filepath.Join(path, "plan.md") + " -> /rig/ticket/plan.md rw",
 		filepath.Join(path, "tasks.md") + " -> /rig/ticket/tasks.md rw",
 		filepath.Join(path, "manual-tests.md") + " -> /rig/ticket/manual-tests.md rw",
+		filepath.Join(path, "pr.md") + " -> /rig/ticket/pr.md rw",
 		filepath.Join(path, ".rig-events", "svc1") + " -> /rig-events rw",
 		filepath.Join(path, ".rig-claude", "svc1") + " -> /rig/claude rw",
 	}
