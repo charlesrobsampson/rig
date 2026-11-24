@@ -1432,3 +1432,17 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Tests: `-V` with two vessels can switch, and the picker follows; with one vessel `F` does nothing.
 - Manual check: the pasted `Y` command opens the view, and `F` then shows the fleet.
 - Notes (as built): `rootRun` sets `CanSwitch` from the fleet's size when a vessel was chosen up front, and after `F` the loop forgets the up-front choice so the picker chooses. Manual check: _the user's_ (the 108 check, from a pasted `Y` command).
+
+### 111 · The pull request description is the agent's `pr.md`, never the plan
+- [ ] Done
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
+- Branch: `task/111-pr-description` · Depends: 105
+- Read: `docs/formats.md` §3, §4 (`policy.push`), §13; `internal/git/pr.go`; `internal/lifecycle/push.go`; `internal/harness/claudecode.go`
+- Why: found in a field pilot (R-010): the PR step published the ticket's whole `plan.md` as the PR body, and the plan held links to private tracker files, a local absolute path and notes meant for the agent. A PR body is published text; the plan is a private working file.
+- Build:
+  - `pr.md` in the ticket directory: the pull request description, written by the agent from `implement` on (what changed and why, how it was tested, what is not included). `rig new` writes a stub (an HTML comment saying what it is for), and `rig start` writes it for a ticket made before this, so a container agent can be given it. A multi-service ticket has one `## <service>` section per service.
+  - The PR body is that description (comments removed; for several services, the service's section) plus rig's table of changed files; the plan is never in it.
+  - `rig push` in pr mode refuses, before anything is pushed, when the description is missing or empty, or when it contains the user's home directory, the ticket directory, the rig home or the agent's view of the ticket directory (`/rig/ticket`), naming what it found.
+  - Agents are told from `implement` on to keep `pr.md`, that it is published as written and must stand alone (no local paths, no private files); a reviewed coder updates it before each `review.ready`; the reviewer gets it and treats a leak as blocking.
+- Tests: the body is the description and the file table, never the plan; a missing, stub-only or empty section refuses with nothing pushed; each kind of local path refuses; a multi-service ticket gets each service's section; `rig new` and `rig start` give a ticket the stub; the rules appear from implement on, and the reviewer's prompt has `pr.md`.
+- Manual check: a field ticket's PR shows the agent's description and no plan.
