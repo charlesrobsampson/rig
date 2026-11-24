@@ -3,6 +3,7 @@ package domain_test
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/charlesrobsampson/rig/internal/domain"
@@ -99,5 +100,24 @@ func TestTicketJSONUsesFormatsFieldNames(t *testing.T) {
 		if !reflect.DeepEqual(c.got, c.want) {
 			t.Errorf("%s = %v, want %v", c.name, c.got, c.want)
 		}
+	}
+}
+
+func TestAGitHubLoginIsCheckedWhenItIsRead(t *testing.T) {
+	for _, ok := range []string{"octocat", "work-account", "a1", "A-b-C", "managed_user_corp"} {
+		var p domain.PushPolicy
+		if err := json.Unmarshal([]byte(`{"github_user":"`+ok+`"}`), &p); err != nil || string(p.GitHubUser) != ok {
+			t.Errorf("%q: %v, %q", ok, err, p.GitHubUser)
+		}
+	}
+	for _, bad := range []string{"--hostname", "-x", "_x", "has space", "a/b", "a.b", strings.Repeat("a", 101)} {
+		var p domain.PushPolicy
+		if err := json.Unmarshal([]byte(`{"github_user":"`+bad+`"}`), &p); err == nil {
+			t.Errorf("%q was accepted as a GitHub login", bad)
+		}
+	}
+	var none domain.PushPolicy
+	if err := json.Unmarshal([]byte(`{}`), &none); err != nil || none.GitHubUser != "" {
+		t.Errorf("absent: %v, %q", err, none.GitHubUser)
 	}
 }

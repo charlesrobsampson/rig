@@ -3,6 +3,11 @@
 // docs/formats.md.
 package domain
 
+import (
+	"fmt"
+	"regexp"
+)
+
 type Ticket struct {
 	ID           string            `json:"id" yaml:"id"`
 	Title        string            `json:"title" yaml:"title"`
@@ -109,4 +114,21 @@ type PushPolicy struct {
 	// MergeCommit lets merge mode create a merge commit when the base branch has moved on
 	// at the remote; without it only a fast-forward is pushed. nil inherits.
 	MergeCommit *bool `json:"merge_commit,omitempty" yaml:"merge_commit,omitempty"`
+	// GitHubUser is the gh account pull requests are opened as, when gh is logged in to
+	// several; empty means gh's active account.
+	GitHubUser GitHubLogin `json:"github_user,omitempty" yaml:"github_user,omitempty"`
+}
+
+// GitHubLogin is a GitHub account name. It is checked when read because it is passed to
+// gh as an argument: it can never look like an option.
+type GitHubLogin string
+
+var githubLogin = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$`)
+
+func (l *GitHubLogin) UnmarshalText(b []byte) error {
+	if len(b) > 0 && !githubLogin.Match(b) {
+		return fmt.Errorf("invalid GitHub login %q (letters, digits, - and _, starting with a letter or digit)", b)
+	}
+	*l = GitHubLogin(b)
+	return nil
 }

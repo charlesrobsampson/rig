@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -13,12 +14,19 @@ import (
 // FakeGH is an in-memory GitHub CLI: it keeps pull requests and answers the few
 // commands rig uses (--version, auth status, pr list, pr create) the way gh does, and
 // records every call. Missing and Unauthenticated switch the failure modes on.
+//
+// Accounts (login to token) and Active model gh logged in to several accounts; a call
+// acts as the account whose token is in its GH_TOKEN, else the active one. When Access is
+// set, only those tokens can see the repository.
 type FakeGH struct {
 	mu              sync.Mutex
 	Missing         bool
 	Unauthenticated bool
+	Accounts        map[string]string
+	Active          string
+	Access          []string
 	prs             []FakePR
-	calls           [][]string
+	calls, envs     [][]string
 	next            int
 }
 
@@ -46,6 +54,13 @@ func (f *FakeGH) Calls() [][]string {
 	return append([][]string(nil), f.calls...)
 }
 
+// Envs returns the environment each call was given, in the order of Calls.
+func (f *FakeGH) Envs() [][]string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([][]string(nil), f.envs...)
+}
+
 // Close marks a pull request closed, so it no longer counts as open.
 func (f *FakeGH) Close(url string) {
 	f.mu.Lock()
@@ -57,10 +72,11 @@ func (f *FakeGH) Close(url string) {
 	}
 }
 
-func (f *FakeGH) Run(_ context.Context, dir, stdin string, args ...string) (git.GHResult, error) {
+func (f *FakeGH) Run(_ context.Context, dir, stdin string, env []string, args ...string) (git.GHResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, append([]string(nil), args...))
+	f.envs = append(f.envs, append([]string(nil), env...))
 	if f.Missing {
 		return git.GHResult{}, git.ErrGHMissing
 	}
@@ -81,7 +97,22 @@ func (f *FakeGH) Run(_ context.Context, dir, stdin string, args ...string) (git.
 		return false
 	}
 
+	token := f.Accounts[f.Active]
+	for _, kv := range env {
+		if t, ok := strings.CutPrefix(kv, "GH_TOKEN="); ok {
+			token = t
+		}
+	}
+	if len(args) >= 1 && args[0] == "pr" && f.Access != nil && !slices.Contains(f.Access, token) {
+		return git.GHResult{ExitCode: 1, Stderr: "GraphQL: Could not resolve to a Repository with the name 'acme/repo'. (repository)\n"}, nil
+	}
+
 	switch {
+	case len(args) == 4 && args[0] == "auth" && args[1] == "token" && args[2] == "--user":
+		if t, ok := f.Accounts[args[3]]; ok {
+			return git.GHResult{Stdout: t + "\n"}, nil
+		}
+		return git.GHResult{ExitCode: 1, Stderr: "no oauth token found for github.com account " + args[3] + "\n"}, nil
 	case len(args) == 1 && args[0] == "--version":
 		return git.GHResult{Stdout: "gh version 2.0.0 (fake)\n"}, nil
 	case len(args) >= 2 && args[0] == "auth" && args[1] == "status":

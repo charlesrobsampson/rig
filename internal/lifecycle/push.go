@@ -129,7 +129,7 @@ func (m *Manager) pushService(ctx context.Context, l loaded, svc domain.Service)
 		if gh == nil {
 			gh = git.NewGH("")
 		}
-		result, err = git.PushPR(ctx, gh, git.PROptions{PushOptions: opts, Title: git.PRTitle(m.prContent(ctx, l, svc, rec, base)), Body: git.PRBody(m.prContent(ctx, l, svc, rec, base))})
+		result, err = git.PushPR(ctx, gh, git.PROptions{PushOptions: opts, GitHubUser: eff.GitHubUser, Title: git.PRTitle(m.prContent(ctx, l, svc, rec, base)), Body: git.PRBody(m.prContent(ctx, l, svc, rec, base))})
 	} else {
 		result, err = git.Push(ctx, eff.PushMode, opts)
 	}

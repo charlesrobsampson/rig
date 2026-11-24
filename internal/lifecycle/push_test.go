@@ -321,3 +321,19 @@ func TestTheMergeCommitPolicyIsHonoredPerService(t *testing.T) {
 		t.Errorf("with merge_commit: %+v", got.Services[0])
 	}
 }
+
+func TestAPullRequestIsOpenedAsTheTicketsGitHubUser(t *testing.T) {
+	repo, bare := pushRepo(t)
+	f, gh, res := pushFixture(t, []string{"pr, github_user: me-work"}, repo)
+	gh.Accounts = map[string]string{"me": "tok-personal", "me-work": "tok-work"}
+	gh.Active = "me"
+	gh.Access = []string{"tok-work"}
+
+	got, err := runPush(t, f, "")
+	if err != nil || !got.Done || got.Services[0].PRURL == "" {
+		t.Fatalf("Push = %+v, %v", got, err)
+	}
+	if remoteHas(t, bare, "rig/demo/svc1") != testkit.RunGit(t, res.Checkouts[0].Path, "rev-parse", "HEAD") {
+		t.Error("the branch was not pushed")
+	}
+}
