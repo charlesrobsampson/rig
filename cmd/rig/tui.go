@@ -50,7 +50,13 @@ func (a *app) rootRun(cmd *cobra.Command, ticket, tab string) error {
 	chosen := a.configPath != "" || os.Getenv("RIG_CONFIG") != ""
 	for {
 		opts := tui.Options{Source: daemonSource{a}, Version: version, Vessel: a.vesselName, Open: open}
-		if !chosen {
+		if chosen {
+			fleet, user, err := loadFleet()
+			if err != nil {
+				return err
+			}
+			opts.CanSwitch = len(fleet.All(user)) > 1
+		} else {
 			name, many, err := a.pickVessel(cmd)
 			if err != nil || name == "" && many {
 				return err
@@ -64,7 +70,7 @@ func (a *app) rootRun(cmd *cobra.Command, ticket, tab string) error {
 		if err := run(cmd.Context(), opts); !errors.Is(err, tui.ErrSwitchVessel) {
 			return err
 		}
-		open = nil // a deep link was for the first vessel only
+		chosen, open = false, nil // from now on the picker chooses; the deep link was for the first vessel
 	}
 }
 
