@@ -55,12 +55,14 @@ func TestAKilledContainerShowsAsDriftInReconcileAndList(t *testing.T) {
 }
 
 func TestReconcileFixRemovesOnlyRigOrphansAfterConfirmation(t *testing.T) {
-	_, d, repo, _, dk := newEnvFull(t)
+	home, d, repo, _, dk := newEnvFull(t)
 	newTicket(t, d, "demo", repo)
 	dk.AddImage("img")
 	ctx := context.Background()
+	// as this home's daemon would have made them
+	mine := docker.Scoped(dk, home)
 	mk := func(name string, labels map[string]string) docker.ContainerInfo {
-		c, err := dk.CreateContainer(ctx, docker.ContainerSpec{Name: name, Image: "img", Labels: labels})
+		c, err := mine.CreateContainer(ctx, docker.ContainerSpec{Name: name, Image: "img", Labels: labels})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -69,6 +71,10 @@ func TestReconcileFixRemovesOnlyRigOrphansAfterConfirmation(t *testing.T) {
 	}
 	orphan := mk("rig-ghost-api", docker.Labels("ghost", "api", docker.RoleService))
 	foreign := mk("not-rigs", map[string]string{"app": "nginx"})
+	theirs, err := docker.Scoped(dk, "/another/rig/home").CreateContainer(ctx, docker.ContainerSpec{Name: "rig-theirs-api", Image: "img", Labels: docker.Labels("theirs", "api", docker.RoleService)})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	stdout, _, _ := rig(t, d, "reconcile")
 	if !strings.Contains(stdout, "orphan_container") || !strings.Contains(stdout, "rig reconcile --fix") {
@@ -94,6 +100,9 @@ func TestReconcileFixRemovesOnlyRigOrphansAfterConfirmation(t *testing.T) {
 	}
 	if got, err := dk.InspectContainer(ctx, foreign.ID); err != nil || got.State != docker.StateRunning {
 		t.Errorf("a container that is not rig's was touched: %v", err)
+	}
+	if _, err := dk.InspectContainer(ctx, theirs.ID); err != nil || strings.Contains(stdout+stderr, "rig-theirs-api") {
+		t.Errorf("another rig home's container was reported or removed: %v\n%s%s", err, stdout, stderr)
 	}
 	// --yes skips the question; nothing to remove now
 	d.stdin = nil
