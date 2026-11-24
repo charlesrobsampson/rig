@@ -456,3 +456,33 @@ func TestTheBackgroundLoopChecksAtOnceAndEveryInterval(t *testing.T) {
 		t.Fatal("the loop did not stop")
 	}
 }
+
+func TestFixingOneHomeLeavesAnotherHomesObjectsAndUnlabelledOnes(t *testing.T) {
+	f := newFixture(t)
+	mine := docker.Scoped(f.dk, "/home/me/.rig")
+	other := docker.Scoped(f.dk, "/home/other/.rig")
+	other.CreateNetwork(ctx, docker.NetworkSpec{Name: "rig-theirs", Labels: docker.Labels("theirs", "", docker.RoleNetwork)})
+	other.CreateContainer(ctx, docker.ContainerSpec{Name: "rig-theirs-api", Image: "img", Network: "rig-theirs", Labels: docker.Labels("theirs", "api", docker.RoleService)})
+	other.StartContainer(ctx, "rig-theirs-api")
+	f.dk.CreateContainer(ctx, docker.ContainerSpec{Name: "rig-legacy-api", Image: "img", Labels: docker.Labels("legacy", "api", docker.RoleService)})
+	mine.CreateContainer(ctx, docker.ContainerSpec{Name: "rig-gone-api", Image: "img", Labels: docker.Labels("gone", "api", docker.RoleService)})
+
+	f.r = f.build(mine, f.term)
+	res := f.run(true)
+	if len(res.Fixed) != 1 || !strings.Contains(res.Fixed[0], "rig-gone-api") {
+		t.Errorf("fixed = %v, want only this home's orphan", res.Fixed)
+	}
+	for _, name := range []string{"rig-theirs-api", "rig-legacy-api"} {
+		if _, err := f.dk.InspectContainer(ctx, name); err != nil {
+			t.Errorf("%s was removed: %v", name, err)
+		}
+	}
+	if _, err := f.dk.InspectNetwork(ctx, "rig-theirs"); err != nil {
+		t.Errorf("the other home's network was removed: %v", err)
+	}
+	for _, d := range res.Drift {
+		if strings.Contains(d.Detail, "theirs") || strings.Contains(d.Detail, "legacy") {
+			t.Errorf("drift reports an object that is not this home's: %+v", d)
+		}
+	}
+}

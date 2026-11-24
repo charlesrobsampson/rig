@@ -21,6 +21,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/contractnotify"
 	"github.com/charlesrobsampson/rig/internal/contractwatch"
 	"github.com/charlesrobsampson/rig/internal/daemon"
+	"github.com/charlesrobsampson/rig/internal/docker"
 	"github.com/charlesrobsampson/rig/internal/docker/dockercli"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/egress"
@@ -149,6 +150,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	if dk == nil {
 		dk = dockercli.New(dockercli.Options{})
 	}
+	dk = docker.Scoped(dk, g.Paths.Home)
 	rigBinary, _ := os.Executable()
 	agentEnv := map[string]string{"RIG_HOME": g.Paths.Home}
 	if a.configPath != "" {
