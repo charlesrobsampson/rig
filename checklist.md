@@ -1412,3 +1412,12 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Tests: the picker filters and opens a home; one home or a chosen one skips it; the deep link opens the ticket and tab (an unknown ticket says so on the dashboard); the shown command, run, opens the same view.
 - Manual check: from the picker into osmo's ticket diff, `Y`, quit, paste the command: the same view opens.
 - Notes (as built): the picker is its own small Bubble Tea program (`tui.PickHome`, model `tui.Picker`), run by `rootRun` before the TUI, so the TUI itself stays bound to one home and its event stream; `H` (only with `Options.CanSwitch`) quits the TUI with `tui.ErrSwitchHome` and `rootRun` loops back to the picker. One home (registered or default) opens without a picker. The deep link (`Options.Open`) opens once, on the first fleet that arrives; an unknown ticket says so in the status bar. `Model.Command` builds the line `Y` copies (OSC 52, as the manual tab's `y`). The rows reuse task 107's `inspectHome`, so building them starts no daemon. Gap: that `tui.Run` returns `ErrSwitchHome` when the model asked to switch is not covered by a test (a Bubble Tea program fed scripted input never received it); the model side and the CLI loop are. Manual check: _for the user, needs a terminal_ (see the task's Manual check).
+
+### 109 · Call them vessels: `rig fleet`, `--vessel`
+- [ ] Done
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
+- Branch: `task/109-vessels` · Depends: 107, 108
+- Why: what tasks 107 and 108 called a "home" is a whole boundary (one config, credentials, rules, record and daemon; in the larger tool, one per product), and "home" is also the name of its folder. The user chose **vessel** (a product's own runner: its crew of agents, its log, its flag), with **instance** as the plain alternative used in the larger tool's design; the list of them is the **fleet**. "Ship" was rejected: in software it is a verb meaning release.
+- Build: rename, no behaviour change. `rig homes` → `rig fleet` (`add`, `remove`); `--home`/`-H` → `--vessel`/`-V`; `RIG_HOME_NAME` → `RIG_VESSEL`; `~/.config/rig/homes.json` (`{"homes": ...}`) → `~/.config/rig/fleet.json` (`{"vessels": ...}`); the TUI picker and header say fleet and vessel, `H` becomes `F` (back to the fleet), and `Y` copies `rig -V <vessel> ...`. `paths.home`, `RIG_HOME` and the `rig.home` label keep their names: they are the vessel's folder on this machine.
+- Tests: the existing tests of 107 and 108, renamed.
+- Manual check: `rig fleet` lists the pilot as `portal`.
