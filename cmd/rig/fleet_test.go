@@ -274,7 +274,7 @@ func TestAChosenVesselOrADeepLinkSkipsThePicker(t *testing.T) {
 		t.Fatalf("runs %d", len(r.opts))
 	}
 	o := r.opts[0]
-	if o.Vessel != "work" || o.CanSwitch || o.Open == nil || o.Open.Ticket != "demo-1" || o.Open.Tab != tui.TabDiff {
+	if o.Vessel != "work" || !o.CanSwitch || o.Open == nil || o.Open.Ticket != "demo-1" || o.Open.Tab != tui.TabDiff {
 		t.Errorf("opts: home %q, switch %v, open %+v", o.Vessel, o.CanSwitch, o.Open)
 	}
 	t.Setenv("RIG_VESSEL", "work")
@@ -287,5 +287,27 @@ func TestAChosenVesselOrADeepLinkSkipsThePicker(t *testing.T) {
 		if _, _, code := rig(t, (&tuiRecord{}).deps(t), args...); code != 2 {
 			t.Errorf("%v: exit %d, want 2", args, code)
 		}
+	}
+}
+
+func TestFOpensTheFleetEvenFromAVesselChosenUpFront(t *testing.T) {
+	work, _ := twoVessels(t)
+	startDaemon(t, work)
+	r := &tuiRecord{choose: []string{"home"}, runErr: []error{tui.ErrSwitchVessel}}
+	if _, stderr, code := rig(t, r.deps(t), "-V", "work", "-t", "demo-1"); code != 0 {
+		t.Fatalf("rig: %d %s", code, stderr)
+	}
+	if len(r.opts) != 2 || len(r.picks) != 1 || r.opts[1].Vessel != "home" || r.opts[1].Open != nil {
+		t.Errorf("runs %d, picks %d, second %+v", len(r.opts), len(r.picks), r.opts)
+	}
+
+	t.Setenv("HOME", t.TempDir()) // a machine with one vessel: nothing to go back to
+	if _, stderr, code := rig(t, noSpawn(t), "fleet", "add", "only", work); code != 0 {
+		t.Fatal(stderr)
+	}
+	r = &tuiRecord{}
+	rig(t, r.deps(t), "-V", "only")
+	if len(r.opts) != 1 || r.opts[0].CanSwitch {
+		t.Errorf("one vessel: %+v", r.opts)
 	}
 }

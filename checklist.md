@@ -1424,10 +1424,11 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Notes (as built): a rename only; files `config/fleet.go`, `cmd/rig/fleet.go`, `tui/picker.go`. `config.Fleet`, `NamedVessel`, `CheckVesselName`, `LoadFleet`/`SaveFleet`, `tui.VesselRow`, `PickVessel`, `ErrSwitchVessel`, `Options.Vessel`. `rig list --all --json` uses the key `vessel`. README has a "Vessels and the fleet" section. The pilot's registration was moved by hand from `homes.json` to `fleet.json` (no migration code: the old names were never released).
 
 ### 110 · `F` opens the fleet from any vessel, however it was chosen
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/110-fleet-key` · Depends: 109
 - Why: found by the user's manual check of 108: after `rig -V portal -t cp-83 --tab diff`, `F` did nothing, because only a TUI opened through the picker could go back to it. Choosing a vessel up front should decide where the TUI starts, not shut the rest of the fleet away.
 - Build: `F` works whenever the fleet has more than one vessel, whichever way the first was chosen (`-V`, `RIG_VESSEL`, `--config`, `RIG_CONFIG`, the picker); after it, the picker chooses.
 - Tests: `-V` with two vessels can switch, and the picker follows; with one vessel `F` does nothing.
 - Manual check: the pasted `Y` command opens the view, and `F` then shows the fleet.
+- Notes (as built): `rootRun` sets `CanSwitch` from the fleet's size when a vessel was chosen up front, and after `F` the loop forgets the up-front choice so the picker chooses. Manual check: _the user's_ (the 108 check, from a pasted `Y` command).
