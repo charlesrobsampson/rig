@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,6 +39,15 @@ func pushReady(t *testing.T, d deps, home string, modes []string, repos ...*test
 		doc = strings.Replace(doc, "      branch: rig/demo/"+name, "      policy: {push: {mode: "+mode+"}}\n      branch: rig/demo/"+name, 1)
 	}
 	os.WriteFile(yamlPath, []byte(doc), 0o600)
+	var pr strings.Builder
+	for i := range repos {
+		fmt.Fprintf(&pr, "## svc%d\nWhat svc%d changed.\n\n", i+1, i+1)
+	}
+	if len(repos) == 1 {
+		pr.Reset()
+		pr.WriteString("What changed.\n")
+	}
+	os.WriteFile(filepath.Join(home, "tickets", "demo", "pr.md"), []byte(pr.String()), 0o600)
 	if _, stderr, code := rig(t, d, "start", "demo", "--sandbox", "host"); code != 0 {
 		t.Fatalf("start: %q", stderr)
 	}

@@ -220,25 +220,22 @@ func TestEachServiceOfATicketGetsItsOwnPullRequest(t *testing.T) {
 
 func TestPRBody(t *testing.T) {
 	files := []git.FileChange{{Path: "main.go", Added: 10, Deleted: 2}, {Path: "docs/new.md", Added: 5}}
-	body := git.PRBody(git.PRContent{TicketID: "proj-412", Title: "Add dashboard", Source: "jira PROJ-412", Plan: "# Plan: Add dashboard\n\nUse a locale header.\n\n- step one\n", Files: files})
-	for _, want := range []string{"Ticket `proj-412` (jira PROJ-412)", "## Plan", "Use a locale header.", "- step one", "## Changes", "| `main.go` | 10 | 2 |", "| `docs/new.md` | 5 | 0 |", "2 files changed, +15 -2", "Opened by [rig]"} {
+	body := git.PRBody(git.PRContent{TicketID: "proj-412", Title: "Add dashboard", Source: "jira PROJ-412", Description: "Adds a locale header.\n\n### Tests\n- step one\n", Files: files})
+	for _, want := range []string{"Ticket `proj-412` (jira PROJ-412)", "Adds a locale header.", "### Tests", "- step one", "## Changes", "| `main.go` | 10 | 2 |", "| `docs/new.md` | 5 | 0 |", "2 files changed, +15 -2", "Opened by [rig]"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body lacks %q:\n%s", want, body)
 		}
 	}
-	if strings.Contains(body, "# Plan: Add dashboard") {
-		t.Error("the plan's own title just repeats the PR title and should be dropped")
-	}
 
-	multi := git.PRBody(git.PRContent{TicketID: "t", Service: "api", Multi: true})
-	if !strings.Contains(multi, "service `api`") || strings.Contains(multi, "## Plan") || strings.Contains(multi, "## Changes") {
-		t.Errorf("a body with no plan and no files:\n%s", multi)
+	multi := git.PRBody(git.PRContent{TicketID: "t", Service: "api", Multi: true, Description: "d"})
+	if !strings.Contains(multi, "service `api`") || strings.Contains(multi, "## Changes") {
+		t.Errorf("a body with no files:\n%s", multi)
 	}
 	if one := git.PRBody(git.PRContent{TicketID: "t", Files: files[:1]}); !strings.Contains(one, "1 file changed") {
 		t.Errorf("singular:\n%s", one)
 	}
-	long := git.PRBody(git.PRContent{TicketID: "t", Plan: strings.Repeat("x", 50000)})
-	if len(long) > 25000 || !strings.Contains(long, "plan truncated") {
+	long := git.PRBody(git.PRContent{TicketID: "t", Description: strings.Repeat("x", 50000)})
+	if len(long) > 25000 || !strings.Contains(long, "description truncated") {
 		t.Errorf("a long plan made a %d-byte body", len(long))
 	}
 	if git.PRTitle(git.PRContent{Title: "T", Service: "api"}) != "T" || git.PRTitle(git.PRContent{Title: "T", Service: "api", Multi: true}) != "T (api)" {
@@ -345,5 +342,37 @@ func TestAGitHubUserGHHasNoLoginForFailsBeforeAnythingIsPushed(t *testing.T) {
 		if args[0] == "pr" {
 			t.Errorf("gh %v ran for an account with no login", args)
 		}
+	}
+}
+
+func TestTheDescriptionIsReadFromPRMdWithoutItsComments(t *testing.T) {
+	stub := git.PRStub([]string{"api"})
+	if strings.TrimSpace(git.PRDescription(stub, "api", false)) != "" {
+		t.Errorf("the stub alone counts as a description: %q", git.PRDescription(stub, "api", false))
+	}
+	written := stub + "\nAdds a locale header.\n\n<!-- a note to self -->\n### Tests\nunit\n"
+	if got := git.PRDescription(written, "api", false); got != "Adds a locale header.\n\n\n### Tests\nunit" {
+		t.Errorf("description = %q", got)
+	}
+
+	multi := git.PRStub([]string{"api", "web"})
+	for _, want := range []string{"## api", "## web"} {
+		if !strings.Contains(multi, want) {
+			t.Errorf("the stub for several services lacks %q:\n%s", want, multi)
+		}
+	}
+	multi = strings.Replace(multi, "## api\n", "## api\nThe API part.\n### Tests\nunit\n", 1)
+	if got := git.PRDescription(multi, "api", true); got != "The API part.\n### Tests\nunit" {
+		t.Errorf("api section = %q", got)
+	}
+	if got := git.PRDescription(multi, "web", true); got != "" {
+		t.Errorf("web's empty section = %q", got)
+	}
+	multi += "The web part.\n"
+	if got := git.PRDescription(multi, "api", true); strings.Contains(got, "web part") {
+		t.Errorf("api's section runs into web's: %q", got)
+	}
+	if got := git.PRDescription(multi, "db", true); got != "" {
+		t.Errorf("a service with no section = %q", got)
 	}
 }

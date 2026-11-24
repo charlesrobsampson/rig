@@ -17,6 +17,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/config"
 	"github.com/charlesrobsampson/rig/internal/contract"
 	"github.com/charlesrobsampson/rig/internal/domain"
+	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/state"
 	"github.com/charlesrobsampson/rig/internal/ticket"
 )
@@ -151,6 +152,11 @@ func (c *Creator) write(dir string, t domain.Ticket, seed ticket.Seed, yamlDoc [
 		}
 		files[name] = buf.Bytes()
 	}
+	var names []string
+	for _, s := range t.Services {
+		names = append(names, s.Name)
+	}
+	files["pr.md"] = []byte(git.PRStub(names))
 	if len(t.Services) >= 2 { // the contract between services only exists when there are several
 		files["contract.md"] = []byte(contract.Template(t.ID))
 	}

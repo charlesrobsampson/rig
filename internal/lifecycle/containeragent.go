@@ -34,7 +34,7 @@ const (
 
 // ticketFiles are the only files of the ticket directory an agent gets: the ones it
 // works from and writes to. state.json and ticket.yaml stay on the host.
-var ticketFiles = []string{"plan.md", "tasks.md", "manual-tests.md", "contract.md"}
+var ticketFiles = []string{"plan.md", "tasks.md", "manual-tests.md", "contract.md", "pr.md"}
 
 // EventsDir is where a container agent's hooks append their state reports, on the host.
 func EventsDir(ticketDir, service string) string {

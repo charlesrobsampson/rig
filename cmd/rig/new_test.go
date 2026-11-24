@@ -52,7 +52,7 @@ func TestNewCreatesATicketThatListShows(t *testing.T) {
 	if !strings.Contains(stdout, "demo") || !strings.Contains(stdout, ticketDir) {
 		t.Errorf("stdout = %q, want it to name the ticket and where it lives", stdout)
 	}
-	for _, f := range []string{"ticket.yaml", "state.json", "plan.md", "tasks.md", "manual-tests.md"} {
+	for _, f := range []string{"ticket.yaml", "state.json", "plan.md", "tasks.md", "manual-tests.md", "pr.md"} {
 		if _, err := os.Stat(filepath.Join(ticketDir, f)); err != nil {
 			t.Errorf("%s missing: %v", f, err)
 		}
