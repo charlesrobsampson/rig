@@ -1400,7 +1400,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Notes (as built): the choice is made once, in the root command's `PersistentPreRunE` (`chooseHome`), by setting `app.configPath`; everything after (connecting, starting a daemon with `--config`, the agents' `RIG_CONFIG`) follows it unchanged. A subcommand must not define its own `PersistentPreRunE`, or cobra skips the root's. `config.Homes` (`homes.json`) with `All` adding `default` when the default config exists; `CheckHomeName` reserves `default`. `inspectHome` connects without auto-start and is shared by `rig homes` and `rig list --all` (task 108's picker can use it). `$RIG_HOME` still overrides the chosen config's home (agents have it set). Manual check (2026-11-24): `rig homes add portal <pilot config>`; `rig homes` showed default and portal running with their versions and ticket counts; `rig -H portal list` matched `RIG_CONFIG=... rig list`; `rig list --all` showed both.
 
 ### 108 · The TUI across homes, and a command for every view
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/108-tui-homes` · Depends: 107
 - Read: `internal/tui`; `cmd/rig/tui.go`
@@ -1411,3 +1411,4 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - A key (`Y`) shows the one-line command that opens the current view (home, ticket, tab), in the status bar, and copies it to the clipboard.
 - Tests: the picker filters and opens a home; one home or a chosen one skips it; the deep link opens the ticket and tab (an unknown ticket says so on the dashboard); the shown command, run, opens the same view.
 - Manual check: from the picker into osmo's ticket diff, `Y`, quit, paste the command: the same view opens.
+- Notes (as built): the picker is its own small Bubble Tea program (`tui.PickHome`, model `tui.Picker`), run by `rootRun` before the TUI, so the TUI itself stays bound to one home and its event stream; `H` (only with `Options.CanSwitch`) quits the TUI with `tui.ErrSwitchHome` and `rootRun` loops back to the picker. One home (registered or default) opens without a picker. The deep link (`Options.Open`) opens once, on the first fleet that arrives; an unknown ticket says so in the status bar. `Model.Command` builds the line `Y` copies (OSC 52, as the manual tab's `y`). The rows reuse task 107's `inspectHome`, so building them starts no daemon. Gap: that `tui.Run` returns `ErrSwitchHome` when the model asked to switch is not covered by a test (a Bubble Tea program fed scripted input never received it); the model side and the CLI loop are. Manual check: _for the user, needs a terminal_ (see the task's Manual check).

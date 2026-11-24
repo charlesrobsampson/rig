@@ -45,6 +45,8 @@ type deps struct {
 	// jiraHTTP replaces the HTTP client used to read Jira issues (tests).
 	jiraHTTP ticket.HTTPDoer
 	runTUI   func(ctx context.Context, o tui.Options) error
+	// pickHome shows the home picker (nil means the real one).
+	pickHome func(ctx context.Context, rows []tui.HomeRow) (string, error)
 }
 
 func main() {
@@ -76,6 +78,7 @@ type app struct {
 
 func newRootCmd(d deps) *cobra.Command {
 	a := &app{deps: d}
+	var ticket, tab string
 	root := &cobra.Command{
 		Use:           "rig",
 		Short:         "Run AI coding agents in parallel, each isolated",
@@ -83,8 +86,12 @@ func newRootCmd(d deps) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          usageArgs(cobra.NoArgs),
-		RunE:          a.rootRun,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return a.rootRun(cmd, ticket, tab)
+		},
 	}
+	root.Flags().StringVarP(&ticket, "ticket", "t", "", "open the TUI on this ticket")
+	root.Flags().StringVar(&tab, "tab", "", "with --ticket: open this tab (plan, tasks, contract, diff, logs, manual)")
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError(err) })
 	root.PersistentFlags().StringVar(&a.configPath, "config", "", "global config file (default $RIG_CONFIG, then ~/.config/rig/config.json)")
 	root.PersistentFlags().StringVarP(&a.homeName, "home", "H", "", "the rig home to use, by name (default $RIG_HOME_NAME; see rig homes)")

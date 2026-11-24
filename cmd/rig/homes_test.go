@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/charlesrobsampson/rig/internal/testkit"
+	"github.com/charlesrobsampson/rig/internal/tui"
 )
 
 // twoHomes sets up a user with two homes, "work" and "home", registered by name, each
@@ -198,5 +199,93 @@ func TestListAllShowsEveryRunningHomesTickets(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil || len(got) != 2 {
 		t.Errorf("list --all --json = %s (%v)", stdout, err)
+	}
+}
+
+// tuiDeps is a person at a terminal whose TUI and picker are recorded instead of shown.
+type tuiRecord struct {
+	opts   []tui.Options
+	reach  []error // whether each run's source reached a running daemon, asked during the run
+	picks  [][]tui.HomeRow
+	choose []string // what the picker answers, in order
+	runErr []error  // what each TUI run returns, in order
+}
+
+func (r *tuiRecord) deps(t *testing.T) deps {
+	d := deps{spawner: func(context.Context) error { return fmt.Errorf("not running") }}
+	d.isTerminal = func() bool { return true }
+	d.runTUI = func(_ context.Context, o tui.Options) error {
+		r.opts = append(r.opts, o)
+		_, err := o.Source.Tickets(context.Background())
+		r.reach = append(r.reach, err)
+		if len(r.runErr) >= len(r.opts) {
+			return r.runErr[len(r.opts)-1]
+		}
+		return nil
+	}
+	d.pickHome = func(_ context.Context, rows []tui.HomeRow) (string, error) {
+		r.picks = append(r.picks, rows)
+		if len(r.choose) < len(r.picks) {
+			t.Fatal("the picker was shown more often than expected")
+		}
+		return r.choose[len(r.picks)-1], nil
+	}
+	return d
+}
+
+func TestBareRigOffersThePickerAndOpensTheChosenHome(t *testing.T) {
+	work, _ := twoHomes(t)
+	startDaemon(t, work)
+	r := &tuiRecord{choose: []string{"work", "home"}, runErr: []error{tui.ErrSwitchHome}}
+	if _, stderr, code := rig(t, r.deps(t)); code != 0 {
+		t.Fatalf("rig: %d %s", code, stderr)
+	}
+	if len(r.picks) != 2 || len(r.opts) != 2 {
+		t.Fatalf("picks %d, runs %d; want the picker again after H", len(r.picks), len(r.opts))
+	}
+	rows := r.picks[0]
+	if len(rows) != 2 || rows[0].Name != "home" || rows[0].Status != "stopped" || rows[1].Name != "work" || !strings.Contains(rows[1].Status, "running") {
+		t.Errorf("rows = %+v", rows)
+	}
+	if o := r.opts[0]; o.Home != "work" || !o.CanSwitch {
+		t.Errorf("first run: home %q, can switch %v", o.Home, o.CanSwitch)
+	}
+	if r.reach[0] != nil {
+		t.Errorf("the TUI's source does not reach work's daemon: %v", r.reach[0])
+	}
+	if r.opts[1].Home != "home" || r.reach[1] == nil {
+		t.Errorf("after switching: home %q, reached %v (home's daemon is not running)", r.opts[1].Home, r.reach[1])
+	}
+
+	quit := &tuiRecord{choose: []string{""}}
+	if _, _, code := rig(t, quit.deps(t)); code != 0 || len(quit.opts) != 0 {
+		t.Errorf("quitting the picker: exit %d, TUI runs %d", code, len(quit.opts))
+	}
+}
+
+func TestAChosenHomeOrADeepLinkSkipsThePicker(t *testing.T) {
+	work, _ := twoHomes(t)
+	startDaemon(t, work)
+	r := &tuiRecord{}
+	if _, stderr, code := rig(t, r.deps(t), "-H", "work", "-t", "demo-1", "--tab", "diff"); code != 0 {
+		t.Fatalf("rig: %d %s", code, stderr)
+	}
+	if len(r.opts) != 1 {
+		t.Fatalf("runs %d", len(r.opts))
+	}
+	o := r.opts[0]
+	if o.Home != "work" || o.CanSwitch || o.Open == nil || o.Open.Ticket != "demo-1" || o.Open.Tab != tui.TabDiff {
+		t.Errorf("opts: home %q, switch %v, open %+v", o.Home, o.CanSwitch, o.Open)
+	}
+	t.Setenv("RIG_HOME_NAME", "work")
+	r = &tuiRecord{}
+	rig(t, r.deps(t), "-t", "demo-1")
+	if len(r.opts) != 1 || r.opts[0].Home != "work" || r.opts[0].Open.Tab != tui.TabPlan {
+		t.Errorf("RIG_HOME_NAME: %+v", r.opts)
+	}
+	for _, args := range [][]string{{"-H", "work", "--tab", "nope", "-t", "x"}, {"-H", "work", "--tab", "diff"}} {
+		if _, _, code := rig(t, (&tuiRecord{}).deps(t), args...); code != 2 {
+			t.Errorf("%v: exit %d, want 2", args, code)
+		}
 	}
 }

@@ -27,16 +27,90 @@ func (a *app) interactive() bool {
 }
 
 // rootRun is bare `rig`: the TUI on a terminal, the same table as `rig list` anywhere
-// else (a pipe, a script, --json), so output stays scriptable.
-func (a *app) rootRun(cmd *cobra.Command, _ []string) error {
+// else (a pipe, a script, --json), so output stays scriptable. With several homes and
+// none chosen, a picker comes first, and H in the TUI comes back to it.
+func (a *app) rootRun(cmd *cobra.Command, ticket, tab string) error {
 	if a.json || !a.interactive() {
 		return newListCmd(a).RunE(cmd, nil)
 	}
-	opts := tui.Options{Source: daemonSource{a}, Version: version}
-	if a.deps.runTUI != nil {
-		return a.deps.runTUI(cmd.Context(), opts)
+	var open *tui.Target
+	switch {
+	case ticket != "":
+		t := tui.TabPlan
+		if tab != "" {
+			var err error
+			if t, err = tui.ParseTab(tab); err != nil {
+				return usageError(err)
+			}
+		}
+		open = &tui.Target{Ticket: ticket, Tab: t}
+	case tab != "":
+		return usageError(errors.New("--tab needs --ticket"))
 	}
-	return tui.Run(cmd.Context(), opts)
+	chosen := a.configPath != "" || os.Getenv("RIG_CONFIG") != ""
+	for {
+		opts := tui.Options{Source: daemonSource{a}, Version: version, Home: a.homeName, Open: open}
+		if !chosen {
+			name, many, err := a.pickHome(cmd)
+			if err != nil || name == "" && many {
+				return err
+			}
+			opts.Home, opts.CanSwitch = name, many
+		}
+		run := tui.Run
+		if a.deps.runTUI != nil {
+			run = a.deps.runTUI
+		}
+		if err := run(cmd.Context(), opts); !errors.Is(err, tui.ErrSwitchHome) {
+			return err
+		}
+		open = nil // a deep link was for the first home only
+	}
+}
+
+// pickHome chooses the home when none was: the only one there is, or the person's pick
+// from several (many is true then; "" means they quit). The choice becomes the config.
+func (a *app) pickHome(cmd *cobra.Command) (name string, many bool, err error) {
+	homes, user, err := loadHomes()
+	if err != nil {
+		return "", false, err
+	}
+	all := homes.All(user)
+	switch len(all) {
+	case 0:
+		return "", false, nil
+	case 1:
+		a.configPath, a.homeName = all[0].Config, all[0].Name
+		return all[0].Name, false, nil
+	}
+	rows := make([]tui.HomeRow, len(all))
+	for i, h := range all {
+		info, _ := a.inspectHome(cmd, h)
+		row := tui.HomeRow{Name: h.Name, Status: "stopped", Tickets: "-"}
+		switch {
+		case info.Error != "":
+			row.Status = "error: " + info.Error
+		case info.Running:
+			row.Status = "running (" + info.Version + ")"
+		}
+		if info.Tickets != nil {
+			row.Tickets = fmt.Sprint(*info.Tickets)
+		}
+		rows[i] = row
+	}
+	pick := tui.PickHome
+	if a.deps.pickHome != nil {
+		pick = a.deps.pickHome
+	}
+	if name, err = pick(cmd.Context(), rows); err != nil || name == "" {
+		return "", true, err
+	}
+	for _, h := range all {
+		if h.Name == name {
+			a.configPath, a.homeName = h.Config, h.Name
+		}
+	}
+	return name, true, nil
 }
 
 // daemonSource reads the fleet from the daemon, starting it when it is not running, so

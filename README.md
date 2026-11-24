@@ -115,6 +115,11 @@ of the same daemon API as the CLI, and updates live from the daemon's event stre
 - **Actions.** `a` approve, `v` move to review, `p` push, `x` stop, `t` attach (the TUI
   suspends and comes back), `m` message an agent, `c`/`C` accept or reject a contract
   change. Anything destructive asks first. `?` shows every key.
+- **Several homes.** With more than one home (`rig homes`) and none chosen, bare `rig`
+  starts with a picker: `j`/`k`, `/` to search, `enter` to open (a stopped home's daemon
+  starts). `H` goes back to it.
+- **Straight to a view.** `rig -H osmo -t os-3 --tab diff` opens that home, ticket and tab.
+  `Y` anywhere copies the command for what is on screen, to come back to it or hand it on.
 
 ## How a ticket works
 
