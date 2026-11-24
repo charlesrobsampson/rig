@@ -1362,7 +1362,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Manual check: export a real reviewed ticket from a field run; it conforms.
 
 ### 105 · The GitHub account to open pull requests as
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/105-github-user` · Depends: none
 - Read: `docs/formats.md` §4 (`policy.push`); `internal/git/pr.go`
@@ -1370,3 +1370,4 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: `policy.push.github_user` (service, ticket or global; a GitHub login). In pr mode rig asks gh for that account's token (`gh auth token --user <login>`) and gives it as `GH_TOKEN` to its own gh calls only: never stored, logged, shown or given to an agent, and the active account is not switched. An account gh has no login for refuses the push before anything is pushed. gh's "Could not resolve to a Repository" gets a hint naming `github_user`.
 - Tests: the PR is opened with the named account's token when another is active; the token reaches only rig's gh calls and appears in no error; an unknown account fails before the push; without the setting nothing changes; an invalid login is refused when the config is read; service beats ticket beats global.
 - Manual check: on a machine whose active gh account cannot see the repository, `rig push` opens the PR as `github_user` and `gh auth status` still shows the same active account.
+- Notes (as built): `domain.GitHubLogin` is checked when read (letters, digits, `-`, `_`, starting with a letter or digit, at most 100), so it can never be taken by gh as an option. `policy.Effective.GitHubUser` resolves service, ticket, global. `git.GH.Run` now takes an `env` added after rig's own environment (the last value wins, so it beats a `GH_TOKEN` the daemon inherited). `PushPR` gets the token with `gh auth token --user`, skips `auth status` when a user is named, and now lists open pull requests **before** pushing, so a repository the account cannot see fails with nothing pushed; `prFailed` adds the `github_user` hint to gh's "Could not resolve to a Repository". The fake gh models several accounts (`Accounts`, `Active`, `Access`) and records each call's env. Manual check: real gh on a machine with a personal (active) and a work account, read-only: `pr list` fails as the active account and succeeds with the work account's token; an unknown account gives `no oauth token found`; the active account is unchanged. A real `rig push` waits for the next pilot ticket.

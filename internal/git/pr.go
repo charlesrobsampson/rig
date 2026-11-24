@@ -27,10 +27,11 @@ type GHResult struct {
 	ExitCode       int
 }
 
-// GH runs the GitHub CLI in dir with stdin. Run returns ErrGHMissing when gh is not
-// installed and an error only when it could not be run at all.
+// GH runs the GitHub CLI in dir with stdin, adding env to rig's own environment. Run
+// returns ErrGHMissing when gh is not installed and an error only when it could not be
+// run at all.
 type GH interface {
-	Run(ctx context.Context, dir, stdin string, args ...string) (GHResult, error)
+	Run(ctx context.Context, dir, stdin string, env []string, args ...string) (GHResult, error)
 }
 
 // NewGH returns a GH that runs the `gh` binary (or another path) with the user's own
@@ -44,14 +45,14 @@ func NewGH(binary string) GH {
 
 type execGH struct{ binary string }
 
-func (g execGH) Run(ctx context.Context, dir, stdin string, args ...string) (GHResult, error) {
+func (g execGH) Run(ctx context.Context, dir, stdin string, env []string, args ...string) (GHResult, error) {
 	path, err := exec.LookPath(g.binary)
 	if err != nil {
 		return GHResult{}, ErrGHMissing
 	}
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = dir
-	cmd.Env = append(baseEnv(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1", "NO_COLOR=1")
+	cmd.Env = append(append(baseEnv(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1", "NO_COLOR=1"), env...)
 	cmd.Stdin = strings.NewReader(stdin)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -74,14 +75,17 @@ func (g execGH) Run(ctx context.Context, dir, stdin string, args ...string) (GHR
 // against Base with the given title and body.
 type PROptions struct {
 	PushOptions
-	Title string
-	Body  string
-	Draft bool
+	// GitHubUser opens the pull request as this gh account instead of the active one.
+	GitHubUser domain.GitHubLogin
+	Title      string
+	Body       string
+	Draft      bool
 }
 
 // PushPR pushes the branch and opens a pull request for it, or reuses the one already
-// open for that branch. gh is checked before anything is pushed, so a machine without a
-// working gh does not leave a pushed branch behind for nothing.
+// open for that branch. gh, the account and its access to the repository are checked
+// before anything is pushed, so a failure there does not leave a pushed branch behind
+// for nothing.
 func PushPR(ctx context.Context, gh GH, o PROptions) (PushResult, error) {
 	res := PushResult{Mode: domain.PushPR}
 	if o.Base == "" {
@@ -90,17 +94,17 @@ func PushPR(ctx context.Context, gh GH, o PROptions) (PushResult, error) {
 	if _, err := branchTip(ctx, o.PushOptions); err != nil {
 		return res, err
 	}
-	if err := checkGH(ctx, gh, o.Repo); err != nil {
+	env, err := checkGH(ctx, gh, o.Repo, o.GitHubUser)
+	if err != nil {
+		return res, err
+	}
+	existing, err := openPR(ctx, gh, o, env)
+	if err != nil {
 		return res, err
 	}
 
 	pushed, err := Push(ctx, domain.PushBranch, o.PushOptions)
 	res.Remote, res.URL, res.Ref, res.Sha, res.Pushed = pushed.Remote, pushed.URL, pushed.Ref, pushed.Sha, pushed.Pushed
-	if err != nil {
-		return res, err
-	}
-
-	existing, err := openPR(ctx, gh, o)
 	if err != nil {
 		return res, err
 	}
@@ -113,12 +117,12 @@ func PushPR(ctx context.Context, gh GH, o PROptions) (PushResult, error) {
 	if o.Draft {
 		args = append(args, "--draft")
 	}
-	out, err := gh.Run(ctx, o.Repo, o.Body, args...)
+	out, err := gh.Run(ctx, o.Repo, o.Body, env, args...)
 	if err != nil {
 		return res, err
 	}
 	if out.ExitCode != 0 {
-		return res, fmt.Errorf("%w: gh pr create: %s", ErrPR, firstLine(out.Stderr, out.Stdout))
+		return res, prFailed("pr create", out)
 	}
 	url := lastURL(out.Stdout)
 	if url == "" {
@@ -128,31 +132,55 @@ func PushPR(ctx context.Context, gh GH, o PROptions) (PushResult, error) {
 	return res, nil
 }
 
-func checkGH(ctx context.Context, gh GH, repo string) error {
-	if _, err := gh.Run(ctx, repo, "", "--version"); err != nil {
+// checkGH makes sure gh can be used, and returns the environment its pull-request calls
+// need: the named account's token, given to those calls only, so the user's active
+// account is never switched. The token is never put in an error.
+func checkGH(ctx context.Context, gh GH, repo string, user domain.GitHubLogin) ([]string, error) {
+	if _, err := gh.Run(ctx, repo, "", nil, "--version"); err != nil {
 		if errors.Is(err, ErrGHMissing) {
-			return fmt.Errorf("%w; install it from https://cli.github.com and run `gh auth login`", ErrGHMissing)
+			return nil, fmt.Errorf("%w; install it from https://cli.github.com and run `gh auth login`", ErrGHMissing)
 		}
-		return err
+		return nil, err
 	}
-	out, err := gh.Run(ctx, repo, "", "auth", "status")
+	if user == "" {
+		out, err := gh.Run(ctx, repo, "", nil, "auth", "status")
+		if err != nil {
+			return nil, err
+		}
+		if out.ExitCode != 0 {
+			return nil, fmt.Errorf("%w; run `gh auth login`", ErrGHAuth)
+		}
+		return nil, nil
+	}
+	out, err := gh.Run(ctx, repo, "", nil, "auth", "token", "--user", string(user))
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if out.ExitCode != 0 {
-		return fmt.Errorf("%w; run `gh auth login`", ErrGHAuth)
+	token := strings.TrimSpace(out.Stdout)
+	if out.ExitCode != 0 || token == "" {
+		return nil, fmt.Errorf("%w as %s; run `gh auth login` and log in as %s (policy.push.github_user)", ErrGHAuth, user, user)
 	}
-	return nil
+	return []string{"GH_TOKEN=" + token}, nil
+}
+
+// prFailed reports a failed gh call in gh's own words, with what to do when the account
+// in use cannot see the repository.
+func prFailed(call string, out GHResult) error {
+	msg := firstLine(out.Stderr, out.Stdout)
+	if strings.Contains(msg, "Could not resolve to a Repository") {
+		msg += "; the gh account in use cannot see this repository: set policy.push.github_user to one that can (`gh auth status` lists them)"
+	}
+	return fmt.Errorf("%w: gh %s: %s", ErrPR, call, msg)
 }
 
 // openPR returns the URL of the open pull request from the branch into the base, or "".
-func openPR(ctx context.Context, gh GH, o PROptions) (string, error) {
-	out, err := gh.Run(ctx, o.Repo, "", "pr", "list", "--head", o.Branch, "--base", o.Base, "--state", "open", "--json", "url", "--limit", "1")
+func openPR(ctx context.Context, gh GH, o PROptions, env []string) (string, error) {
+	out, err := gh.Run(ctx, o.Repo, "", env, "pr", "list", "--head", o.Branch, "--base", o.Base, "--state", "open", "--json", "url", "--limit", "1")
 	if err != nil {
 		return "", err
 	}
 	if out.ExitCode != 0 {
-		return "", fmt.Errorf("%w: gh pr list: %s", ErrPR, firstLine(out.Stderr, out.Stdout))
+		return "", prFailed("pr list", out)
 	}
 	var prs []struct {
 		URL string `json:"url"`

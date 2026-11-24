@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -186,7 +187,7 @@ type fakeFail struct {
 	list, create git.GHResult
 }
 
-func (f *fakeFail) Run(_ context.Context, _ string, _ string, args ...string) (git.GHResult, error) {
+func (f *fakeFail) Run(_ context.Context, _, _ string, _ []string, args ...string) (git.GHResult, error) {
 	switch {
 	case args[0] == "--version", args[0] == "auth":
 		return git.GHResult{}, nil
@@ -251,18 +252,98 @@ func TestTheRealGHRunnerPassesArgumentsStdinAndTheEnvironment(t *testing.T) {
 	os.WriteFile(script, []byte(`#!/bin/sh
 echo "args: $*"
 echo "stdin: $(cat)"
-echo "prompt: $GH_PROMPT_DISABLED cwd: $(pwd)"
+echo "prompt: $GH_PROMPT_DISABLED cwd: $(pwd) token: $GH_TOKEN"
 echo "oops" >&2
 exit 3
 `), 0o755)
-	res, err := git.NewGH(script).Run(ctx, dir, "body text", "pr", "create", "--title", "A B")
+	t.Setenv("GH_TOKEN", "from-the-daemon")
+	res, err := git.NewGH(script).Run(ctx, dir, "body text", []string{"GH_TOKEN=for-this-call"}, "pr", "create", "--title", "A B")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.ExitCode != 3 || !strings.Contains(res.Stdout, "args: pr create --title A B") || !strings.Contains(res.Stdout, "stdin: body text") || !strings.Contains(res.Stdout, "prompt: 1") || res.Stderr != "oops\n" {
+	if res.ExitCode != 3 || !strings.Contains(res.Stdout, "args: pr create --title A B") || !strings.Contains(res.Stdout, "stdin: body text") || !strings.Contains(res.Stdout, "prompt: 1") || !strings.Contains(res.Stdout, "token: for-this-call") || res.Stderr != "oops\n" {
 		t.Errorf("result = %+v", res)
 	}
-	if _, err := git.NewGH(filepath.Join(dir, "no-such-gh")).Run(ctx, dir, "", "--version"); !errors.Is(err, git.ErrGHMissing) {
+	if _, err := git.NewGH(filepath.Join(dir, "no-such-gh")).Run(ctx, dir, "", nil, "--version"); !errors.Is(err, git.ErrGHMissing) {
 		t.Errorf("a missing binary = %v, want ErrGHMissing", err)
+	}
+}
+
+// twoAccounts is gh logged in to a personal account (active) and a work account, where
+// only the work account can see the repository.
+func twoAccounts() *testkit.FakeGH {
+	gh := testkit.NewFakeGH()
+	gh.Accounts = map[string]string{"me": "tok-personal", "me-work": "tok-work"}
+	gh.Active = "me"
+	gh.Access = []string{"tok-work"}
+	return gh
+}
+
+func TestAPullRequestIsOpenedAsTheConfiguredGitHubUser(t *testing.T) {
+	repo := testkit.NewRepo(t)
+	bare := remoteFor(t, repo)
+	_, sha := ticketWork(t, repo, "feat/x")
+	gh := twoAccounts()
+	o := prOpts(repo, "feat/x")
+	o.GitHubUser = "me-work"
+
+	res, err := git.PushPR(ctx, gh, o)
+	if err != nil || res.PRURL == "" || remoteTip(t, bare, "feat/x") != sha || len(gh.PRs()) != 1 {
+		t.Fatalf("PushPR = %+v, %v", res, err)
+	}
+	for i, args := range gh.Calls() {
+		withToken := slices.Contains(gh.Envs()[i], "GH_TOKEN=tok-work")
+		if args[0] == "pr" && !withToken {
+			t.Errorf("gh %v ran without the work account's token", args)
+		}
+		if args[0] == "auth" && args[1] == "switch" {
+			t.Error("the active account was switched")
+		}
+	}
+	if gh.Active != "me" {
+		t.Errorf("active account = %q", gh.Active)
+	}
+}
+
+func TestARepositoryTheAccountCannotSeeFailsBeforeThePushWithAHint(t *testing.T) {
+	for _, user := range []domain.GitHubLogin{"", "me"} {
+		t.Run("github_user="+string(user), func(t *testing.T) {
+			repo := testkit.NewRepo(t)
+			bare := remoteFor(t, repo)
+			ticketWork(t, repo, "feat/x")
+			o := prOpts(repo, "feat/x")
+			o.GitHubUser = user
+			_, err := git.PushPR(ctx, twoAccounts(), o)
+			if !errors.Is(err, git.ErrPR) || !strings.Contains(err.Error(), "Could not resolve to a Repository") || !strings.Contains(err.Error(), "github_user") {
+				t.Errorf("error = %v", err)
+			}
+			if err != nil && strings.Contains(err.Error(), "tok-") {
+				t.Errorf("a token is in the error: %v", err)
+			}
+			if remoteTip(t, bare, "feat/x") != "" {
+				t.Error("the branch was pushed although no pull request could be opened")
+			}
+		})
+	}
+}
+
+func TestAGitHubUserGHHasNoLoginForFailsBeforeAnythingIsPushed(t *testing.T) {
+	repo := testkit.NewRepo(t)
+	bare := remoteFor(t, repo)
+	ticketWork(t, repo, "feat/x")
+	gh := twoAccounts()
+	o := prOpts(repo, "feat/x")
+	o.GitHubUser = "someone-else"
+	_, err := git.PushPR(ctx, gh, o)
+	if !errors.Is(err, git.ErrGHAuth) || !strings.Contains(err.Error(), "someone-else") || !strings.Contains(err.Error(), "gh auth login") {
+		t.Errorf("error = %v", err)
+	}
+	if remoteTip(t, bare, "feat/x") != "" {
+		t.Error("the branch was pushed")
+	}
+	for _, args := range gh.Calls() {
+		if args[0] == "pr" {
+			t.Errorf("gh %v ran for an account with no login", args)
+		}
 	}
 }

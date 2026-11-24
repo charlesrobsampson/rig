@@ -285,3 +285,24 @@ func TestAServiceAgentConfigAndModelWin(t *testing.T) {
 		t.Errorf("model = %q", got)
 	}
 }
+
+func TestTheGitHubUserFollowsServiceThenTicketThenGlobal(t *testing.T) {
+	g := baseGlobal()
+	g.Defaults.Policy.Push.GitHubUser = "global-user"
+	user := func(ticket, service domain.GitHubLogin) domain.GitHubLogin {
+		return resolve(g, domain.Ticket{Policy: domain.Policy{Push: domain.PushPolicy{GitHubUser: ticket}}},
+			domain.Service{Policy: domain.Policy{Push: domain.PushPolicy{GitHubUser: service}}}, policy.Flags{}).GitHubUser
+	}
+	if got := user("", ""); got != "global-user" {
+		t.Errorf("global only = %q", got)
+	}
+	if got := user("ticket-user", ""); got != "ticket-user" {
+		t.Errorf("ticket = %q", got)
+	}
+	if got := user("ticket-user", "service-user"); got != "service-user" {
+		t.Errorf("service = %q", got)
+	}
+	if got := resolve(baseGlobal(), domain.Ticket{}, domain.Service{}, policy.Flags{}).GitHubUser; got != "" {
+		t.Errorf("none anywhere = %q", got)
+	}
+}

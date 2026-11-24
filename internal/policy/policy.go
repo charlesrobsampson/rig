@@ -24,7 +24,9 @@ type Effective struct {
 	Gates    []domain.Gate
 	PushMode domain.PushMode
 	// MergeCommit: merge mode may create a merge commit (default false).
-	MergeCommit     bool
+	MergeCommit bool
+	// GitHubUser: the gh account pull requests are opened as; empty means gh's active one.
+	GitHubUser      domain.GitHubLogin
 	Sandbox         domain.Sandbox
 	NetworkMode     domain.NetworkMode
 	Harness         string
@@ -43,6 +45,7 @@ func Resolve(g config.Global, t domain.Ticket, s domain.Service, f Flags) Effect
 		Gates:           firstGates(f.Gates, s.Policy.Gates, t.Policy.Gates, d.Policy.Gates),
 		PushMode:        first(f.PushMode, s.Policy.Push.Mode, t.Policy.Push.Mode, d.Policy.Push.Mode),
 		MergeCommit:     firstBool(s.Policy.Push.MergeCommit, t.Policy.Push.MergeCommit, d.Policy.Push.MergeCommit),
+		GitHubUser:      first(s.Policy.Push.GitHubUser, t.Policy.Push.GitHubUser, d.Policy.Push.GitHubUser),
 		Sandbox:         first(f.Sandbox, s.Sandbox, t.Sandbox, d.Sandbox),
 		NetworkMode:     first(f.NetworkMode, t.Docker.NetworkMode, d.NetworkMode),
 		Harness:         first(f.Harness, s.Harness, t.Harness, d.Harness),
