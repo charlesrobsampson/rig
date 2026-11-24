@@ -27,6 +27,7 @@ func (a *app) chooseHome() error {
 		if name = os.Getenv("RIG_HOME_NAME"); name == "" {
 			return nil
 		}
+		a.homeName = name
 	}
 	homes, user, err := loadHomes()
 	if err != nil {

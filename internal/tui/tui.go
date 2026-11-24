@@ -51,6 +51,33 @@ type Options struct {
 	// Copy puts text on the system clipboard (nil means an OSC 52 escape sequence,
 	// which most modern terminals honour, including over ssh).
 	Copy func(text string) error
+	// Home is the name of the rig home shown (empty when it was chosen by config file);
+	// it is part of the command Y copies.
+	Home string
+	// Open is a ticket (and tab) to open as soon as the fleet is known.
+	Open *Target
+	// CanSwitch lets H leave the TUI to choose another home (Run then returns
+	// ErrSwitchHome).
+	CanSwitch bool
+}
+
+// Target is a place in the TUI a command can open directly.
+type Target struct {
+	Ticket string
+	Tab    Tab
+}
+
+// ErrSwitchHome: the person pressed H to choose another home.
+var ErrSwitchHome = errors.New("switch home")
+
+// ParseTab is the tab with that name (plan, tasks, contract, diff, logs, manual).
+func ParseTab(name string) (Tab, error) {
+	for t, n := range tabNames {
+		if n == name {
+			return Tab(t), nil
+		}
+	}
+	return 0, fmt.Errorf("unknown tab %q (want one of: %s)", name, strings.Join(tabNames[:], ", "))
 }
 
 // Messages. They are exported only to the package's own tests.
@@ -100,6 +127,9 @@ type Model struct {
 	modal     *modal // a question awaiting an answer
 	status    string // the last outcome, shown in the status bar until the next key
 	statusErr bool
+
+	pending   *Target // a deep link waiting for the fleet
+	switching bool    // H was pressed: leave to choose another home
 }
 
 func New(o Options) Model {
@@ -109,7 +139,25 @@ func New(o Options) Model {
 	if o.RefreshEvery == 0 {
 		o.RefreshEvery = 2 * time.Second
 	}
-	return Model{opts: o, dash: &dashboard{}}
+	return Model{opts: o, dash: &dashboard{}, pending: o.Open}
+}
+
+// SwitchHome says the person left to choose another home.
+func (m Model) SwitchHome() bool { return m.switching }
+
+// Command is the one line that opens what is on screen now.
+func (m Model) Command() string {
+	parts := []string{"rig"}
+	if m.opts.Home != "" {
+		parts = append(parts, "-H", m.opts.Home)
+	}
+	if m.det != nil {
+		parts = append(parts, "-t", m.det.ticket)
+		if m.det.tab != TabPlan {
+			parts = append(parts, "--tab", m.det.tab.String())
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // Init asks for the fleet at once.
@@ -170,6 +218,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.connected, m.err, m.tickets = true, "", msg.tickets
 		m.dash.set(msg.tickets)
+		if m.pending != nil {
+			return m.openPending()
+		}
 		if m.dirty { // events came in while this read was under way
 			return m.refresh()
 		}
@@ -251,6 +302,23 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.help {
 		return m, nil // the overlay swallows everything else until it is closed
 	}
+	switch msg.String() {
+	case "Y":
+		copyFn := m.opts.Copy
+		if copyFn == nil {
+			copyFn = copyOSC52
+		}
+		command := m.Command()
+		if err := copyFn(command); err != nil {
+			return m.fail("cannot copy %s: %v", command, err), nil
+		}
+		return m.ok("copied: %s", command), nil
+	case "H":
+		if m.opts.CanSwitch {
+			m.switching = true
+			return m, tea.Quit
+		}
+	}
 	if m.connected {
 		if next, cmd, handled := m.action(msg.String()); handled {
 			return next, cmd
@@ -279,6 +347,21 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.dash.last()
 	}
 	return m, nil
+}
+
+// openPending opens a deep link once, when the fleet first arrives.
+func (m Model) openPending() (tea.Model, tea.Cmd) {
+	target := *m.pending
+	m.pending = nil
+	for _, t := range m.tickets {
+		if t.ID == target.Ticket {
+			m.openGen++
+			m.det = &detail{ticket: target.Ticket, gen: m.openGen}
+			m.det.switchTo(target.Tab)
+			return m, tea.Batch(m.loadTab(m.det.tab), m.refreshTick())
+		}
+	}
+	return m.fail("no ticket %q in this home", target.Ticket), nil
 }
 
 // open shows a ticket's detail view, loading its first tab.
@@ -394,6 +477,8 @@ var Keys = []struct{ Key, Help string }{
 	{"t", "attach to a service's agent terminal; come back when it exits"},
 	{"m", "type a message into an agent"},
 	{"c / C", "accept / reject a proposed contract change"},
+	{"Y", "copy the command that opens this view (home, ticket, tab)"},
+	{"H", "choose another home (when there are several)"},
 	{"r", "refresh now"},
 	{"q", "quit"},
 	{"ctrl+c", "quit from anywhere"},
@@ -436,6 +521,9 @@ func (m Model) header(w int) string {
 	title := "rig"
 	if m.opts.Version != "" {
 		title += " " + m.opts.Version
+	}
+	if m.opts.Home != "" {
+		title += " · home " + m.opts.Home
 	}
 	if backend, ok := remoteSummaries(m.tickets); ok {
 		title += " · summaries from a remote model (" + backend + "): ticket content leaves this machine"
@@ -511,6 +599,9 @@ func Run(ctx context.Context, o Options) error {
 	if o.Source != nil {
 		go Pump(pumpCtx, o.Source, p.Send, o.RetryEvery)
 	}
-	_, err := p.Run()
+	final, err := p.Run()
+	if err == nil && final.(Model).SwitchHome() {
+		return ErrSwitchHome
+	}
 	return err
 }
