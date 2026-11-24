@@ -14,7 +14,7 @@ import (
 )
 
 func newListCmd(a *app) *cobra.Command {
-	var summaries bool
+	var summaries, all bool
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List tickets with their phase, services, and ports",
@@ -26,6 +26,9 @@ is always printed with the real diff stats it was made from, and the backend tha
 it is named, marked "remote" when the content left this machine.`,
 		Args: usageArgs(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if all {
+				return a.listAll(cmd)
+			}
 			c, err := a.connect(cmd.Context(), true)
 			if err != nil {
 				return err
@@ -46,6 +49,7 @@ it is named, marked "remote" when the content left this machine.`,
 		},
 	}
 	cmd.Flags().BoolVar(&summaries, "summaries", false, "also show each ticket's language-model summary")
+	cmd.Flags().BoolVar(&all, "all", false, "the tickets of every home whose daemon runs (rig homes), starting none")
 	return cmd
 }
 

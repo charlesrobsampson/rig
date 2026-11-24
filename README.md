@@ -198,7 +198,12 @@ What it does **not** give you, so you can decide with open eyes:
 ## Configuration
 
 `~/.config/rig/config.json` (or `$RIG_CONFIG`, or `--config`). Everything has a default;
-unknown keys are errors. [`examples/config.json`](examples/config.json):
+unknown keys are errors.
+
+**Several homes.** To keep work and personal projects apart, give each its own config (with
+its own `paths.home`) and register it by name: `rig homes add work ~/work/rig/config.json`.
+Then `rig -H work list` (or `RIG_HOME_NAME=work`) uses that home and its daemon; `rig homes`
+shows every home and whether its daemon runs; `rig list --all` shows all their tickets. [`examples/config.json`](examples/config.json):
 
 ```json
 {

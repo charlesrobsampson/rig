@@ -18,11 +18,14 @@ The exact shapes that every part of rig shares. `manifest.md` says *what* and *w
 |---|---|---|
 | rig home | `~/.rig` | `RIG_HOME` |
 | global config | `~/.config/rig/config.json` | `RIG_CONFIG` |
+| named homes | `~/.config/rig/homes.json`: `{"homes": {"<name>": "<config path>"}}` | |
 | tickets | `<rig home>/tickets/<id>/` | |
 | daemon socket | `<rig home>/rigd.sock` | |
 | daemon pid | `<rig home>/rigd.pid` | |
 | daemon log | `<rig home>/rigd.log` | |
 | runtime cache store | `<rig home>/store.json` | |
+
+**Choosing a home.** Several homes (each a config with its own `paths.home` and daemon) can live on one machine. A command uses the first of: `--config <file>`, `--home <name>` (`-H`), `$RIG_CONFIG`, `$RIG_HOME_NAME`, the default config. A name is one registered in `homes.json` (`rig homes add <name> <config>`; letters, digits, `-`, `_`), or `default` for the default config when that file exists. `--config` with `--home` is a usage error, and so is an unknown name (the error lists the known ones). `$RIG_HOME`, when set, still replaces the chosen config's `paths.home`. `rig homes` and `rig list --all` look at every home without starting a daemon.
 
 ### Ticket sources (`rig new --from type:ref`)
 - `manual` needs nothing. `jira:PROJ-412` reads one issue with `GET <jira.base_url>/rest/api/2/issue/PROJ-412?fields=summary,description` and nothing else: rig never writes to Jira. The ticket id is the lowercased key (`proj-412`); the title is the issue summary; the description (Jira wiki markup) is converted to Markdown into `plan.md`; the issue URL goes into the plan. `source: {type: jira, key: PROJ-412}` is recorded in `ticket.yaml`.

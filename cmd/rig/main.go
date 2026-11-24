@@ -70,6 +70,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, d deps) i
 type app struct {
 	deps       deps
 	configPath string
+	homeName   string
 	json       bool
 }
 
@@ -86,7 +87,9 @@ func newRootCmd(d deps) *cobra.Command {
 	}
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError(err) })
 	root.PersistentFlags().StringVar(&a.configPath, "config", "", "global config file (default $RIG_CONFIG, then ~/.config/rig/config.json)")
+	root.PersistentFlags().StringVarP(&a.homeName, "home", "H", "", "the rig home to use, by name (default $RIG_HOME_NAME; see rig homes)")
 	root.PersistentFlags().BoolVar(&a.json, "json", false, "print machine-readable JSON")
-	root.AddCommand(newConfigCmd(a), newDaemonCmd(a), newListCmd(a), newEventsCmd(a), newNewCmd(a), newStartCmd(a), newStopCmd(a), newGatesCmd(a), newApproveCmd(a), newPhaseCmd(a), newAgentEventCmd(a), newJournalCmd(a), newAttachCmd(a), newMsgCmd(a), newLogsCmd(a), newReviewCmd(a), newReviewerCmd(a), newWaitCmd(a), newPushCmd(a), newTestsCmd(a), newContractCmd(a), newMCPCmd(a), newReconcileCmd(a))
+	root.PersistentPreRunE = func(*cobra.Command, []string) error { return a.chooseHome() }
+	root.AddCommand(newConfigCmd(a), newDaemonCmd(a), newListCmd(a), newEventsCmd(a), newNewCmd(a), newStartCmd(a), newStopCmd(a), newGatesCmd(a), newApproveCmd(a), newPhaseCmd(a), newAgentEventCmd(a), newJournalCmd(a), newAttachCmd(a), newMsgCmd(a), newLogsCmd(a), newReviewCmd(a), newReviewerCmd(a), newWaitCmd(a), newPushCmd(a), newTestsCmd(a), newContractCmd(a), newMCPCmd(a), newReconcileCmd(a), newHomesCmd(a))
 	return root
 }

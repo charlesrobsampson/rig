@@ -180,7 +180,7 @@ func LoadGlobal(opts GlobalOptions) (Global, error) {
 		if path = getenv("RIG_CONFIG"); path != "" {
 			explicit = true
 		} else {
-			path = filepath.Join(home, ".config", "rig", "config.json")
+			path = DefaultConfigFile(home)
 		}
 	}
 
