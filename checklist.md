@@ -1383,3 +1383,30 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Tests: two homes on one Docker: each lists only its own; the other's object cannot be inspected, stopped or removed; reconcile with fix in one home leaves the other's containers and networks; an unlabelled object is found by its ticket but not by a scan, and reconcile never removes it; the caller's label map is not changed.
 - Manual check: with the pilot's home running a stopped ticket's containers, a second home's `rig reconcile --fix` lists and removes none of them.
 - Notes (as built): `docker.Scoped(d, home)` wraps the client once, in the daemon (`cmd/rig/daemon.go`), with the home directory as the label value; no other code changed, so every caller is scoped. Creates add `rig.home` to a copy of the caller's labels; `ListContainers` and `ListNetworks` filter after the real listing (Docker's filters cannot say "this home or no home"): this home's objects, plus unlabelled ones only when the filter names a ticket. Inspect returns `ErrOtherHome` for another home's object; start, stop, remove, exec, connect and network removal check it first (one extra inspect). Logs and image lookups are not scoped. The egress watcher and the port check now see only this home's proxies and services, so a container made before the label (no `rig.home`) is not counted as rig's own there either. Manual check (2026-11-24): with the client pilot's ticket running two agents from before the label, a fresh second home's `rig reconcile` showed no drift and `--fix` removed nothing; the previous build in the same setup listed both agents and their network as orphans to remove.
+
+### 107 · Named homes: pick a rig home by name, see them all
+- [ ] Done
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
+- Branch: `task/107-named-homes` · Depends: 106
+- Read: `docs/formats.md` §2 (global config); `cmd/rig/main.go`, `cmd/rig/daemon.go`
+- Why: one person runs several homes (a work pilot, a personal product), each its own config and daemon. Choosing one meant a shell alias per home (`RIG_CONFIG=... rig`), nothing showed which homes exist or which daemons run, and a person had to look in each home separately. Agents and people both need it short: agents with one flag, people with one list.
+- Build:
+  - `~/.config/rig/homes.json` (next to the default config): `{"homes": {"<name>": "<config path>"}}`. The default config is the home named `default` when its file exists.
+  - `--home <name>` (`-H`) on every command and `RIG_HOME_NAME` in the environment choose a home by name. Order: `--config`, `--home`, `RIG_CONFIG`, `RIG_HOME_NAME`, the default. `--config` with `--home` is a usage error; an unknown name is a usage error listing the known ones.
+  - `rig homes` lists each home: name, config, home directory, whether its daemon runs (and its version), and its ticket count, without starting any daemon. `rig homes add <name> <config>` registers a config that loads and is valid; `rig homes remove <name>` forgets one (nothing else is touched). Names: letters, digits, `-`, `_`.
+  - `rig list --all`: the tickets of every home whose daemon runs, with a HOME column, and one line per home whose daemon does not run; no daemon is started.
+- Tests: each way of choosing picks the right home and the right daemon; precedence; unknown and conflicting choices; add refuses a missing or invalid config and a bad name; remove; `homes` and `list --all` start no daemon and show a stopped one as such; `--json` for both.
+- Manual check: with the client pilot registered as `portal`, `rig -H portal list` matches `rigp list`, and `rig homes` shows it running.
+
+### 108 · The TUI across homes, and a command for every view
+- [ ] Done
+- Session: _(fill on start)_
+- Branch: `task/108-tui-homes` · Depends: 107
+- Read: `internal/tui`; `cmd/rig/tui.go`
+- Why: a person reviewing several homes should be able to type `rig` and find their way, or type one line to land exactly where they want; and what they look at should be easy to get back to, or hand to someone (or an agent) as a command.
+- Build:
+  - Bare `rig` on a terminal with no home chosen and more than one home: a home picker (search with `/`, `j`/`k`, enter), each row with status and ticket count; choosing a stopped home starts its daemon. `H` in the dashboard goes back to the picker. A chosen home (`-H`) skips it.
+  - Deep links on bare `rig`: `--ticket <id>` (`-t`) opens that ticket, `--tab plan|tasks|contract|diff|logs|manual` opens that tab.
+  - A key (`Y`) shows the one-line command that opens the current view (home, ticket, tab), in the status bar, and copies it to the clipboard.
+- Tests: the picker filters and opens a home; one home or a chosen one skips it; the deep link opens the ticket and tab (an unknown ticket says so on the dashboard); the shown command, run, opens the same view.
+- Manual check: from the picker into osmo's ticket diff, `Y`, quit, paste the command: the same view opens.
