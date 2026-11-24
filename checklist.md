@@ -1212,6 +1212,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 93 · Remove agent images nothing uses
 - [ ] Done
+- Note (2026-11-24): after task 106, list and remove only this home's images (`rig.home`); an image another home's tickets use must never be removed.
 - Session: _(fill on start)_
 - Branch: `task/93-prune-agent-images` · Depends: 37
 - Read: `docs/field-tests/03-private-node-app.md` finding 6; `internal/lifecycle` agent images
@@ -1371,3 +1372,13 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Tests: the PR is opened with the named account's token when another is active; the token reaches only rig's gh calls and appears in no error; an unknown account fails before the push; without the setting nothing changes; an invalid login is refused when the config is read; service beats ticket beats global.
 - Manual check: on a machine whose active gh account cannot see the repository, `rig push` opens the PR as `github_user` and `gh auth status` still shows the same active account.
 - Notes (as built): `domain.GitHubLogin` is checked when read (letters, digits, `-`, `_`, starting with a letter or digit, at most 100), so it can never be taken by gh as an option. `policy.Effective.GitHubUser` resolves service, ticket, global. `git.GH.Run` now takes an `env` added after rig's own environment (the last value wins, so it beats a `GH_TOKEN` the daemon inherited). `PushPR` gets the token with `gh auth token --user`, skips `auth status` when a user is named, and now lists open pull requests **before** pushing, so a repository the account cannot see fails with nothing pushed; `prFailed` adds the `github_user` hint to gh's "Could not resolve to a Repository". The fake gh models several accounts (`Accounts`, `Active`, `Access`) and records each call's env. Manual check: real gh on a machine with a personal (active) and a work account, read-only: `pr list` fails as the active account and succeeds with the work account's token; an unknown account gives `no oauth token found`; the active account is unchanged. A real `rig push` waits for the next pilot ticket.
+
+### 106 · Several rig homes on one machine: each daemon touches only its own Docker objects
+- [ ] Done
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
+- Branch: `task/106-home-label` · Depends: none
+- Read: `docs/formats.md` §7 (labels), `reconcile.run` (§9); `internal/docker/docker.go`; `internal/reconcile`
+- Why: one person can run two rig homes at once (a work and a personal one, each with its own config and daemon). Docker objects carry the ticket but not the home, so each daemon sees the other's containers and networks as its own: `rig reconcile --fix` would force-remove a running agent of the other home as an orphan, the port check would take the other home's busy port for one of its own, and the egress watcher would report the other home's denials.
+- Build: a `rig.home=<home path>` label on every container, network and image rig creates, added by a scoping wrapper around the Docker client (`docker.Scoped`) so no caller can forget it. Listings return only this home's objects; an object made before this label (no `rig.home`) is returned only to a lookup by a named ticket, never to a scan, so a scan can never remove it. Inspecting or changing (start, stop, remove, exec, connect) an object of another home is refused with an error naming that home. The agent-image cleanup (task 93) must use the same scope.
+- Tests: two homes on one Docker: each lists only its own; the other's object cannot be inspected, stopped or removed; reconcile with fix in one home leaves the other's containers and networks; an unlabelled object is found by its ticket but not by a scan, and reconcile never removes it; the caller's label map is not changed.
+- Manual check: with the pilot's home running a stopped ticket's containers, a second home's `rig reconcile --fix` lists and removes none of them.
