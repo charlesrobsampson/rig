@@ -1401,7 +1401,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 
 ### 108 · The TUI across homes, and a command for every view
 - [ ] Done
-- Session: _(fill on start)_
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/108-tui-homes` · Depends: 107
 - Read: `internal/tui`; `cmd/rig/tui.go`
 - Why: a person reviewing several homes should be able to type `rig` and find their way, or type one line to land exactly where they want; and what they look at should be easy to get back to, or hand to someone (or an agent) as a command.
