@@ -1385,7 +1385,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Notes (as built): `docker.Scoped(d, home)` wraps the client once, in the daemon (`cmd/rig/daemon.go`), with the home directory as the label value; no other code changed, so every caller is scoped. Creates add `rig.home` to a copy of the caller's labels; `ListContainers` and `ListNetworks` filter after the real listing (Docker's filters cannot say "this home or no home"): this home's objects, plus unlabelled ones only when the filter names a ticket. Inspect returns `ErrOtherHome` for another home's object; start, stop, remove, exec, connect and network removal check it first (one extra inspect). Logs and image lookups are not scoped. The egress watcher and the port check now see only this home's proxies and services, so a container made before the label (no `rig.home`) is not counted as rig's own there either. Manual check (2026-11-24): with the client pilot's ticket running two agents from before the label, a fresh second home's `rig reconcile` showed no drift and `--fix` removed nothing; the previous build in the same setup listed both agents and their network as orphans to remove.
 
 ### 107 · Named homes: pick a rig home by name, see them all
-- [ ] Done
+- [x] Done
 - Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
 - Branch: `task/107-named-homes` · Depends: 106
 - Read: `docs/formats.md` §2 (global config); `cmd/rig/main.go`, `cmd/rig/daemon.go`
@@ -1394,9 +1394,10 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
   - `~/.config/rig/homes.json` (next to the default config): `{"homes": {"<name>": "<config path>"}}`. The default config is the home named `default` when its file exists.
   - `--home <name>` (`-H`) on every command and `RIG_HOME_NAME` in the environment choose a home by name. Order: `--config`, `--home`, `RIG_CONFIG`, `RIG_HOME_NAME`, the default. `--config` with `--home` is a usage error; an unknown name is a usage error listing the known ones.
   - `rig homes` lists each home: name, config, home directory, whether its daemon runs (and its version), and its ticket count, without starting any daemon. `rig homes add <name> <config>` registers a config that loads and is valid; `rig homes remove <name>` forgets one (nothing else is touched). Names: letters, digits, `-`, `_`.
-  - `rig list --all`: the tickets of every home whose daemon runs, with a HOME column, and one line per home whose daemon does not run; no daemon is started.
+  - `rig list --all`: the tickets of every home whose daemon runs, one section per home, and one line per home whose daemon does not run; no daemon is started.
 - Tests: each way of choosing picks the right home and the right daemon; precedence; unknown and conflicting choices; add refuses a missing or invalid config and a bad name; remove; `homes` and `list --all` start no daemon and show a stopped one as such; `--json` for both.
 - Manual check: with the client pilot registered as `portal`, `rig -H portal list` matches `rigp list`, and `rig homes` shows it running.
+- Notes (as built): the choice is made once, in the root command's `PersistentPreRunE` (`chooseHome`), by setting `app.configPath`; everything after (connecting, starting a daemon with `--config`, the agents' `RIG_CONFIG`) follows it unchanged. A subcommand must not define its own `PersistentPreRunE`, or cobra skips the root's. `config.Homes` (`homes.json`) with `All` adding `default` when the default config exists; `CheckHomeName` reserves `default`. `inspectHome` connects without auto-start and is shared by `rig homes` and `rig list --all` (task 108's picker can use it). `$RIG_HOME` still overrides the chosen config's home (agents have it set). Manual check (2026-11-24): `rig homes add portal <pilot config>`; `rig homes` showed default and portal running with their versions and ticket counts; `rig -H portal list` matched `RIG_CONFIG=... rig list`; `rig list --all` showed both.
 
 ### 108 · The TUI across homes, and a command for every view
 - [ ] Done
