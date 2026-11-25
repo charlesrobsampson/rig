@@ -1477,3 +1477,13 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Tests: transcripts summed with repeated lines counted once, subagents included, other files ignored; phases, gates, elapsed, done, rounds, changes and totals on a ticket moved through a fake clock; an unreadable ticket listed with its error and refused when named; list and stats agree on cost; the human views show tokens in short form.
 - Manual check: `rig -V osmo stats` after the vessel's daemon runs this version: the totals match the sizing table built by hand in the field, plus tokens.
 - Notes (as built): tokens are read on demand (not stored), so `ticket.list` stays cheap; only `ticket.stats` walks transcripts. Each request's usage appears on every line Claude Code writes for it (one per content block), hence the dedupe by message id and request id. Phase time starts at `created_at`, so time before `rig start` counts as plan. The field showed agents running `claude-sonnet-5-5` by default (no model set): `rig stats` now makes that visible.
+
+### 115 · `rig list` fits the terminal
+- [x] Done
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
+- Branch: `task/115-list-fit` · Depends: 114
+- Why: the user found list rows long enough to wrap on a narrow terminal, which makes the table hard to read (option (b) of three discussed: fit the width, rather than wrapping cells or using two lines per ticket).
+- Build: the phase's notes are short and joined with " · " (`done · review passed r1 · drift 1`, `plan · svc1 asks for implement`); on a terminal the title, then the phase notes, are shortened with "…" to fit its width and an all-empty PORTS column is left out; `--wide` and any output that is not a terminal (pipes, scripts) show everything.
+- Tests: every line fits a 70-column terminal and the long title is shortened; `--wide` and piped output keep it whole with PORTS; the existing notes in their new form.
+- Manual check: `rig -V osmo list` in a narrow terminal stays one line per ticket.
+- Notes (as built): `writeFitted` (cmd/rig/list.go) renders any table to a width, shrinking the named columns in order down to 12 columns each; `app.termWidth` is 0 when stdout is not a terminal.

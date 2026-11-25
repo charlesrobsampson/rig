@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"github.com/charmbracelet/x/ansi"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -170,7 +171,7 @@ func TestListShowsAPendingContractChangeAndADirectEditOfTheAgreedSection(t *test
 	os.WriteFile(statePath, out, 0o600)
 
 	listing, _, code := rig(t, d, "list")
-	if code != 0 || !strings.Contains(listing, "(contract change pending)") || !strings.Contains(listing, "(contract edited outside rig)") {
+	if code != 0 || !strings.Contains(listing, "contract change pending") || !strings.Contains(listing, "contract edited outside rig") {
 		t.Errorf("code %d, list:\n%s", code, listing)
 	}
 	jsonOut, _, _ := rig(t, d, "list", "--json")
@@ -193,7 +194,7 @@ func TestListShowsAnAgentsPhaseRequest(t *testing.T) {
 	out, _ := json.Marshal(st)
 	os.WriteFile(statePath, out, 0o600)
 
-	if listing, _, code := rig(t, d, "list"); code != 0 || !strings.Contains(listing, "plan (svc1 asks for implement)") {
+	if listing, _, code := rig(t, d, "list"); code != 0 || !strings.Contains(listing, "plan · svc1 asks for implement") {
 		t.Errorf("code %d, list:\n%s", code, listing)
 	}
 }
@@ -206,7 +207,7 @@ func TestAnAgentsTransitionRequestRecordShowsOnList(t *testing.T) {
 	if _, stderr, code := rig(t, d, "agent-event", `{"kind":"transition.request","data":{"to":"implement","reason":"plan ready"}}`); code != 0 {
 		t.Fatalf("agent-event: %s", stderr)
 	}
-	if listing, _, _ := rig(t, d, "list"); !strings.Contains(listing, "plan (svc1 asks for implement)") {
+	if listing, _, _ := rig(t, d, "list"); !strings.Contains(listing, "plan · svc1 asks for implement") {
 		t.Errorf("list:\n%s", listing)
 	}
 	if _, stderr, code := rig(t, d, "approve", "demo", "plan_approval"); code != 0 {
@@ -215,5 +216,38 @@ func TestAnAgentsTransitionRequestRecordShowsOnList(t *testing.T) {
 	rig(t, d, "phase", "demo", "implement")
 	if listing, _, _ := rig(t, d, "list"); strings.Contains(listing, "asks for") {
 		t.Errorf("the request stayed after the move:\n%s", listing)
+	}
+}
+
+func TestTheListFitsTheTerminalAndWideShowsEverything(t *testing.T) {
+	_, d, repo := newEnv(t)
+	newTicket(t, d, "demo", repo)
+	long := "A title long enough that it cannot possibly fit on a narrow terminal next to everything else"
+	if _, stderr, code := rig(t, d, "new", "--id", "longer", "--title", long, "--service", "svc1="+repo.Dir); code != 0 {
+		t.Fatal(stderr)
+	}
+	d.termWidth = func() int { return 70 }
+	out, _, code := rig(t, d, "list")
+	if code != 0 {
+		t.Fatal(out)
+	}
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if w := ansi.StringWidth(line); w > 70 {
+			t.Errorf("a %d-wide line on a 70-wide terminal: %q", w, line)
+		}
+	}
+	if !strings.Contains(out, "…") || strings.Contains(out, long) {
+		t.Errorf("the long title was not shortened:\n%s", out)
+	}
+	if strings.Contains(out, "PORTS") {
+		t.Errorf("an empty PORTS column is shown:\n%s", out)
+	}
+	wide, _, _ := rig(t, d, "list", "--wide")
+	if !strings.Contains(wide, long) || !strings.Contains(wide, "PORTS") {
+		t.Errorf("--wide:\n%s", wide)
+	}
+	d.termWidth = func() int { return 0 } // not a terminal: scripts get everything
+	if piped, _, _ := rig(t, d, "list"); !strings.Contains(piped, long) {
+		t.Errorf("piped output was cut:\n%s", piped)
 	}
 }

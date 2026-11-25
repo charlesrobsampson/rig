@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
+	"github.com/charmbracelet/x/ansi"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -15,7 +16,7 @@ import (
 )
 
 func newListCmd(a *app) *cobra.Command {
-	var summaries, all bool
+	var summaries, all, wide bool
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List tickets with their phase, services, and ports",
@@ -42,7 +43,11 @@ it is named, marked "remote" when the content left this machine.`,
 			if a.json {
 				return printJSON(cmd.OutOrStdout(), res)
 			}
-			writeTicketTable(cmd.OutOrStdout(), res.Tickets, a.now())
+			width := a.termWidth()
+			if wide {
+				width = 0
+			}
+			writeTicketTable(cmd.OutOrStdout(), res.Tickets, a.now(), width)
 			if summaries {
 				writeSummaries(cmd.OutOrStdout(), res.Tickets)
 			}
@@ -50,6 +55,7 @@ it is named, marked "remote" when the content left this machine.`,
 		},
 	}
 	cmd.Flags().BoolVar(&summaries, "summaries", false, "also show each ticket's language-model summary")
+	cmd.Flags().BoolVar(&wide, "wide", false, "do not shorten anything to fit the terminal")
 	cmd.Flags().BoolVar(&all, "all", false, "the tickets of every home whose daemon runs (rig homes), starting none")
 	return cmd
 }
@@ -98,36 +104,91 @@ func writeSummaries(w io.Writer, tickets []api.TicketSummary) {
 	}
 }
 
-func writeTicketTable(w io.Writer, tickets []api.TicketSummary, now time.Time) {
+// writeTicketTable prints one line per ticket. width > 0 is the terminal's width: the
+// title (then the phase notes) is shortened to fit it, and an all-empty PORTS column is
+// left out. width 0 (a pipe, a script, --wide) prints everything.
+func writeTicketTable(w io.Writer, tickets []api.TicketSummary, now time.Time, width int) {
 	if len(tickets) == 0 {
 		fmt.Fprintln(w, "no tickets")
 		return
 	}
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tPHASE\tSERVICES\tCOST\tTIME\tPORTS\tTITLE")
-	for _, t := range tickets {
-		phase := string(t.Phase)
-		if phase == "" {
-			phase = "-"
-		}
-		if r := t.PhaseRequest; r != nil {
-			phase += fmt.Sprintf(" (%s asks for %s)", r.Service, r.To)
-		}
-		if r := t.Review; r != nil {
-			phase += fmt.Sprintf(" (review %s, round %d)", r.Status, r.Round)
-		}
-		if t.ContractPending {
-			phase += " (contract change pending)"
-		}
-		if t.ContractViolation {
-			phase += " (contract edited outside rig)"
-		}
-		if len(t.Drift) > 0 {
-			phase += fmt.Sprintf(" (drift: %d, see rig reconcile)", len(t.Drift))
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", t.ID, phase, serviceCell(t.Services), costCell(t.CostUSD), elapsedCell(t, now), portsCell(t.Services), titleCell(t))
+	header := []string{"ID", "PHASE", "SERVICES", "COST", "TIME", "PORTS", "TITLE"}
+	rows := make([][]string, len(tickets))
+	anyPorts := false
+	for i, t := range tickets {
+		ports := portsCell(t.Services)
+		anyPorts = anyPorts || ports != "-"
+		rows[i] = []string{t.ID, phaseCell(t), serviceCell(t.Services), costCell(t.CostUSD), elapsedCell(t, now), ports, titleCell(t)}
 	}
-	tw.Flush()
+	if width > 0 && !anyPorts {
+		header = slices.Delete(header, 5, 6)
+		for i := range rows {
+			rows[i] = slices.Delete(rows[i], 5, 6)
+		}
+	}
+	writeFitted(w, header, rows, width, []int{len(header) - 1, 1})
+}
+
+// phaseCell is the phase and what is going on in it, as short notes.
+func phaseCell(t api.TicketSummary) string {
+	notes := []string{string(t.Phase)}
+	if t.Phase == "" {
+		notes[0] = "-"
+	}
+	if r := t.PhaseRequest; r != nil {
+		notes = append(notes, fmt.Sprintf("%s asks for %s", r.Service, r.To))
+	}
+	if r := t.Review; r != nil {
+		notes = append(notes, fmt.Sprintf("review %s r%d", r.Status, r.Round))
+	}
+	if t.ContractPending {
+		notes = append(notes, "contract change pending")
+	}
+	if t.ContractViolation {
+		notes = append(notes, "contract edited outside rig")
+	}
+	if len(t.Drift) > 0 {
+		notes = append(notes, fmt.Sprintf("drift %d", len(t.Drift)))
+	}
+	return strings.Join(notes, " · ")
+}
+
+// writeFitted prints a table with two spaces between columns. With width > 0 it
+// shortens the shrinkable columns, in order, until each line fits.
+func writeFitted(w io.Writer, header []string, rows [][]string, width int, shrinkable []int) {
+	const gap, least = 2, 12
+	all := append([][]string{header}, rows...)
+	widths := make([]int, len(header))
+	for _, r := range all {
+		for c, cell := range r {
+			widths[c] = max(widths[c], ansi.StringWidth(cell))
+		}
+	}
+	total := func() int {
+		sum := gap * (len(widths) - 1)
+		for _, x := range widths {
+			sum += x
+		}
+		return sum
+	}
+	if width > 0 {
+		for _, c := range shrinkable {
+			if over := total() - width; over > 0 {
+				widths[c] = max(widths[c]-over, min(least, widths[c]))
+			}
+		}
+	}
+	for _, r := range all {
+		var b strings.Builder
+		for c, cell := range r {
+			cell = ansi.Truncate(cell, widths[c], "…")
+			b.WriteString(cell)
+			if c < len(r)-1 {
+				b.WriteString(strings.Repeat(" ", widths[c]-ansi.StringWidth(cell)+gap))
+			}
+		}
+		fmt.Fprintln(w, strings.TrimRight(b.String(), " "))
+	}
 }
 
 func serviceCell(services []api.ServiceSummary) string {

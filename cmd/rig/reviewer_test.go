@@ -56,7 +56,7 @@ func TestTheReviewLoopRunsThroughTheCLI(t *testing.T) {
 			t.Errorf("rig reviewer lacks %q:\n%s", want, stdout)
 		}
 	}
-	if stdout, _, _ := rig(t, d, "list"); !strings.Contains(stdout, "(review fixing, round 1)") {
+	if stdout, _, _ := rig(t, d, "list"); !strings.Contains(stdout, "review fixing r1") {
 		t.Errorf("list:\n%s", stdout)
 	}
 
