@@ -387,3 +387,32 @@ func TestStoppingForgetsTheReviewersContainerAndLeavesNothingRunning(t *testing.
 		t.Errorf("containers left after stop: %+v", left)
 	}
 }
+
+func TestTheReviewerIsToldWhatPeopleToldTheCoder(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	log := `{"at":"2026-11-25T08:00:00Z","service":"svc1","from":"human","text":"Use a cap of 74 KB, not chunking; the card is out of date.","delivered":true}
+{"at":"2026-11-25T08:00:01Z","service":"svc1","from":"rig","text":"This ticket moved from plan to implement.","delivered":true}
+{"at":"2026-11-25T08:00:02Z","service":"review","from":"human","text":"a note to the reviewer","delivered":true}
+{"at":"2026-11-25T08:00:03Z","service":"svc1","from":"human","text":"never arrived","delivered":false}
+`
+	os.WriteFile(filepath.Join(r.path, "messages.jsonl"), []byte(log), 0o600)
+	r.commit("a.txt", "first\n")
+	r.record("svc1", "review.ready", "", nil)
+	brief := r.last(domain.ReviewerService)
+	if !strings.Contains(brief, "Use a cap of 74 KB, not chunking") || !strings.Contains(brief, "What people told the coder") {
+		t.Errorf("the brief lacks the person's answer:\n%s", brief)
+	}
+	for _, unwanted := range []string{"moved from plan to implement", "a note to the reviewer", "never arrived"} {
+		if strings.Contains(brief, unwanted) {
+			t.Errorf("the brief has %q:\n%s", unwanted, brief)
+		}
+	}
+
+	os.Remove(filepath.Join(r.path, "messages.jsonl"))
+	r2 := newReviewRig(t, "{}")
+	r2.commit("a.txt", "first\n")
+	r2.record("svc1", "review.ready", "", nil)
+	if strings.Contains(r2.last(domain.ReviewerService), "What people told the coder") {
+		t.Error("an empty section was written with no messages")
+	}
+}

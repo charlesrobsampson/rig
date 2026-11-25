@@ -1457,3 +1457,13 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Tests: several waits end on any value; unknown values refused; the reviewer is not an orphan; the reviewer's container is forgotten after a stop; a container that comes back is named; discard deletes the branch and keeps a checked-out one; discard with keep-checkouts refused.
 - Manual check: on the osmo vessel, `rig wait <id> --review passed,stopped` returns at once on a passed ticket; `rig reconcile` shows no reviewer orphans; a throwaway ticket stopped with `--discard` leaves no branch.
 - Notes (as built): the field's leftover containers were most likely stops that failed and whose errors the operator's landing script piped through `tail` (a stop already failed loudly when a container would not let its network go); the new check covers a container that comes back after the networks are gone. `git.DeleteBranch` does nothing to a branch that is checked out. `domain.ReviewStatus.Valid`. FakeDocker gained `Keep`.
+
+### 113 · The reviewer sees what people told the coder
+- [x] Done
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
+- Branch: `task/113-reviewer-told` · Depends: 97
+- Why: from the osmo field run (R-012): the coder followed an answer the human gave by message; the reviewer, who cannot see messages, flagged it as a deviation and the loop spent a round on a settled point.
+- Build: each round's brief lists the messages people (not rig) sent the coder and that were delivered, oldest first, the last 30, marked as decisions that stand unless they break the project's rules.
+- Tests: a person's message to the coder is in the brief; rig's notices, messages to the reviewer and undelivered ones are not; no messages, no section.
+- Manual check: the next reviewed field ticket where the operator answers the coder by message.
+- Notes (as built): `peopleToCoder` reads `messages.jsonl` (the injector's log) directly; `from: "rig"` marks rig's own messages, everything else is a person (the CLI and MCP write `human`).

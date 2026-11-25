@@ -318,8 +318,48 @@ func (m *Manager) roundBrief(l loaded, r state.Review, sha, base, coder string) 
 			b.WriteString("\nCheck each again (re-run what proves it; do not take the answer on trust).")
 		}
 	}
+	if told := peopleToCoder(l.dir, coder); len(told) > 0 {
+		b.WriteString("\n\nWhat people told the coder during this ticket (decisions that may not be in plan.md yet; they stand unless they break the project's rules):")
+		for _, m := range told {
+			fmt.Fprintf(&b, "\n- %s: %s", m.At.Format("2006-01-02 15:04"), m.Text)
+		}
+	}
 	fmt.Fprintf(&b, "\n\nJournal a review.result only for findings still open or new (keep the ids), then a verdict with data {\"round\": %d}.", r.Round)
 	return b.String()
+}
+
+// toldMessage is one line of the ticket's message log (written by the injector).
+type toldMessage struct {
+	At        time.Time `json:"at"`
+	Service   string    `json:"service"`
+	From      string    `json:"from"`
+	Text      string    `json:"text"`
+	Delivered bool      `json:"delivered"`
+}
+
+// maxTold keeps the most recent messages when a ticket has had very many.
+const maxTold = 30
+
+// peopleToCoder is what a person (not rig) told the coder and the coder received: a
+// reviewer that cannot see an answer given by message takes the coder following it for
+// a deviation from the ticket.
+func peopleToCoder(ticketDir, coder string) []toldMessage {
+	raw, err := os.ReadFile(filepath.Join(ticketDir, "messages.jsonl"))
+	if err != nil {
+		return nil
+	}
+	var out []toldMessage
+	for _, line := range strings.Split(string(raw), "\n") {
+		var m toldMessage
+		if json.Unmarshal([]byte(line), &m) != nil || m.Service != coder || m.From == "rig" || !m.Delivered {
+			continue
+		}
+		out = append(out, m)
+	}
+	if len(out) > maxTold {
+		out = out[len(out)-maxTold:]
+	}
+	return out
 }
 
 // closeRound takes the reviewer's verdict: open blocking or should-fix findings go to
