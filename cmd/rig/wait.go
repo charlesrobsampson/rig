@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/charlesrobsampson/rig/internal/api"
+	"github.com/charlesrobsampson/rig/internal/client"
 	"github.com/charlesrobsampson/rig/internal/clock"
 	"github.com/charlesrobsampson/rig/internal/domain"
 )
@@ -17,6 +18,8 @@ import (
 const waitPoll = 500 * time.Millisecond
 
 type waitResult struct {
+	// Ticket is the ticket that matched, as it was named ("t1" or "osmo/t1").
+	Ticket  string             `json:"ticket"`
 	Matched string             `json:"matched"` // record, phase_request, phase or review
 	Record  *api.JournalRecord `json:"record,omitempty"`
 	Summary api.TicketSummary  `json:"summary"`
@@ -25,19 +28,23 @@ type waitResult struct {
 func newWaitCmd(a *app) *cobra.Command {
 	var kind string
 	var phases, reviews []string
-	var request bool
+	var request, fresh bool
 	var timeout time.Duration
 	cmd := &cobra.Command{
-		Use:   "wait <ticket-id>",
-		Short: "Wait until something happens to a ticket",
+		Use:   "wait <ticket>...",
+		Short: "Wait until something happens to a ticket (or to any of several)",
 		Long: `Waits until any of the given things is true, prints it, and exits 0; exits 1 on
 --timeout. --record waits for a new journal record of that kind (one left after wait
 started); --phase-request for an agent's open request to move the ticket; --phase for
 the ticket to be in that phase; --review for its review loop to reach that status
 (reviewing, fixing, passed or stopped). --phase and --review take several values,
 repeated or comma-separated: "--review passed,stopped" ends on either. States already
-true count at once.`,
-		Args: usageArgs(cobra.ExactArgs(1)),
+true count at once, except a phase request with --new, which must be made after the
+wait starts (to wait for the next request after answering one).
+
+Several tickets: it ends on the first that matches and names it. A ticket can name its
+vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passed.`,
+		Args: usageArgs(cobra.MinimumNArgs(1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if kind == "" && !request && len(phases) == 0 && len(reviews) == 0 {
 				return usageError(errors.New("say what to wait for: --record, --phase-request, --phase or --review"))
@@ -52,11 +59,32 @@ true count at once.`,
 					return usageError(fmt.Errorf("%q is not a review status (reviewing, fixing, passed or stopped)", r))
 				}
 			}
-			c, err := a.connect(cmd.Context(), true)
-			if err != nil {
-				return err
+			// Each ticket may be on its own vessel; one connection per vessel.
+			type target struct {
+				label, id string
+				c         *client.Client
 			}
-			defer c.Close()
+			var targets []target
+			conns := map[string]*client.Client{}
+			defer func() {
+				for _, c := range conns {
+					c.Close()
+				}
+			}()
+			for _, arg := range args {
+				on, id, err := a.ticketRef(arg)
+				if err != nil {
+					return err
+				}
+				c, ok := conns[on.configPath]
+				if !ok {
+					if c, err = on.connect(cmd.Context(), true); err != nil {
+						return err
+					}
+					conns[on.configPath] = c
+				}
+				targets = append(targets, target{label: arg, id: id, c: c})
+			}
 			clk := a.deps.clock
 			if clk == nil {
 				clk = clock.Real()
@@ -64,37 +92,47 @@ true count at once.`,
 			since := clk.Now()
 			deadline := clk.After(timeout)
 			for {
-				var t api.TicketGetResult
-				if err := c.Call(cmd.Context(), api.MethodTicketGet, api.TicketGetParams{ID: args[0]}, &t); err != nil {
-					return err
-				}
-				res := waitResult{Summary: t.Summary}
-				s := t.Summary
-				switch {
-				case request && s.PhaseRequest != nil:
-					res.Matched = "phase_request"
-				case slices.Contains(phases, string(s.Phase)):
-					res.Matched = "phase"
-				case s.Review != nil && slices.Contains(reviews, string(s.Review.Status)):
-					res.Matched = "review"
-				}
-				if res.Matched == "" && kind != "" {
-					var j api.JournalListResult
-					if err := c.Call(cmd.Context(), api.MethodJournalList, api.JournalListParams{Ticket: args[0], Kind: kind}, &j); err != nil {
+				var res waitResult
+				for _, tg := range targets {
+					var t api.TicketGetResult
+					if err := tg.c.Call(cmd.Context(), api.MethodTicketGet, api.TicketGetParams{ID: tg.id}, &t); err != nil {
 						return err
 					}
-					for i := range j.Records {
-						if !j.Records[i].At.Before(since) {
-							res.Matched, res.Record = "record", &j.Records[i]
-							break
+					res = waitResult{Ticket: tg.label, Summary: t.Summary}
+					s := t.Summary
+					switch {
+					case request && s.PhaseRequest != nil && (!fresh || !s.PhaseRequest.At.Before(since)):
+						res.Matched = "phase_request"
+					case slices.Contains(phases, string(s.Phase)):
+						res.Matched = "phase"
+					case s.Review != nil && slices.Contains(reviews, string(s.Review.Status)):
+						res.Matched = "review"
+					}
+					if res.Matched == "" && kind != "" {
+						var j api.JournalListResult
+						if err := tg.c.Call(cmd.Context(), api.MethodJournalList, api.JournalListParams{Ticket: tg.id, Kind: kind}, &j); err != nil {
+							return err
+						}
+						for i := range j.Records {
+							if !j.Records[i].At.Before(since) {
+								res.Matched, res.Record = "record", &j.Records[i]
+								break
+							}
 						}
 					}
+					if res.Matched != "" {
+						break
+					}
 				}
+				s := res.Summary
 				if res.Matched != "" {
 					if a.json {
 						return printJSON(cmd.OutOrStdout(), res)
 					}
 					out := cmd.OutOrStdout()
+					if len(targets) > 1 {
+						fmt.Fprintf(out, "%s: ", res.Ticket)
+					}
 					switch res.Matched {
 					case "record":
 						fmt.Fprintf(out, "%s %s from %s: %s\n", res.Record.At.Local().Format("15:04:05"), res.Record.Kind, res.Record.Service, res.Record.Text)
@@ -120,6 +158,7 @@ true count at once.`,
 	f := cmd.Flags()
 	f.StringVar(&kind, "record", "", "a journal record of this kind")
 	f.BoolVar(&request, "phase-request", false, "an agent's request to move the ticket")
+	f.BoolVar(&fresh, "new", false, "with --phase-request: only a request made after the wait starts")
 	f.StringSliceVar(&phases, "phase", nil, "the ticket being in this phase (several: any of them)")
 	f.StringSliceVar(&reviews, "review", nil, "the review loop reaching this status (several: any of them)")
 	f.DurationVar(&timeout, "timeout", 30*time.Minute, "how long to wait")

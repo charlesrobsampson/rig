@@ -1496,3 +1496,13 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: when neither the service nor its state names a base, the change is measured against the repository's default branch, as `rig push` already decides.
 - Tests: a push on a ticket with no base records the change's files and lines.
 - Manual check: the next osmo ticket pushed shows its change in `rig -V osmo stats`.
+
+### 117 · Wait on several tickets and vessels; `vessel/ticket`; hints that name the vessel; the fleet's standing; `rig watch`
+- [x] Done
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
+- Branch: `task/117-wait-any` · Depends: 107, 112
+- Why: from the field (R-019, R-025, R-026's third ask) and the jybe dogfood: an operator running two tickets could wait on only one at a time; could not wait for the next phase request after answering one; rig's printed hints ("run: rig start j02") acted on the default vessel when followed; the fleet showed only a ticket count.
+- Build: `rig wait <ticket>...` on one or several vessels, ending on the first match and naming it; `--new` for phase requests made after the wait started (ticket summaries carry the request's time); `<vessel>/<ticket>` wherever a command's first argument is a ticket; every rig command the CLI prints names the chosen vessel; `rig fleet` and the picker show where tickets stand; `rig events` is now `rig watch` (alias kept).
+- Tests: a wait across two vessels ends on the first match and names it, times out when none matches, refuses an unknown vessel; `--new` ignores an older request; `gates work/a` works and conflicts with another `-V`; `rig new`'s hint and a daemon error name the vessel; the fleet's standing; `watch` and `events`.
+- Manual check: on osmo, `rig wait osmo/t20 osmo/t21 --review passed,stopped` returns on the first to pass.
+- Notes (as built): the qualified ticket is resolved in the root's `PersistentPreRunE`, rewriting `args[0]` in place (cobra hands RunE the same slice); commands opt in with the `ticket: first` annotation. `withVessel` rewrites messages after the fact, because the daemon does not know which name a person used for its vessel. `wait` still polls (every 500ms per ticket); task 119's event stream replaces that.

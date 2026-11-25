@@ -12,11 +12,13 @@ import (
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/config"
+	"github.com/charlesrobsampson/rig/internal/domain"
 )
 
 // chooseVessel turns a vessel chosen by name into its config. The order is --config,
 // --vessel, $RIG_CONFIG, $RIG_VESSEL, then the default config.
-func (a *app) chooseVessel() error {
+func (a *app) chooseVessel(fromFlag bool) error {
+	a.vesselFromFlag = fromFlag
 	name := a.vesselName
 	switch {
 	case name != "" && a.configPath != "":
@@ -56,6 +58,60 @@ func loadFleet() (config.Fleet, string, error) {
 	return fleet, user, err
 }
 
+// ticketRef reads a ticket argument, which may name its vessel ("osmo/t14"): it returns
+// the app for that vessel and the ticket's own id. A vessel given with -V that is not the
+// ticket's is a mistake; one from $RIG_VESSEL gives way to the ticket's.
+func (a *app) ticketRef(ref string) (*app, string, error) {
+	name, id, ok := strings.Cut(ref, "/")
+	if !ok {
+		return a, ref, nil
+	}
+	if a.vesselFromFlag && a.vesselName != name {
+		return nil, "", usageError(fmt.Errorf("ticket %s is on vessel %s, not on -V %s", ref, name, a.vesselName))
+	}
+	fleet, user, err := loadFleet()
+	if err != nil {
+		return nil, "", err
+	}
+	for _, v := range fleet.All(user) {
+		if v.Name == name {
+			target := *a
+			target.configPath, target.vesselName = v.Config, v.Name
+			return &target, id, nil
+		}
+	}
+	return nil, "", usageError(fmt.Errorf("no vessel named %q (rig fleet)", name))
+}
+
+// standing sums up where a vessel's tickets stand: "13 (2 need you · 1 running · 10 done)".
+func standing(tickets []api.TicketSummary) string {
+	var needYou, running, done int
+	for _, t := range tickets {
+		switch {
+		case t.PhaseRequest != nil || len(t.Drift) > 0 || t.Error != "",
+			t.Review != nil && (t.Review.Status == domain.ReviewStopped || t.Review.Status == domain.ReviewPassed && t.Phase != domain.PhaseDone):
+			needYou++
+		case t.Phase == domain.PhaseDone:
+			done++
+		default:
+			running++
+		}
+	}
+	var parts []string
+	for _, p := range []struct {
+		n    int
+		what string
+	}{{needYou, "need you"}, {running, "running"}, {done, "done"}} {
+		if p.n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", p.n, p.what))
+		}
+	}
+	if len(parts) == 0 {
+		return "0"
+	}
+	return fmt.Sprintf("%d (%s)", len(tickets), strings.Join(parts, " · "))
+}
+
 // vesselInfo is one vessel as `rig fleet` shows it.
 type vesselInfo struct {
 	Name    string `json:"name"`
@@ -64,7 +120,9 @@ type vesselInfo struct {
 	Running bool   `json:"running"`
 	Version string `json:"version,omitempty"`
 	Tickets *int   `json:"tickets,omitempty"`
-	Error   string `json:"error,omitempty"`
+	// Standing says where they stand, as `rig fleet` prints it.
+	Standing string `json:"standing,omitempty"`
+	Error    string `json:"error,omitempty"`
 }
 
 // inspectVessel looks at a vessel without starting its daemon; tickets is filled only when
@@ -96,7 +154,7 @@ func (a *app) inspectVessel(cmd *cobra.Command, h config.NamedVessel) (vesselInf
 		return info, nil
 	}
 	n := len(res.Tickets)
-	info.Tickets = &n
+	info.Tickets, info.Standing = &n, standing(res.Tickets)
 	return info, res.Tickets
 }
 
@@ -134,7 +192,7 @@ per product. No daemon is started to find out. The default config is the vessel 
 					daemon = "running (" + i.Version + ")"
 				}
 				if i.Tickets != nil {
-					tickets = fmt.Sprint(*i.Tickets)
+					tickets = i.Standing
 				}
 				if i.Error != "" {
 					daemon = "error: " + i.Error

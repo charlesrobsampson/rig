@@ -17,9 +17,10 @@ import (
 
 func newEventsCmd(a *app) *cobra.Command {
 	return &cobra.Command{
-		Use:   "events",
-		Short: "Print daemon events as they happen (Ctrl-C to stop)",
-		Args:  usageArgs(cobra.NoArgs),
+		Use:     "watch",
+		Aliases: []string{"events"},
+		Short:   "Print daemon events as they happen (Ctrl-C to stop)",
+		Args:    usageArgs(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
