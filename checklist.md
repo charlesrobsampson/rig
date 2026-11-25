@@ -1487,3 +1487,12 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Tests: every line fits a 70-column terminal and the long title is shortened; `--wide` and piped output keep it whole with PORTS; the existing notes in their new form.
 - Manual check: `rig -V osmo list` in a narrow terminal stays one line per ticket.
 - Notes (as built): `writeFitted` (cmd/rig/list.go) renders any table to a width, shrinking the named columns in order down to 12 columns each; `app.termWidth` is 0 when stdout is not a terminal.
+
+### 116 · Measure a change against the default branch when no base is named
+- [x] Done
+- Session: `claude --resume b6c6a271-0ec6-4d1a-b9cd-29905218b168`
+- Branch: `task/116-change-base` · Depends: 114
+- Why: found on the osmo vessel the day 114 shipped: its tickets name no base and state records none, so change size was never measured or recorded at push (T13 showed none).
+- Build: when neither the service nor its state names a base, the change is measured against the repository's default branch, as `rig push` already decides.
+- Tests: a push on a ticket with no base records the change's files and lines.
+- Manual check: the next osmo ticket pushed shows its change in `rig -V osmo stats`.
