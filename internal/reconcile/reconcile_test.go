@@ -486,3 +486,19 @@ func TestFixingOneHomeLeavesAnotherHomesObjectsAndUnlabelledOnes(t *testing.T) {
 		}
 	}
 }
+
+func TestATicketsReviewerIsNotAnOrphan(t *testing.T) {
+	f := newFixture(t)
+	r := f.runningTicket("demo")
+	yaml := filepath.Join(r.dir, "ticket.yaml")
+	raw, _ := os.ReadFile(yaml)
+	os.WriteFile(yaml, append(raw, []byte("review: {of: api}\n")...), 0o600)
+	c, err := f.dk.CreateContainer(ctx, docker.ContainerSpec{Name: "rig-demo-review-agent", Image: "img", Network: r.network.Name, Labels: docker.Labels("demo", "review", docker.RoleAgent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.dk.StartContainer(ctx, c.ID)
+	if res := f.run(false); strings.Contains(kinds(res), "orphan") {
+		t.Errorf("drift = %+v", res.Drift)
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/charlesrobsampson/rig/internal/api"
+	"github.com/charlesrobsampson/rig/internal/docker"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/journal"
@@ -366,5 +367,23 @@ func TestStoppingTheTicketRemovesTheReviewer(t *testing.T) {
 	}
 	if st := r.state("demo"); st.Services[domain.ReviewerService].Agent.PaneID != "" {
 		t.Errorf("the reviewer's pane is still recorded: %+v", st.Services[domain.ReviewerService].Agent)
+	}
+}
+
+func TestStoppingForgetsTheReviewersContainerAndLeavesNothingRunning(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	r.commit("a.txt", "first\n")
+	r.record("svc1", "review.ready", "", nil)
+	if id := r.state("demo").Services[domain.ReviewerService].Agent.ContainerID; id == "" {
+		t.Fatal("the reviewer's container was never recorded")
+	}
+	if _, err := r.lc.Stop(ctx, api.TicketStopParams{ID: "demo"}); err != nil {
+		t.Fatal(err)
+	}
+	if id := r.state("demo").Services[domain.ReviewerService].Agent.ContainerID; id != "" {
+		t.Errorf("the removed reviewer container is still recorded: %s", id)
+	}
+	if left, _ := r.dk.ListContainers(ctx, map[string]string{docker.LabelTicket: "demo"}); len(left) != 0 {
+		t.Errorf("containers left after stop: %+v", left)
 	}
 }

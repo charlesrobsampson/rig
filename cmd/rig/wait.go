@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -22,7 +23,8 @@ type waitResult struct {
 }
 
 func newWaitCmd(a *app) *cobra.Command {
-	var kind, phase, review string
+	var kind string
+	var phases, reviews []string
 	var request bool
 	var timeout time.Duration
 	cmd := &cobra.Command{
@@ -32,14 +34,23 @@ func newWaitCmd(a *app) *cobra.Command {
 --timeout. --record waits for a new journal record of that kind (one left after wait
 started); --phase-request for an agent's open request to move the ticket; --phase for
 the ticket to be in that phase; --review for its review loop to reach that status
-(reviewing, fixing, passed or stopped). States already true count at once.`,
+(reviewing, fixing, passed or stopped). --phase and --review take several values,
+repeated or comma-separated: "--review passed,stopped" ends on either. States already
+true count at once.`,
 		Args: usageArgs(cobra.ExactArgs(1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if kind == "" && !request && phase == "" && review == "" {
+			if kind == "" && !request && len(phases) == 0 && len(reviews) == 0 {
 				return usageError(errors.New("say what to wait for: --record, --phase-request, --phase or --review"))
 			}
-			if phase != "" && !domain.Phase(phase).Valid() {
-				return usageError(fmt.Errorf("%q is not a phase", phase))
+			for _, p := range phases {
+				if !domain.Phase(p).Valid() {
+					return usageError(fmt.Errorf("%q is not a phase", p))
+				}
+			}
+			for _, r := range reviews {
+				if !domain.ReviewStatus(r).Valid() {
+					return usageError(fmt.Errorf("%q is not a review status (reviewing, fixing, passed or stopped)", r))
+				}
 			}
 			c, err := a.connect(cmd.Context(), true)
 			if err != nil {
@@ -62,9 +73,9 @@ the ticket to be in that phase; --review for its review loop to reach that statu
 				switch {
 				case request && s.PhaseRequest != nil:
 					res.Matched = "phase_request"
-				case phase != "" && string(s.Phase) == phase:
+				case slices.Contains(phases, string(s.Phase)):
 					res.Matched = "phase"
-				case review != "" && s.Review != nil && string(s.Review.Status) == review:
+				case s.Review != nil && slices.Contains(reviews, string(s.Review.Status)):
 					res.Matched = "review"
 				}
 				if res.Matched == "" && kind != "" {
@@ -109,8 +120,8 @@ the ticket to be in that phase; --review for its review loop to reach that statu
 	f := cmd.Flags()
 	f.StringVar(&kind, "record", "", "a journal record of this kind")
 	f.BoolVar(&request, "phase-request", false, "an agent's request to move the ticket")
-	f.StringVar(&phase, "phase", "", "the ticket being in this phase")
-	f.StringVar(&review, "review", "", "the review loop reaching this status")
+	f.StringSliceVar(&phases, "phase", nil, "the ticket being in this phase (several: any of them)")
+	f.StringSliceVar(&reviews, "review", nil, "the review loop reaching this status (several: any of them)")
 	f.DurationVar(&timeout, "timeout", 30*time.Minute, "how long to wait")
 	return cmd
 }

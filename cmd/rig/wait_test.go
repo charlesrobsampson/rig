@@ -58,3 +58,24 @@ func TestWaitNeedsSomethingToWaitFor(t *testing.T) {
 		t.Errorf("unknown ticket: code %d", code)
 	}
 }
+
+func TestWaitTakesSeveralPhasesOrReviewStatesAndEndsOnAnyOfThem(t *testing.T) {
+	_, d, repo, _ := newEnvWithTerminal(t)
+	newTicket(t, d, "demo", repo)
+	rig(t, d, "start", "demo", "--sandbox", "host")
+	for _, args := range [][]string{
+		{"--phase", "plan", "--phase", "implement"},
+		{"--phase", "implement", "--phase", "plan"},
+		{"--phase", "implement,plan"},
+	} {
+		stdout, stderr, code := rig(t, d, append([]string{"wait", "demo", "--timeout", "2s"}, args...)...)
+		if code != 0 || !strings.Contains(stdout, "phase is plan") {
+			t.Errorf("%v: code %d, %q %q", args, code, stdout, stderr)
+		}
+	}
+	for _, args := range [][]string{{"--review", "passed", "--review", "done"}, {"--phase", "plan,nope"}} {
+		if _, _, code := rig(t, d, append([]string{"wait", "demo", "--timeout", "1s"}, args...)...); code != 2 {
+			t.Errorf("%v: code %d, want a usage error for the unknown value", args, code)
+		}
+	}
+}

@@ -137,6 +137,10 @@ func (m *Manager) syncTornDown(ctx context.Context, l loaded) {
 				s.Services[svc.Name] = ss
 			}
 		}
+		if ss, ok := s.Services[domain.ReviewerService]; ok && l.ticket.Review != nil && !remaining["container "+AgentContainerName(l.id, domain.ReviewerService)] && ss.Agent.PaneID == "" {
+			ss.Agent.ContainerID = ""
+			s.Services[domain.ReviewerService] = ss
+		}
 		for _, dep := range l.ticket.Dependencies {
 			if !remaining["container "+DependencyName(l.id, dep.Name)] {
 				s.Dependencies[dep.Name] = state.DependencyState{Status: domain.ServiceStopped}

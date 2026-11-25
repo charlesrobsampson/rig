@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"strings"
 	"text/tabwriter"
@@ -23,11 +24,21 @@ remove the checkouts. Branches are always kept.
 If any service still holds work that deleting would lose (uncommitted changes, or
 commits that could not be imported), nothing is removed and each service is listed.
 --force discards that work instead; it asks first unless --yes is given. --keep-checkouts
-imports and marks the ticket stopped but leaves the directories in place.`,
+imports and marks the ticket stopped but leaves the directories in place.
+
+--discard is for a ticket whose work is not wanted (a trial run, a shakedown): nothing is
+imported, the checkouts are removed whatever they hold, and the ticket's branch is
+deleted from the main repository (unless it is checked out there). It asks first unless
+--yes is given.`,
 		Args: usageArgs(cobra.ExactArgs(1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			p.ID = args[0]
-			if p.Force && !yes && !confirm(cmd, "--force discards uncommitted work in the checkouts of "+p.ID+". Continue? [y/N] ") {
+			switch {
+			case p.Discard && p.KeepCheckouts:
+				return usageError(errors.New("--discard removes the checkouts; it cannot be used with --keep-checkouts"))
+			case p.Discard && !yes && !confirm(cmd, "--discard throws away all the work of "+p.ID+": its checkouts and its branch in the main repository. Continue? [y/N] "):
+				return fmt.Errorf("aborted")
+			case p.Force && !p.Discard && !yes && !confirm(cmd, "--force discards uncommitted work in the checkouts of "+p.ID+". Continue? [y/N] "):
 				return fmt.Errorf("aborted")
 			}
 			c, err := a.connect(cmd.Context(), true)
@@ -44,9 +55,9 @@ imports and marks the ticket stopped but leaves the directories in place.`,
 			}
 			if len(res.Services) > 0 {
 				tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-				fmt.Fprintln(tw, "SERVICE\tIMPORTED\tREMOVED")
+				fmt.Fprintln(tw, "SERVICE\tIMPORTED\tREMOVED\tBRANCH DELETED")
 				for _, s := range res.Services {
-					fmt.Fprintf(tw, "%s\t%s\t%s\n", s.Service, yesNo(s.Imported), yesNo(s.Removed))
+					fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", s.Service, yesNo(s.Imported), yesNo(s.Removed), yesNo(s.BranchDeleted))
 				}
 				if err := tw.Flush(); err != nil {
 					return err
@@ -64,6 +75,7 @@ imports and marks the ticket stopped but leaves the directories in place.`,
 	f := cmd.Flags()
 	f.BoolVar(&p.Force, "force", false, "discard uncommitted and unimportable work instead of refusing")
 	f.BoolVar(&p.KeepCheckouts, "keep-checkouts", false, "import and mark stopped, but leave the checkout directories")
+	f.BoolVar(&p.Discard, "discard", false, "throw the work away: import nothing, remove the checkouts, delete the ticket's branch")
 	f.BoolVar(&yes, "yes", false, "do not ask for confirmation")
 	return cmd
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/charlesrobsampson/rig/internal/api"
+	"github.com/charlesrobsampson/rig/internal/docker"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/testkit"
@@ -313,5 +314,67 @@ func TestStopErrors(t *testing.T) {
 				t.Errorf("error = %v, want %s mentioning %q", err, tt.code, tt.text)
 			}
 		})
+	}
+}
+
+func TestAStopThatLeavesSomethingBehindSaysSo(t *testing.T) {
+	f, dk, _ := agentsFixture(t, nil)
+	f.create("demo", testkit.NewRepo(t))
+	f.mustStart("demo", domain.SandboxContainer)
+	dk.AddImage("img")
+	// a container of the ticket that something starts again while the stop runs
+	if _, err := dk.CreateContainer(ctx, docker.ContainerSpec{Name: "rig-demo-extra", Image: "img", Labels: docker.Labels("demo", "", docker.RoleAgent)}); err != nil {
+		t.Fatal(err)
+	}
+	dk.Keep("rig-demo-extra")
+	_, err := f.stop("demo", false, false)
+	var e *api.Error
+	if !errors.As(err, &e) || !strings.Contains(strings.Join(e.Details, "; "), "rig-demo-extra") {
+		t.Errorf("stop = %v, want an error naming what is still there", err)
+	}
+}
+
+func TestDiscardThrowsTheWorkAwayInsteadOfImportingIt(t *testing.T) {
+	f := newFixture(t, domain.SandboxContainer)
+	repo := testkit.NewRepo(t)
+	f.create("demo", repo)
+	started := f.mustStart("demo", "")
+	commitAt(t, started.Checkouts[0].Path, "work.txt", "throwaway\n")
+	f.mustStop("demo", false, true) // an earlier stop already imported the branch
+	if branchTip(repo, "rig/demo/svc1") == "" {
+		t.Fatal("setup: the branch was not imported")
+	}
+	os.WriteFile(filepath.Join(started.Checkouts[0].Path, "scratch.txt"), []byte("uncommitted\n"), 0o644)
+	commitAt(t, started.Checkouts[0].Path, "more.txt", "more\n")
+
+	res, err := f.lc.Stop(ctx, api.TicketStopParams{ID: "demo", Discard: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if branchTip(repo, "rig/demo/svc1") != "" {
+		t.Error("the ticket's branch is still in the main repository")
+	}
+	if exists(started.Checkouts[0].Path) {
+		t.Error("the checkout was not removed")
+	}
+	if s := res.Services[0]; s.Imported || !s.Removed || !s.BranchDeleted {
+		t.Errorf("services = %+v", res.Services)
+	}
+	if _, err := f.lc.Stop(ctx, api.TicketStopParams{ID: "demo", Discard: true, KeepCheckouts: true}); err == nil {
+		t.Error("discard with keep-checkouts was accepted")
+	}
+}
+
+func TestDiscardNeverDeletesTheBranchTheMainRepositoryHasCheckedOut(t *testing.T) {
+	f := newFixture(t, domain.SandboxContainer)
+	repo := testkit.NewRepo(t)
+	f.create("demo", repo)
+	started := f.mustStart("demo", "")
+	commitAt(t, started.Checkouts[0].Path, "work.txt", "x\n")
+	f.mustStop("demo", false, true)
+	repo.Git("checkout", "-q", "rig/demo/svc1")
+	res, err := f.lc.Stop(ctx, api.TicketStopParams{ID: "demo", Discard: true})
+	if err != nil || res.Services[0].BranchDeleted || branchTip(repo, "rig/demo/svc1") == "" {
+		t.Errorf("stop = %+v, %v; the checked-out branch must stay", res.Services, err)
 	}
 }
