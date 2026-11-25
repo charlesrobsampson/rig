@@ -437,3 +437,14 @@ func TestAStartGivesATicketWithoutPRMdItsStub(t *testing.T) {
 		t.Errorf("a start replaced the agent's pr.md: %q", raw)
 	}
 }
+
+func TestAPushRecordsTheSizeOfTheChangeEvenWithNoBaseNamed(t *testing.T) {
+	repo, _ := pushRepo(t)
+	f, _, _ := pushFixture(t, []string{"push-branch"}, repo)
+	if got, err := runPush(t, f, ""); err != nil || !got.Done {
+		t.Fatalf("Push = %+v, %v", got, err)
+	}
+	if p := f.state("demo").Services["svc1"].Push; p.Files != 1 || p.Added != 1 {
+		t.Errorf("push record = %+v, want the one-file, one-line change", p)
+	}
+}

@@ -178,7 +178,10 @@ func (m *Manager) liveChange(ctx context.Context, svc domain.Service, path strin
 	}
 	base := firstNonEmptyString(svc.Base, recordedBase)
 	if base == "" {
-		return api.ChangeStats{}, false
+		var err error
+		if base, err = git.DefaultBranch(ctx, svc.Repo); err != nil { // as rig push does
+			return api.ChangeStats{}, false
+		}
 	}
 	if kind == domain.CheckoutClone {
 		base = "origin/" + base
