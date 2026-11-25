@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -69,6 +70,14 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, d deps) i
 	return 0
 }
 
+// now is the CLI's clock: the injected one in tests, the real one otherwise.
+func (a *app) now() time.Time {
+	if a.deps.clock == nil {
+		return clock.Real().Now()
+	}
+	return a.deps.clock.Now()
+}
+
 type app struct {
 	deps       deps
 	configPath string
@@ -97,6 +106,6 @@ func newRootCmd(d deps) *cobra.Command {
 	root.PersistentFlags().StringVarP(&a.vesselName, "vessel", "V", "", "the vessel (rig instance) to use, by name (default $RIG_VESSEL; see rig fleet)")
 	root.PersistentFlags().BoolVar(&a.json, "json", false, "print machine-readable JSON")
 	root.PersistentPreRunE = func(*cobra.Command, []string) error { return a.chooseVessel() }
-	root.AddCommand(newConfigCmd(a), newDaemonCmd(a), newListCmd(a), newEventsCmd(a), newNewCmd(a), newStartCmd(a), newStopCmd(a), newGatesCmd(a), newApproveCmd(a), newPhaseCmd(a), newAgentEventCmd(a), newJournalCmd(a), newAttachCmd(a), newMsgCmd(a), newLogsCmd(a), newReviewCmd(a), newReviewerCmd(a), newWaitCmd(a), newPushCmd(a), newTestsCmd(a), newContractCmd(a), newMCPCmd(a), newReconcileCmd(a), newFleetCmd(a))
+	root.AddCommand(newConfigCmd(a), newDaemonCmd(a), newListCmd(a), newEventsCmd(a), newNewCmd(a), newStartCmd(a), newStopCmd(a), newGatesCmd(a), newApproveCmd(a), newPhaseCmd(a), newAgentEventCmd(a), newJournalCmd(a), newAttachCmd(a), newMsgCmd(a), newLogsCmd(a), newReviewCmd(a), newReviewerCmd(a), newWaitCmd(a), newPushCmd(a), newTestsCmd(a), newContractCmd(a), newMCPCmd(a), newReconcileCmd(a), newFleetCmd(a), newStatsCmd(a))
 	return root
 }

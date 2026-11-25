@@ -133,6 +133,8 @@ rig fleet add osmo ~/osmo-plan/rig/config.json
 rig fleet                 # every vessel: daemon running or not, tickets
 rig -V osmo list          # or RIG_VESSEL=osmo; agents always name their vessel
 rig list --all            # the tickets of every running vessel
+rig stats                 # cost, tokens, time, waits, rounds and change size, with totals
+rig stats t10 --json      # one ticket's full breakdown, for tools
 ```
 
 Vessels share the machine's Docker, but each daemon sees and touches only its own
