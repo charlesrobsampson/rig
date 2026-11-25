@@ -55,8 +55,11 @@ func (m *Manager) Push(ctx context.Context, p api.PushRunParams) (api.PushRunRes
 			})
 			continue
 		}
+		// Measured before pushing, while the checkout is surely there; kept for rig stats.
+		rec := l.state.Services[svc.Name]
+		change, _ := m.liveChange(ctx, svc, rec.Checkout.Path, rec.Checkout.Kind, rec.Base)
 		out := m.pushService(ctx, l, svc)
-		record := state.Push{Status: out.Status, PRURL: out.PRURL, Error: out.Error}
+		record := state.Push{Status: out.Status, PRURL: out.PRURL, Error: out.Error, Files: change.Files, Added: change.Added, Deleted: change.Deleted}
 		if err := m.opts.States.SetPush(l.statePath, svc.Name, record); err != nil {
 			out.Status, out.Error = domain.PushFailed, fmt.Sprintf("record the result: %v", err)
 		}

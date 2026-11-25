@@ -146,6 +146,25 @@ func (r *Registry) load(id string) api.TicketGetResult {
 		res.Summary.Phase = st.Phase
 		res.Summary.ContractPending = st.Contract.Pending
 		res.Summary.ContractViolation = st.Contract.Violation != ""
+		if !st.CreatedAt.IsZero() {
+			created := st.CreatedAt
+			res.Summary.CreatedAt = &created
+		}
+		for _, tr := range st.Transitions {
+			if tr.To == domain.PhaseDone && st.Phase == domain.PhaseDone {
+				done := tr.At
+				res.Summary.DoneAt = &done
+			}
+		}
+		for _, ss := range st.Services { // the reviewer is a service in state, so it counts
+			if ss.Agent.Cost != nil {
+				total := ss.Agent.Cost.USD
+				if res.Summary.CostUSD != nil {
+					total += *res.Summary.CostUSD
+				}
+				res.Summary.CostUSD = &total
+			}
+		}
 		if r := st.Review; r != nil {
 			res.Summary.Review = &api.ReviewSummary{Status: r.Status, Round: r.Round, Reason: r.Reason}
 		}

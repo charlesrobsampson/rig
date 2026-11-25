@@ -126,6 +126,11 @@ type Push struct {
 	Status domain.PushStatus `json:"status"`
 	PRURL  string            `json:"pr_url"`
 	Error  string            `json:"error"`
+	// Files, Added and Deleted are the size of the change that was pushed, kept because
+	// the checkout (and often the branch) is gone once the ticket is done.
+	Files   int `json:"files,omitempty"`
+	Added   int `json:"added,omitempty"`
+	Deleted int `json:"deleted,omitempty"`
 }
 
 type DependencyState struct {

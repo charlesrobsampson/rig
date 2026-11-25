@@ -108,6 +108,15 @@ func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 		return m.Start(ctx, p)
 	})
 	registerStop(s, m)
+	s.Handle(api.MethodTicketStats, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.StatsParams
+		if len(params) > 0 && string(params) != "null" {
+			if err := json.Unmarshal(params, &p); err != nil {
+				return nil, &api.Error{Code: api.CodeInvalid, Message: "ticket.stats needs params like {\"ids\": [\"ticket-1\"]} (or none for every ticket)"}
+			}
+		}
+		return m.Stats(ctx, p)
+	})
 	s.Handle(api.MethodReviewerStatus, func(ctx context.Context, params json.RawMessage) (any, error) {
 		var p api.ReviewerParams
 		if err := json.Unmarshal(params, &p); err != nil {

@@ -232,7 +232,7 @@ func (a *app) listAll(cmd *cobra.Command) error {
 			fmt.Fprintf(out, "%s: daemon not running\n", h.Vessel)
 		default:
 			fmt.Fprintf(out, "%s\n", h.Vessel)
-			writeTicketTable(out, h.Tickets)
+			writeTicketTable(out, h.Tickets, a.now())
 		}
 	}
 	return nil

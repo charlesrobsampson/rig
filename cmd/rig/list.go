@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -41,7 +42,7 @@ it is named, marked "remote" when the content left this machine.`,
 			if a.json {
 				return printJSON(cmd.OutOrStdout(), res)
 			}
-			writeTicketTable(cmd.OutOrStdout(), res.Tickets)
+			writeTicketTable(cmd.OutOrStdout(), res.Tickets, a.now())
 			if summaries {
 				writeSummaries(cmd.OutOrStdout(), res.Tickets)
 			}
@@ -97,13 +98,13 @@ func writeSummaries(w io.Writer, tickets []api.TicketSummary) {
 	}
 }
 
-func writeTicketTable(w io.Writer, tickets []api.TicketSummary) {
+func writeTicketTable(w io.Writer, tickets []api.TicketSummary, now time.Time) {
 	if len(tickets) == 0 {
 		fmt.Fprintln(w, "no tickets")
 		return
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tPHASE\tSERVICES\tPORTS\tTITLE")
+	fmt.Fprintln(tw, "ID\tPHASE\tSERVICES\tCOST\tTIME\tPORTS\tTITLE")
 	for _, t := range tickets {
 		phase := string(t.Phase)
 		if phase == "" {
@@ -124,7 +125,7 @@ func writeTicketTable(w io.Writer, tickets []api.TicketSummary) {
 		if len(t.Drift) > 0 {
 			phase += fmt.Sprintf(" (drift: %d, see rig reconcile)", len(t.Drift))
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", t.ID, phase, serviceCell(t.Services), portsCell(t.Services), titleCell(t))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", t.ID, phase, serviceCell(t.Services), costCell(t.CostUSD), elapsedCell(t, now), portsCell(t.Services), titleCell(t))
 	}
 	tw.Flush()
 }
@@ -143,11 +144,52 @@ func serviceCell(services []api.ServiceSummary) string {
 			status += "/" + string(s.AgentState)
 		}
 		parts[i] = s.Name + ":" + status
-		if s.CostUSD != nil {
-			parts[i] += fmt.Sprintf(" $%.2f", *s.CostUSD)
-		}
 	}
 	return strings.Join(parts, ", ")
+}
+
+func costCell(usd *float64) string {
+	if usd == nil {
+		return "-"
+	}
+	return fmt.Sprintf("$%.2f", *usd)
+}
+
+// elapsedCell is the ticket's age: from creation to done, or to now while it is open.
+func elapsedCell(t api.TicketSummary, now time.Time) string {
+	if t.CreatedAt == nil {
+		return "-"
+	}
+	end := now
+	if t.DoneAt != nil {
+		end = *t.DoneAt
+	}
+	return duration(int64(end.Sub(*t.CreatedAt).Seconds()))
+}
+
+// duration is a short human form: 45s, 12m, 1h05m, 3d04h.
+func duration(seconds int64) string {
+	d := time.Duration(max(seconds, 0)) * time.Second
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
+	}
+	return fmt.Sprintf("%dd%02dh", int(d.Hours())/24, int(d.Hours())%24)
+}
+
+// tokens is a short human form: 950, 24k, 1.9M.
+func tokens(n int64) string {
+	switch {
+	case n < 1000:
+		return fmt.Sprint(n)
+	case n < 1_000_000:
+		return fmt.Sprintf("%dk", (n+500)/1000)
+	}
+	return fmt.Sprintf("%.1fM", float64(n)/1e6)
 }
 
 func portsCell(services []api.ServiceSummary) string {

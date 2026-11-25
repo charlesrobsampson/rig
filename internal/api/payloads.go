@@ -43,7 +43,13 @@ type TicketSummary struct {
 	// (a container that should be running is gone, a checkout directory is missing).
 	// Rig marks drift; it never guesses a repair.
 	Drift []string `json:"drift,omitempty"`
-	Error string   `json:"error,omitempty"`
+	// CostUSD is what all the ticket's agents (its reviewer included) report having
+	// spent; absent when none reports cost.
+	CostUSD *float64 `json:"cost_usd,omitempty"`
+	// CreatedAt and DoneAt bound the ticket's time (DoneAt once it moved to done).
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	DoneAt    *time.Time `json:"done_at,omitempty"`
+	Error     string     `json:"error,omitempty"`
 }
 
 type ServiceSummary struct {
@@ -691,4 +697,88 @@ type ReconcileResult struct {
 	Fixed    []string    `json:"fixed,omitempty"`
 	Failures []string    `json:"failures,omitempty"`
 	Notes    []string    `json:"notes,omitempty"`
+}
+
+// StatsParams asks for the usage of some tickets (all of them when IDs is empty).
+type StatsParams struct {
+	IDs []string `json:"ids,omitempty"`
+}
+
+// TokenCount is what a model read and wrote (usage.Tokens on the wire).
+type TokenCount struct {
+	Input      int64 `json:"input"`
+	CacheWrite int64 `json:"cache_write"`
+	CacheRead  int64 `json:"cache_read"`
+	Output     int64 `json:"output"`
+}
+
+// AgentStats is one agent of a ticket: the coder of a service, or the reviewer.
+type AgentStats struct {
+	Service string     `json:"service"`
+	Role    string     `json:"role"` // coder or reviewer
+	CostUSD float64    `json:"cost_usd"`
+	Tokens  TokenCount `json:"tokens"`
+	// Requests is how many model requests its transcripts hold; 0 with Tokens empty
+	// means rig has no transcripts for it (a host agent on the person's own login).
+	Requests int      `json:"requests"`
+	Models   []string `json:"models,omitempty"`
+}
+
+// PhaseTime is how long a ticket spent in a phase, all visits together.
+type PhaseTime struct {
+	Phase   domain.Phase `json:"phase"`
+	Seconds int64        `json:"seconds"`
+}
+
+// GateWait is how long an approval took after an agent asked to move on.
+type GateWait struct {
+	Gate    domain.Gate `json:"gate"`
+	Seconds int64       `json:"seconds"`
+}
+
+// ChangeStats is the size of a service's change against its base.
+type ChangeStats struct {
+	Files   int `json:"files"`
+	Added   int `json:"added"`
+	Deleted int `json:"deleted"`
+}
+
+// TicketStats is everything rig measured about one ticket.
+type TicketStats struct {
+	ID      string       `json:"id"`
+	Title   string       `json:"title"`
+	Phase   domain.Phase `json:"phase"`
+	CostUSD float64      `json:"cost_usd"`
+	Tokens  TokenCount   `json:"tokens"`
+	Agents  []AgentStats `json:"agents"`
+	// ElapsedSeconds runs from the ticket's creation to its move to done (or now).
+	CreatedAt      time.Time   `json:"created_at"`
+	DoneAt         *time.Time  `json:"done_at,omitempty"`
+	ElapsedSeconds int64       `json:"elapsed_seconds"`
+	Phases         []PhaseTime `json:"phases"`
+	// WaitingOnPeopleSeconds adds up Gates: time between an agent asking to move on and a
+	// person approving.
+	WaitingOnPeopleSeconds int64                  `json:"waiting_on_people_seconds"`
+	Gates                  []GateWait             `json:"gates,omitempty"`
+	ReviewRounds           int                    `json:"review_rounds"`
+	ReviewStatus           domain.ReviewStatus    `json:"review_status,omitempty"`
+	Changes                map[string]ChangeStats `json:"changes,omitempty"`
+	Error                  string                 `json:"error,omitempty"`
+}
+
+// StatsTotals adds up the tickets of a vessel.
+type StatsTotals struct {
+	Tickets        int        `json:"tickets"`
+	Done           int        `json:"done"`
+	CostUSD        float64    `json:"cost_usd"`
+	Tokens         TokenCount `json:"tokens"`
+	ElapsedSeconds int64      `json:"elapsed_seconds"`
+	ReviewRounds   int        `json:"review_rounds"`
+	Added          int        `json:"added"`
+	Deleted        int        `json:"deleted"`
+}
+
+type StatsResult struct {
+	Tickets []TicketStats `json:"tickets"`
+	Totals  StatsTotals   `json:"totals"`
 }
