@@ -79,3 +79,17 @@ func TestWaitTakesSeveralPhasesOrReviewStatesAndEndsOnAnyOfThem(t *testing.T) {
 		}
 	}
 }
+
+func TestWaitNewIgnoresARequestMadeBeforeTheWait(t *testing.T) {
+	_, d, repo, _ := newEnvWithTerminal(t)
+	newTicket(t, d, "demo", repo)
+	t.Setenv("RIG_TICKET", "demo")
+	t.Setenv("RIG_SERVICE", "svc1")
+	rig(t, d, "agent-event", `{"kind":"transition.request","data":{"to":"implement","reason":"plan ready"}}`)
+	if _, _, code := rig(t, d, "wait", "demo", "--phase-request", "--timeout", "2s"); code != 0 {
+		t.Errorf("an open request: exit %d", code)
+	}
+	if _, _, code := rig(t, d, "wait", "demo", "--phase-request", "--new", "--timeout", "1s"); code != 1 {
+		t.Errorf("--new with only an older request: exit %d, want the timeout", code)
+	}
+}

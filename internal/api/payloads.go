@@ -359,6 +359,7 @@ type PhaseRequestSummary struct {
 	To      domain.Phase `json:"to"`
 	Service string       `json:"service"`
 	Reason  string       `json:"reason,omitempty"`
+	At      time.Time    `json:"at"`
 }
 
 // TransitionResult describes the move that was made.

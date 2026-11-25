@@ -311,3 +311,76 @@ func TestFOpensTheFleetEvenFromAVesselChosenUpFront(t *testing.T) {
 		t.Errorf("one vessel: %+v", r.opts)
 	}
 }
+
+// ticketIn makes a ticket on a vessel.
+func ticketIn(t *testing.T, vessel, id string) {
+	t.Helper()
+	repo := testkit.NewRepo(t)
+	if _, stderr, code := rig(t, deps{}, "-V", vessel, "new", "--id", id, "--title", "T "+id, "--service", "svc1="+repo.Dir); code != 0 {
+		t.Fatalf("new %s/%s: %s", vessel, id, stderr)
+	}
+}
+
+func TestWaitWatchesTicketsOnSeveralVesselsAndEndsOnTheFirst(t *testing.T) {
+	work, home := twoVessels(t)
+	startDaemon(t, work)
+	startDaemon(t, home)
+	ticketIn(t, "work", "a")
+	ticketIn(t, "home", "b")
+
+	stdout, stderr, code := rig(t, noSpawn(t), "wait", "work/a", "home/b", "--phase", "plan", "--timeout", "5s")
+	if code != 0 || !strings.Contains(stdout, "work/a: phase is plan") {
+		t.Errorf("wait: %d %q %q", code, stdout, stderr)
+	}
+	stdout, _, _ = rig(t, noSpawn(t), "wait", "home/b", "work/a", "--phase", "plan", "--json")
+	var got struct {
+		Ticket  string `json:"ticket"`
+		Matched string `json:"matched"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil || got.Ticket != "home/b" || got.Matched != "phase" {
+		t.Errorf("--json: %q (%v)", stdout, err)
+	}
+	if _, _, code := rig(t, noSpawn(t), "wait", "work/a", "home/b", "--phase", "push", "--timeout", "1s"); code != 1 {
+		t.Errorf("nothing matching: exit %d, want the timeout", code)
+	}
+	if _, _, code := rig(t, noSpawn(t), "wait", "sea/a", "--phase", "plan"); code != 2 {
+		t.Errorf("an unknown vessel: exit %d", code)
+	}
+}
+
+func TestAVesselQualifiedTicketWorksWhereAnIdDoesAndHintsNameTheVessel(t *testing.T) {
+	work, home := twoVessels(t)
+	startDaemon(t, work)
+	startDaemon(t, home)
+	repo := testkit.NewRepo(t)
+	stdout, _, code := rig(t, noSpawn(t), "-V", "work", "new", "--id", "a", "--title", "T", "--service", "svc1="+repo.Dir)
+	if code != 0 || !strings.Contains(stdout, "rig -V work start a") {
+		t.Errorf("new's hint: %q", stdout)
+	}
+	if out, stderr, code := rig(t, noSpawn(t), "gates", "work/a"); code != 0 {
+		t.Errorf("gates work/a: %d %q %q", code, out, stderr)
+	}
+	if _, stderr, code := rig(t, noSpawn(t), "-V", "home", "gates", "work/a"); code != 2 || !strings.Contains(stderr, "work") {
+		t.Errorf("a ticket of another vessel than -V: %d %q", code, stderr)
+	}
+	_, stderr, _ := rig(t, noSpawn(t), "push", "work/a")
+	if !strings.Contains(stderr, "rig -V work phase a push") {
+		t.Errorf("the daemon's hint does not name the vessel: %q", stderr)
+	}
+}
+
+func TestTheFleetShowsWhereEachVesselsTicketsStand(t *testing.T) {
+	work, _ := twoVessels(t)
+	startDaemon(t, work)
+	ticketIn(t, "work", "a")
+	stdout, _, _ := rig(t, noSpawn(t), "fleet")
+	if !strings.Contains(stdout, "1 (1 running)") {
+		t.Errorf("fleet:\n%s", stdout)
+	}
+	if out, _, code := rig(t, noSpawn(t), "watch", "--help"); code != 0 || !strings.Contains(out, "watch") {
+		t.Errorf("rig watch: %d", code)
+	}
+	if _, _, code := rig(t, noSpawn(t), "events", "--help"); code != 0 {
+		t.Error("rig events no longer works")
+	}
+}

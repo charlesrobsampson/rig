@@ -100,7 +100,7 @@ func (a *app) pickVessel(cmd *cobra.Command) (name string, many bool, err error)
 			row.Status = "running (" + info.Version + ")"
 		}
 		if info.Tickets != nil {
-			row.Tickets = fmt.Sprint(*info.Tickets)
+			row.Tickets = info.Standing
 		}
 		rows[i] = row
 	}

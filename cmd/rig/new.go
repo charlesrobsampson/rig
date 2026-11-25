@@ -51,7 +51,7 @@ tracker (for example jira:PROJ-412); --id, --title and --description override it
 			if a.json {
 				return printJSON(cmd.OutOrStdout(), res)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "created ticket %s\n  %s\nnext: refine plan.md, then run `rig start %s`\n", res.Summary.ID, res.Path, res.Summary.ID)
+			fmt.Fprint(cmd.OutOrStdout(), withVessel(fmt.Sprintf("created ticket %s\n  %s\nnext: refine plan.md, then run `rig start %s`\n", res.Summary.ID, res.Path, res.Summary.ID), a.vesselName))
 			return nil
 		},
 	}

@@ -5,6 +5,8 @@ import (
 	"github.com/charmbracelet/x/term"
 	"io"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -68,10 +70,25 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, d deps) i
 		root.SetIn(d.stdin)
 	}
 	if err := root.ExecuteContext(ctx); err != nil {
-		printError(stderr, err)
+		var msg strings.Builder
+		printError(&msg, err)
+		io.WriteString(stderr, withVessel(msg.String(), root.Annotations["vessel"]))
 		return exitCode(err)
 	}
 	return 0
+}
+
+// rigCommand finds a rig command line inside a message (a hint such as "run: rig phase
+// t1 push"), so the vessel it was meant for can be put in it.
+var rigCommand = regexp.MustCompile("(^|[\\s(`\"'])rig ((?:approve|phase|push|reviewer|review|start|stop|reconcile|contract|attach|msg|journal|logs|tests|gates|wait|watch|list|stats|daemon|new)\\b)")
+
+// withVessel makes the rig commands a message suggests name the vessel they are for:
+// followed as printed, a bare "rig start t1" would act on the default vessel.
+func withVessel(text, vessel string) string {
+	if vessel == "" {
+		return text
+	}
+	return rigCommand.ReplaceAllString(text, "${1}rig -V "+vessel+" ${2}")
 }
 
 // now is the CLI's clock: the injected one in tests, the real one otherwise.
@@ -102,7 +119,9 @@ type app struct {
 	deps       deps
 	configPath string
 	vesselName string
-	json       bool
+	// vesselFromFlag: the vessel was named with -V (not only $RIG_VESSEL)
+	vesselFromFlag bool
+	json           bool
 }
 
 func newRootCmd(d deps) *cobra.Command {
@@ -125,7 +144,29 @@ func newRootCmd(d deps) *cobra.Command {
 	root.PersistentFlags().StringVar(&a.configPath, "config", "", "global config file (default $RIG_CONFIG, then ~/.config/rig/config.json)")
 	root.PersistentFlags().StringVarP(&a.vesselName, "vessel", "V", "", "the vessel (rig instance) to use, by name (default $RIG_VESSEL; see rig fleet)")
 	root.PersistentFlags().BoolVar(&a.json, "json", false, "print machine-readable JSON")
-	root.PersistentPreRunE = func(*cobra.Command, []string) error { return a.chooseVessel() }
+	root.Annotations = map[string]string{}
+	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if err := a.chooseVessel(cmd.Flags().Changed("vessel")); err != nil {
+			return err
+		}
+		if cmd.Annotations["ticket"] == "first" && len(args) > 0 {
+			// args is the slice RunE gets: a qualified "vessel/ticket" becomes its id here
+			target, id, err := a.ticketRef(args[0])
+			if err != nil {
+				return err
+			}
+			*a, args[0] = *target, id
+		}
+		root.Annotations["vessel"] = a.vesselName
+		return nil
+	}
 	root.AddCommand(newConfigCmd(a), newDaemonCmd(a), newListCmd(a), newEventsCmd(a), newNewCmd(a), newStartCmd(a), newStopCmd(a), newGatesCmd(a), newApproveCmd(a), newPhaseCmd(a), newAgentEventCmd(a), newJournalCmd(a), newAttachCmd(a), newMsgCmd(a), newLogsCmd(a), newReviewCmd(a), newReviewerCmd(a), newWaitCmd(a), newPushCmd(a), newTestsCmd(a), newContractCmd(a), newMCPCmd(a), newReconcileCmd(a), newFleetCmd(a), newStatsCmd(a))
+	// commands whose first argument is a ticket also take "vessel/ticket"
+	for _, c := range root.Commands() {
+		switch c.Name() {
+		case "start", "stop", "phase", "approve", "gates", "push", "review", "reviewer", "journal", "attach", "msg", "logs", "tests":
+			c.Annotations = map[string]string{"ticket": "first"}
+		}
+	}
 	return root
 }

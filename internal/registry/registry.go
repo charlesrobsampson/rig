@@ -169,7 +169,7 @@ func (r *Registry) load(id string) api.TicketGetResult {
 			res.Summary.Review = &api.ReviewSummary{Status: r.Status, Round: r.Round, Reason: r.Reason}
 		}
 		if r := st.PhaseRequest; r != nil {
-			res.Summary.PhaseRequest = &api.PhaseRequestSummary{To: r.To, Service: r.Service, Reason: r.Reason}
+			res.Summary.PhaseRequest = &api.PhaseRequestSummary{To: r.To, Service: r.Service, Reason: r.Reason, At: r.At}
 		}
 	}
 
