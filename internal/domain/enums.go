@@ -63,6 +63,11 @@ const (
 	ReviewStopped   ReviewStatus = "stopped"   // a cap, a dispute or a person stopped it
 )
 
+// Valid says whether s is one of the review statuses.
+func (s ReviewStatus) Valid() bool {
+	return slices.Contains([]ReviewStatus{ReviewReviewing, ReviewFixing, ReviewPassed, ReviewStopped}, s)
+}
+
 var agentStates = []AgentState{AgentWorking, AgentBlocked, AgentIdle, AgentUnknown, AgentExited}
 
 func (a AgentState) Valid() bool                  { return slices.Contains(agentStates, a) }

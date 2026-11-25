@@ -25,6 +25,7 @@ type FakeDocker struct {
 	mu       sync.Mutex
 	down     error
 	nets     map[string]*fakeNet // by id
+	kept     map[string]bool     // container names whose removal leaves them (Keep)
 	ctrs     map[string]*fakeCtr // by id
 	images   map[string]bool
 	nextNet  int
@@ -64,6 +65,17 @@ func NewFakeDocker() *FakeDocker {
 }
 
 // Down makes every call fail as if the daemon were unreachable; Up undoes it.
+// Keep makes removals of the named container report success but leave it in place, as
+// when something creates it again while a ticket is being stopped.
+func (f *FakeDocker) Keep(name string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.kept == nil {
+		f.kept = map[string]bool{}
+	}
+	f.kept[name] = true
+}
+
 func (f *FakeDocker) Down(cause error) { f.mu.Lock(); f.down = cause; f.mu.Unlock() }
 func (f *FakeDocker) Up()              { f.Down(nil) }
 
@@ -551,6 +563,9 @@ func (f *FakeDocker) RemoveContainer(ctx context.Context, nameOrID string, force
 	}
 	if c.info.State == docker.StateRunning && !force {
 		return fmt.Errorf("%w: container %s is running; stop it or force the removal", docker.ErrInUse, c.info.Name)
+	}
+	if f.kept[c.info.Name] {
+		return nil // something made it again straight away
 	}
 	f.stop(c, 137)
 	delete(f.ctrs, c.info.ID)

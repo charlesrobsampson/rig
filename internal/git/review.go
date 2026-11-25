@@ -89,3 +89,20 @@ func emptyDir(dir string) error {
 	}
 	return nil
 }
+
+// DeleteBranch deletes a local branch from the main repository, unless it does not exist
+// (false) or is the branch the repository has checked out (false: deleting it would pull
+// the work out from under the person).
+func DeleteBranch(ctx context.Context, repo, branch string) (bool, error) {
+	ref := "refs/heads/" + branch
+	if _, err := Trusted().Run(ctx, repo, "rev-parse", "-q", "--verify", ref); err != nil {
+		return false, nil
+	}
+	if head, err := Trusted().Run(ctx, repo, "symbolic-ref", "-q", "HEAD"); err == nil && head == ref {
+		return false, nil
+	}
+	if _, err := Trusted().Run(ctx, repo, "branch", "-D", "--", branch); err != nil {
+		return false, err
+	}
+	return true, nil
+}

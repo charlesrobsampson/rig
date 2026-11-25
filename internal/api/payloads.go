@@ -203,6 +203,9 @@ type TicketStopParams struct {
 	ID            string `json:"id"`
 	Force         bool   `json:"force,omitempty"`
 	KeepCheckouts bool   `json:"keep_checkouts,omitempty"`
+	// Discard throws the work away instead of importing it: the checkouts are removed
+	// whatever they hold, and the ticket's branch is deleted from the main repository.
+	Discard bool `json:"discard,omitempty"`
 }
 
 type TicketStopResult struct {
@@ -219,6 +222,8 @@ type StopInfo struct {
 	// Imported: a clone's branch was fetched into the main repository.
 	Imported bool `json:"imported"`
 	Removed  bool `json:"removed"`
+	// BranchDeleted: a discarding stop deleted the ticket's branch from the main repository.
+	BranchDeleted bool `json:"branch_deleted,omitempty"`
 }
 
 type GateListParams struct {

@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -39,6 +40,10 @@ func (m *Manager) Stop(ctx context.Context, p api.TicketStopParams) (api.TicketS
 	}
 	defer unlock()
 	t, st, statePath := l.ticket, l.state, l.statePath
+	if p.Discard && p.KeepCheckouts {
+		return api.TicketStopResult{}, invalid("discard removes the checkouts; it cannot keep them")
+	}
+	force := p.Force || p.Discard
 
 	targets, unrecognized := m.stopTargets(ctx, t, st)
 	if len(targets) == 0 && len(unrecognized) == 0 {
@@ -57,7 +62,8 @@ func (m *Manager) Stop(ctx context.Context, p api.TicketStopParams) (api.TicketS
 	}
 
 	// Look before touching anything: a refused stop must leave agents and containers running.
-	if atRisk := m.importAndInspect(ctx, targets); len(atRisk) > 0 && !p.Force && !p.KeepCheckouts {
+	// A discarding stop imports nothing, so there is nothing to look at.
+	if atRisk := m.inspect(ctx, targets, p.Discard); len(atRisk) > 0 && !force && !p.KeepCheckouts {
 		return api.TicketStopResult{}, &api.Error{
 			Code:    api.CodeBlocked,
 			Message: fmt.Sprintf("ticket %q still holds work; commit it (or ask its agent to), or stop with force to discard it. Nothing was stopped", p.ID),
@@ -65,14 +71,33 @@ func (m *Manager) Stop(ctx context.Context, p api.TicketStopParams) (api.TicketS
 		}
 	}
 
-	removed, failures := m.teardown(ctx, p.ID, l, p.Force)
+	removed, failures := m.teardown(ctx, p.ID, l, force)
+	if len(failures) == 0 && len(m.ticketObjects(ctx, p.ID)) > 0 {
+		// Something can start a container again while the ticket is torn down: sweep once
+		// more, and a stop that says it succeeded must leave nothing of the ticket behind.
+		if err := m.sweepContainers(ctx, p.ID); err != nil {
+			failures = append(failures, err)
+		}
+		containersLeft := false
+		for name := range m.ticketObjects(ctx, p.ID) {
+			containersLeft = containersLeft || strings.HasPrefix(name, "container ")
+		}
+		if !containersLeft {
+			if err := m.sweepNetworks(ctx, p.ID); err != nil {
+				failures = append(failures, err)
+			}
+		}
+		if left := m.ticketObjects(ctx, p.ID); len(left) > 0 {
+			failures = append(failures, errors.New("the ticket's containers or networks came back while it was stopped"))
+		}
+	}
 	m.syncTornDown(ctx, l)
 	if len(failures) > 0 {
 		return api.TicketStopResult{}, m.partialStop(ctx, p.ID, failures)
 	}
 
 	// The agents have stopped: import their final work, and check once more.
-	if atRisk := m.importAndInspect(ctx, targets); len(atRisk) > 0 && !p.Force && !p.KeepCheckouts {
+	if atRisk := m.inspect(ctx, targets, p.Discard); len(atRisk) > 0 && !force && !p.KeepCheckouts {
 		return api.TicketStopResult{}, &api.Error{
 			Code:    api.CodeBlocked,
 			Message: fmt.Sprintf("ticket %q's containers are stopped, but its checkouts still hold work; resolve it, or stop with force to discard it", p.ID),
@@ -90,12 +115,19 @@ func (m *Manager) Stop(ctx context.Context, p api.TicketStopParams) (api.TicketS
 		case tg.co == nil:
 			info.Removed = true
 		default:
-			if err := tg.co.Remove(ctx, p.Force); err != nil {
+			if err := tg.co.Remove(ctx, force); err != nil {
 				checkoutFailures = append(checkoutFailures, fmt.Sprintf("%s: %v", tg.svc.Name, err))
 				result.Services = append(result.Services, info)
 				continue
 			}
 			info.Removed = true
+		}
+		if p.Discard {
+			deleted, err := git.DeleteBranch(ctx, tg.svc.Repo, tg.svc.Branch)
+			if err != nil {
+				checkoutFailures = append(checkoutFailures, fmt.Sprintf("%s: delete branch %s: %v", tg.svc.Name, tg.svc.Branch, err))
+			}
+			info.BranchDeleted = deleted
 		}
 		removedCheckout[tg.svc.Name] = info.Removed
 		result.Services = append(result.Services, info)
@@ -145,9 +177,12 @@ func (m *Manager) stopTargets(ctx context.Context, t domain.Ticket, st state.Sta
 	return targets, unrecognized
 }
 
-// importAndInspect imports every clone's branch and lists, per service, the work that
-// deleting the checkout would still lose.
-func (m *Manager) importAndInspect(ctx context.Context, targets []stopTarget) (atRisk []string) {
+// inspect imports every clone's branch and lists, per service, the work that deleting
+// the checkout would still lose. Discarding, it does neither: the work is meant to go.
+func (m *Manager) inspect(ctx context.Context, targets []stopTarget, discard bool) (atRisk []string) {
+	if discard {
+		return nil
+	}
 	for i := range targets {
 		tg := &targets[i]
 		if tg.co == nil {
