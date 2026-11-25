@@ -43,7 +43,7 @@ func TestAKilledContainerShowsAsDriftInReconcileAndList(t *testing.T) {
 		t.Fatalf("code %d, stdout:\n%s", code, stdout)
 	}
 	out, _, _ := rig(t, d, "list")
-	if !strings.Contains(out, "(drift: 1, see rig reconcile)") {
+	if !strings.Contains(out, "drift 1") {
 		t.Errorf("list:\n%s", out)
 	}
 	jsonOut, _, _ := rig(t, d, "list", "--json")

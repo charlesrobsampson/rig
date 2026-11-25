@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/charmbracelet/x/term"
 	"io"
 	"os"
 	"time"
@@ -46,6 +47,9 @@ type deps struct {
 	// jiraHTTP replaces the HTTP client used to read Jira issues (tests).
 	jiraHTTP ticket.HTTPDoer
 	runTUI   func(ctx context.Context, o tui.Options) error
+	// termWidth is the terminal's width, 0 when output is not a terminal (nil means:
+	// ask the terminal).
+	termWidth func() int
 	// pickVessel shows the fleet picker (nil means the real one).
 	pickVessel func(ctx context.Context, rows []tui.VesselRow) (string, error)
 }
@@ -76,6 +80,22 @@ func (a *app) now() time.Time {
 		return clock.Real().Now()
 	}
 	return a.deps.clock.Now()
+}
+
+// termWidth is how wide the terminal is, or 0 when stdout is not one (then nothing is
+// shortened, so scripts read whole lines).
+func (a *app) termWidth() int {
+	if a.deps.termWidth != nil {
+		return a.deps.termWidth()
+	}
+	if !term.IsTerminal(os.Stdout.Fd()) {
+		return 0
+	}
+	w, _, err := term.GetSize(os.Stdout.Fd())
+	if err != nil {
+		return 0
+	}
+	return w
 }
 
 type app struct {
