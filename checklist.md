@@ -1518,7 +1518,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Notes (as built): `git.CompareBase` runs in the ticket's checkout (a clone borrows the main repository's objects), `merge-tree --write-tree --name-only` predicts conflicts without touching files; `git.Error` now keeps stdout. The base is the main repository's local branch: a base that moved only on the remote (someone merged on GitHub) is not seen until the local branch is updated (R-021 remains).
 
 ### 119 · `rig push` shows every service's note
-- [ ] Done
+- [x] Done
 - Session: _(the rigdev vessel, ticket r119)_
 - Branch: rig's ticket branch · Depends: 118
 - Read: `cmd/rig/push.go`; `docs/formats.md` (`push.run`)
@@ -1526,6 +1526,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: under the table, one line per service that has a note: `<service>: <note>`. `--json` is unchanged (it already carries `note`).
 - Tests: a pr-mode push whose result has a note prints it under the table; a push without notes prints no extra lines; the existing push tests still pass.
 - Manual check: none beyond the tests (a CLI rendering change).
+- Notes (as built): `renderPush` in `cmd/rig/push.go` prints the table, then `<service>: <note>` lines, then the done line. A note the table already shows as DETAIL (no PR link, no error) is not repeated.
 
 ### 120 · The ticket timeline: every change recorded once, in order
 - [ ] Done
