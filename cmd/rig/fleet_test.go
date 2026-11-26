@@ -494,7 +494,21 @@ func TestFleetShowsSpendPerVesselRunningOrNot(t *testing.T) {
 	startDaemon(t, work)
 	ticketIn(t, "work", "a")
 	ticketIn(t, "work", "b")
-	ticketIn(t, "home", "c") // starts and stops a daemon of its own; its file is then read directly
+	startDaemon(t, home)
+	ticketIn(t, "home", "c")
+	// home's daemon is stopped again, so its ticket is read from the state file
+	if _, stderr, code := rig(t, deps{}, "--config", home, "daemon", "stop"); code != 0 {
+		t.Fatalf("daemon stop: %s", stderr)
+	}
+	for i := 0; ; i++ {
+		if _, _, code := rig(t, noSpawn(t), "--config", home, "daemon", "status"); code != 0 {
+			break
+		}
+		if i > 500 {
+			t.Fatal("home's daemon did not stop")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	setCost := func(cfg, id string, usd float64, phase string) {
 		g, err := config.LoadGlobal(config.GlobalOptions{Path: cfg})
@@ -541,6 +555,9 @@ func TestFleetShowsSpendPerVesselRunningOrNot(t *testing.T) {
 		t.Fatalf("fleet --json = %s (%v)", stdout, err)
 	}
 	for _, v := range got {
+		if v.Running != (v.Name == "work") {
+			t.Errorf("%s running = %v", v.Name, v.Running)
+		}
 		want := map[string]float64{"work": 12.34, "home": 3}[v.Name]
 		if v.Spend == nil || v.SpendMonth == nil || *v.Spend < want-1e-9 || *v.Spend > want+1e-9 || *v.SpendMonth != *v.Spend {
 			t.Errorf("%s (running %v): spend %v, month %v; want %v for both", v.Name, v.Running, v.Spend, v.SpendMonth, want)
