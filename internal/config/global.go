@@ -159,9 +159,29 @@ func defaultGlobal(userHome string) Global {
 	}
 }
 
-// LoadGlobal reads the config over built-in defaults. A missing file is fine when it
-// was not asked for by name; unknown keys and invalid values are errors.
+// Sources says where each key of a resolved config came from.
+type Sources struct {
+	// Files are the config files read: "machine" (the machine layer) and "vessel" (the
+	// chosen config), each present only when it was read.
+	Files map[string]string `json:"files"`
+	// Keys maps a key path ("docker.port_range.min"; a list or an empty value is one
+	// key) to "vessel", "machine" or "default" (built in).
+	Keys map[string]string `json:"keys"`
+}
+
+// LoadGlobal reads the config over the machine config and the built-in defaults. A
+// missing file is fine when it was not asked for by name; unknown keys and invalid values
+// are errors.
 func LoadGlobal(opts GlobalOptions) (Global, error) {
+	g, _, err := LoadGlobalResolved(opts)
+	return g, err
+}
+
+// LoadGlobalResolved is LoadGlobal that also says where each key came from. The chosen
+// config is read over the machine config (DefaultConfigFile): a key the vessel sets wins,
+// objects merge key by key, lists and scalars are replaced whole, and paths.home is never
+// inherited. When the chosen config is the machine config there is no second layer.
+func LoadGlobalResolved(opts GlobalOptions) (Global, Sources, error) {
 	getenv := opts.Env
 	if getenv == nil {
 		getenv = os.Getenv
@@ -172,28 +192,91 @@ func LoadGlobal(opts GlobalOptions) (Global, error) {
 	}
 	home, err := userHome()
 	if err != nil {
-		return Global{}, fmt.Errorf("find home directory: %w", err)
+		return Global{}, Sources{}, fmt.Errorf("find home directory: %w", err)
 	}
 
+	machinePath := DefaultConfigFile(home)
 	path, explicit := opts.Path, opts.Path != ""
 	if !explicit {
 		if path = getenv("RIG_CONFIG"); path != "" {
 			explicit = true
 		} else {
-			path = DefaultConfigFile(home)
+			path = machinePath
 		}
 	}
 
 	g := defaultGlobal(home)
-	data, err := os.ReadFile(path)
+	src := Sources{Files: map[string]string{}, Keys: map[string]string{}}
+	base, err := json.Marshal(g)
+	if err != nil {
+		return Global{}, Sources{}, err
+	}
+	var layer map[string]any
+	if err := json.Unmarshal(base, &layer); err != nil {
+		return Global{}, Sources{}, err
+	}
+	flatten("", layer, "default", src.Keys)
+
+	vesselData, err := os.ReadFile(path)
+	haveVessel := err == nil
 	switch {
 	case err == nil:
-		if err := decodeStrict(data, &g); err != nil {
-			return Global{}, fmt.Errorf("parse %s: %w", path, err)
-		}
+		src.Files["vessel"] = path
 	case errors.Is(err, fs.ErrNotExist) && !explicit:
 	default:
-		return Global{}, fmt.Errorf("read config: %w", err)
+		return Global{}, Sources{}, fmt.Errorf("read config: %w", err)
+	}
+
+	var machineData []byte
+	if !sameFile(path, machinePath) {
+		switch data, err := os.ReadFile(machinePath); {
+		case err == nil:
+			machineData = data
+			src.Files["machine"] = machinePath
+		case errors.Is(err, fs.ErrNotExist):
+		default:
+			return Global{}, Sources{}, fmt.Errorf("read config: %w", err)
+		}
+	}
+
+	decodeFrom := vesselData
+	if machineData != nil {
+		var machine, vessel map[string]any
+		if err := json.Unmarshal(machineData, &machine); err != nil {
+			return Global{}, Sources{}, fmt.Errorf("parse %s: %w", machinePath, err)
+		}
+		// Parse strictly first, so a bad machine file is named and its unknown keys fail.
+		if err := decodeStrict(machineData, &Global{}); err != nil {
+			return Global{}, Sources{}, fmt.Errorf("parse %s: %w", machinePath, err)
+		}
+		if paths, ok := machine["paths"].(map[string]any); ok {
+			delete(paths, "home")
+			if len(paths) == 0 {
+				delete(machine, "paths")
+			}
+		}
+		flatten("", machine, "machine", src.Keys)
+		merged := machine
+		if haveVessel {
+			if err := json.Unmarshal(vesselData, &vessel); err != nil {
+				return Global{}, Sources{}, fmt.Errorf("parse %s: %w", path, err)
+			}
+			merged = mergeJSON(machine, vessel)
+		}
+		if decodeFrom, err = json.Marshal(merged); err != nil {
+			return Global{}, Sources{}, err
+		}
+	}
+	if haveVessel {
+		var vessel map[string]any
+		if err := json.Unmarshal(vesselData, &vessel); err == nil {
+			flatten("", vessel, "vessel", src.Keys)
+		}
+	}
+	if decodeFrom != nil {
+		if err := decodeStrict(decodeFrom, &g); err != nil {
+			return Global{}, Sources{}, fmt.Errorf("parse %s: %w", path, err)
+		}
 	}
 
 	if rigHome := getenv("RIG_HOME"); rigHome != "" {
@@ -209,9 +292,53 @@ func LoadGlobal(opts GlobalOptions) (Global, error) {
 	}
 
 	if problems := validateGlobal(g); len(problems) > 0 {
-		return Global{}, fmt.Errorf("invalid config %s:\n  - %s", path, strings.Join(problems, "\n  - "))
+		return Global{}, Sources{}, fmt.Errorf("invalid config %s:\n  - %s", path, strings.Join(problems, "\n  - "))
 	}
-	return g, nil
+	return g, src, nil
+}
+
+// sameFile reports whether two paths are one existing file.
+func sameFile(a, b string) bool {
+	x, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	y, err := os.Stat(b)
+	return err == nil && os.SameFile(x, y)
+}
+
+// mergeJSON lays over on top of under: objects merge key by key, anything else in over
+// replaces what is under it.
+func mergeJSON(under, over map[string]any) map[string]any {
+	out := make(map[string]any, len(under)+len(over))
+	for k, v := range under {
+		out[k] = v
+	}
+	for k, v := range over {
+		if o, ok := v.(map[string]any); ok {
+			if u, ok := out[k].(map[string]any); ok {
+				out[k] = mergeJSON(u, o)
+				continue
+			}
+		}
+		out[k] = v
+	}
+	return out
+}
+
+// flatten records who set each leaf key under prefix; a list and an empty object are leaves.
+func flatten(prefix string, m map[string]any, who string, into map[string]string) {
+	for k, v := range m {
+		key := k
+		if prefix != "" {
+			key = prefix + "." + k
+		}
+		if sub, ok := v.(map[string]any); ok && len(sub) > 0 {
+			flatten(key, sub, who, into)
+			continue
+		}
+		into[key] = who
+	}
 }
 
 func decodeStrict(data []byte, into any) error {

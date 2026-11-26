@@ -384,3 +384,28 @@ func TestTheFleetShowsWhereEachVesselsTicketsStand(t *testing.T) {
 		t.Error("rig events no longer works")
 	}
 }
+
+func TestTheDefaultVesselIsLeftOutUntilItHoldsTickets(t *testing.T) {
+	work, _ := twoVessels(t)
+	user := os.Getenv("HOME")
+	machine := filepath.Join(user, ".config", "rig", "config.json")
+	os.MkdirAll(filepath.Dir(machine), 0o700)
+	defHome := filepath.Join(user, "defhome")
+	os.WriteFile(machine, []byte(fmt.Sprintf(`{"paths": {"home": %q}}`, defHome)), 0o600)
+	_ = work
+
+	out, stderr, code := rig(t, noSpawn(t), "fleet")
+	if code != 0 || strings.Contains(out, "default") || !strings.Contains(out, "work") {
+		t.Fatalf("fleet without tickets: %d %q %q", code, out, stderr)
+	}
+	if _, stderr, code := rig(t, noSpawn(t), "--vessel", "default", "config", "show"); code != 0 {
+		t.Errorf("default is still choosable by name: %s", stderr)
+	}
+	dir := filepath.Join(defHome, "tickets", "t1")
+	os.MkdirAll(dir, 0o700)
+	os.WriteFile(filepath.Join(dir, "ticket.yaml"), []byte("id: t1\n"), 0o600)
+	out, _, _ = rig(t, noSpawn(t), "fleet")
+	if !strings.Contains(out, "default") {
+		t.Errorf("fleet with a ticket: %q", out)
+	}
+}

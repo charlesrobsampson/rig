@@ -281,3 +281,120 @@ func TestDerivedPathsLiveUnderRigHome(t *testing.T) {
 		t.Errorf("paths = %v, want %v", have, want)
 	}
 }
+
+// machine writes the machine config (<home>/.config/rig/config.json) and a vessel config
+// elsewhere, and loads the vessel over the machine.
+func loadOver(t *testing.T, machine, vessel string) (config.Global, config.Sources, string, error) {
+	t.Helper()
+	home := t.TempDir()
+	opts := config.GlobalOptions{Env: env{}.get, UserHome: func() (string, error) { return home, nil }}
+	if machine != "" {
+		path := config.DefaultConfigFile(home)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(machine), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if vessel != "" {
+		opts.Path = filepath.Join(t.TempDir(), "vessel.json")
+		if err := os.WriteFile(opts.Path, []byte(vessel), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	g, src, err := config.LoadGlobalResolved(opts)
+	return g, src, home, err
+}
+
+const machineDoc = `{
+  "paths": {"home": "/machine/home"},
+  "auth": {"default": "me", "profiles": {"me": {"type": "host_login"}}},
+  "docker": {"extra_ca_certs": ["/certs/a.pem", "/certs/b.pem"], "agent_base": "machine:1"},
+  "limits": {"max_active_tickets": 3}
+}`
+
+func TestAVesselInheritsWhatItDoesNotSetFromTheMachineConfig(t *testing.T) {
+	g, src, _, err := loadOver(t, machineDoc, `{"paths": {"home": "/vessel/home"}, "docker": {"port_range": {"min": 42000, "max": 42999}}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.Auth.Default != "me" || g.Auth.Profiles["me"].Type != domain.AuthHostLogin {
+		t.Errorf("auth not inherited: %+v", g.Auth)
+	}
+	if !reflect.DeepEqual(g.Docker.ExtraCACerts, []string{"/certs/a.pem", "/certs/b.pem"}) || g.Docker.AgentBase != "machine:1" {
+		t.Errorf("docker not inherited: %+v", g.Docker)
+	}
+	if g.Docker.PortRange.Min != 42000 || g.Limits.MaxActiveTickets != 3 {
+		t.Errorf("merge wrong: %+v %+v", g.Docker, g.Limits)
+	}
+	for key, want := range map[string]string{
+		"auth.default": "machine", "docker.extra_ca_certs": "machine", "docker.port_range.min": "vessel",
+		"paths.home": "vessel", "limits.max_active_tickets": "machine", "defaults.harness": "default",
+	} {
+		if src.Keys[key] != want {
+			t.Errorf("source of %s = %q, want %q", key, src.Keys[key], want)
+		}
+	}
+}
+
+func TestAVesselsOwnValueWinsAndItsListReplacesTheMachinesWhole(t *testing.T) {
+	g, src, _, err := loadOver(t, machineDoc, `{"paths":{"home":"/v"},"limits":{"max_active_tickets":5},"docker":{"extra_ca_certs":["/certs/c.pem"]},"auth":{"profiles":{"work":{"type":"host_login"}}}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.Limits.MaxActiveTickets != 5 {
+		t.Errorf("limit = %d", g.Limits.MaxActiveTickets)
+	}
+	if !reflect.DeepEqual(g.Docker.ExtraCACerts, []string{"/certs/c.pem"}) {
+		t.Errorf("list was not replaced: %v", g.Docker.ExtraCACerts)
+	}
+	if len(g.Auth.Profiles) != 2 || g.Auth.Default != "me" {
+		t.Errorf("objects should merge key by key: %+v", g.Auth)
+	}
+	if src.Keys["docker.extra_ca_certs"] != "vessel" || src.Keys["limits.max_active_tickets"] != "vessel" {
+		t.Errorf("sources: %v", src.Keys)
+	}
+}
+
+func TestPathsHomeIsNeverInherited(t *testing.T) {
+	g, src, home, err := loadOver(t, machineDoc, `{"limits":{"max_active_tickets":5}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(home, ".rig"); g.Paths.Home != want {
+		t.Errorf("home = %s, want %s", g.Paths.Home, want)
+	}
+	if src.Keys["paths.home"] != "default" {
+		t.Errorf("source of paths.home = %q", src.Keys["paths.home"])
+	}
+}
+
+func TestTheMachineConfigLoadsAloneAndAMissingOneIsFine(t *testing.T) {
+	g, _, _, err := loadOver(t, machineDoc, "")
+	if err != nil || g.Paths.Home != "/machine/home" {
+		t.Errorf("machine alone: %v %s", err, g.Paths.Home)
+	}
+	g, _, _, err = loadOver(t, "", `{"limits":{"max_active_tickets":2}}`)
+	if err != nil || g.Limits.MaxActiveTickets != 2 {
+		t.Errorf("no machine file: %v", err)
+	}
+}
+
+func TestTheMachineFileAsTheVesselIsNotMergedWithItself(t *testing.T) {
+	home := t.TempDir()
+	path := config.DefaultConfigFile(home)
+	os.MkdirAll(filepath.Dir(path), 0o700)
+	os.WriteFile(path, []byte(machineDoc), 0o600)
+	g, src, err := config.LoadGlobalResolved(config.GlobalOptions{Path: path, Env: env{}.get, UserHome: func() (string, error) { return home, nil }})
+	if err != nil || g.Paths.Home != "/machine/home" || src.Keys["paths.home"] != "vessel" {
+		t.Errorf("%v %s %v", err, g.Paths.Home, src.Keys["paths.home"])
+	}
+}
+
+func TestABadMachineConfigNamesItself(t *testing.T) {
+	_, _, _, err := loadOver(t, `{"nope": 1}`, `{}`)
+	if err == nil || !strings.Contains(err.Error(), "config.json") {
+		t.Errorf("err = %v", err)
+	}
+}
