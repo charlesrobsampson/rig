@@ -37,6 +37,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/state"
 	"github.com/charlesrobsampson/rig/internal/supervisor"
 	"github.com/charlesrobsampson/rig/internal/terminal/backends"
+	"github.com/charlesrobsampson/rig/internal/timeline"
 )
 
 func (a *app) global() (config.Global, error) {
@@ -156,20 +157,21 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	if a.configPath != "" {
 		agentEnv["RIG_CONFIG"] = a.configPath
 	}
-	var lc *lifecycle.Manager // set below; the supervisor starts polling only after it is
-	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Logger: logger, Interval: time.Second,
+	tl := timeline.New(clk.Now) // the one writer of every ticket's timeline.jsonl
+	var lc *lifecycle.Manager   // set below; the supervisor starts polling only after it is
+	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Timeline: tl, Logger: logger, Interval: time.Second,
 		PhaseRequest: func(ticket, service string, to domain.Phase, reason string) error {
 			return lc.AskForPhase(ticket, service, to, reason)
 		},
 		Review: func(ticket, service, kind, text string, data json.RawMessage) error {
 			return lc.ReviewRecord(ticket, service, kind, text, data)
 		}})
-	injector := inject.New(inject.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Readiness: sup, Clock: clk})
+	injector := inject.New(inject.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Readiness: sup, Clock: clk, Timeline: tl})
 	notifier := &contractnotify.Notifier{Dir: g.TicketsDir(), Sender: injector, Logger: logger}
 	phaseNotifier := phasenotify.New(phasenotify.Options{Sender: injector, Clock: clk, Logger: logger})
 	defer phaseNotifier.Close()
 	lc = lifecycle.New(lifecycle.Options{
-		Dir: g.TicketsDir(), States: states, Global: g, Bus: bus, Clock: clk,
+		Dir: g.TicketsDir(), States: states, Global: g, Bus: bus, Clock: clk, Timeline: tl,
 		Backend: backend, BackendName: g.Defaults.TerminalBackend, RigBinary: rigBinary, AgentEnv: agentEnv, Docker: dk, Secrets: secretValues(g, a.deps.keychain), GH: a.deps.gh,
 		OnContractResolved: notifier.Resolved,
 		OnPhaseChanged:     phaseNotifier.PhaseChanged,
@@ -180,6 +182,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		return lc.BaseStatus(context.Background(), t, st)
 	})
 	daemon.RegisterLifecycleHandlers(srv, lc)
+	daemon.RegisterTimelineHandler(srv, g.TicketsDir())
 	summaries.SetInputs(summaryInputs{lc: lc, reg: reg})
 	reconciler = reconcile.New(reconcile.Options{Dir: g.TicketsDir(), States: states, Docker: dk, Backend: backend, Bus: bus, Clock: clk, Logger: logger, Busy: lc.Busy})
 	daemon.RegisterReconcileHandler(srv, reconciler)

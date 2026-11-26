@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/state"
+	"github.com/charlesrobsampson/rig/internal/timeline"
 )
 
 type stopTarget struct {
@@ -142,6 +144,7 @@ func (m *Manager) Stop(ctx context.Context, p api.TicketStopParams) (api.TicketS
 	}
 	if len(changed) > 0 {
 		m.publish(api.EventTicketStopped, p.ID, "", api.EmptyData{})
+		m.note(filepath.Dir(statePath), timeline.TicketStopped, "human", "", struct{}{})
 	}
 	if len(checkoutFailures) > 0 {
 		return api.TicketStopResult{}, &api.Error{Code: api.CodeInternal, Message: "some checkouts could not be removed", Details: checkoutFailures}

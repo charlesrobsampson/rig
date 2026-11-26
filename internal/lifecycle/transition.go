@@ -11,6 +11,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/harness"
 	"github.com/charlesrobsampson/rig/internal/state"
+	"github.com/charlesrobsampson/rig/internal/timeline"
 )
 
 // SetPhase moves a ticket on behalf of a human.
@@ -47,6 +48,7 @@ func (m *Manager) AskForPhase(id, service string, to domain.Phase, reason string
 		return err
 	}
 	m.publish(api.EventPhaseRequested, id, service, api.PhaseRequestedData{To: to, Reason: reason})
+	m.note(l.dir, timeline.PhaseRequested, "agent:"+service, service, timeline.PhaseRequestedData{To: string(to), Reason: reason})
 	return nil
 }
 
@@ -114,6 +116,7 @@ func (m *Manager) moveLocked(l loaded, id, by string, to domain.Phase, reason, s
 
 	reason = strings.TrimSpace(reason)
 	var made state.Transition
+	var endedLoop *state.Review
 	err := m.opts.States.Update(l.statePath, func(s *state.State) error {
 		// Decided against the state as it is now, inside the update, so the check and the
 		// write cannot be separated by another move.
@@ -124,7 +127,12 @@ func (m *Manager) moveLocked(l loaded, id, by string, to domain.Phase, reason, s
 		if state.IsBackward(s.Phase, to) {
 			s.Approvals = withoutGates(s.Approvals, gates.InvalidatedByMovingTo(to))
 		}
+		endedLoop = nil
 		if to == domain.PhaseImplement && state.IsBackward(s.Phase, to) {
+			if s.Review != nil {
+				ended := *s.Review
+				endedLoop = &ended
+			}
 			s.Review = nil // work sent back is reviewed again, in a new loop
 		}
 		s.Phase = to
@@ -140,6 +148,10 @@ func (m *Manager) moveLocked(l loaded, id, by string, to domain.Phase, reason, s
 	}
 
 	m.publish(api.EventPhaseChanged, id, "", api.PhaseChangedData{From: made.From, To: made.To, By: by, Reason: reason})
+	m.note(l.dir, timeline.PhaseMoved, by, service, timeline.PhaseMovedData{From: string(made.From), To: string(made.To), Reason: reason})
+	if endedLoop != nil {
+		m.note(l.dir, timeline.ReviewLoopEnded, by, "", timeline.ReviewLoopEndedData{Rounds: len(endedLoop.Rounds), Status: string(endedLoop.Status)})
+	}
 	if m.opts.OnPhaseChanged != nil {
 		if notices := phaseNotices(l, made); len(notices) > 0 {
 			m.opts.OnPhaseChanged(id, notices)

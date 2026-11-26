@@ -814,3 +814,24 @@ type SyncResult struct {
 	// ReviewStarted: a review round began on the merged work.
 	ReviewStarted bool `json:"review_started,omitempty"`
 }
+
+// TimelineListParams asks for a ticket's timeline after Since (0 for all of it).
+type TimelineListParams struct {
+	Ticket string `json:"ticket"`
+	Since  int    `json:"since,omitempty"`
+}
+
+// TimelineEntry is one line of a ticket's timeline.jsonl (docs/formats.md §15).
+type TimelineEntry struct {
+	Seq     int             `json:"seq"`
+	At      time.Time       `json:"at"`
+	Kind    string          `json:"kind"`
+	By      string          `json:"by,omitempty"`
+	Service string          `json:"service,omitempty"`
+	Data    json.RawMessage `json:"data"`
+}
+
+// TimelineListResult holds the entries, oldest first; empty when there are none.
+type TimelineListResult struct {
+	Entries []TimelineEntry `json:"entries"`
+}

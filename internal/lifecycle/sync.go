@@ -10,6 +10,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/state"
+	"github.com/charlesrobsampson/rig/internal/timeline"
 )
 
 // baseOf is the branch a service's work is measured and merged against: its own, the
@@ -118,6 +119,7 @@ func (m *Manager) Sync(ctx context.Context, p api.SyncParams) (api.SyncResult, e
 			}
 		}
 		res.Services = append(res.Services, s)
+		m.note(l.dir, timeline.SyncDone, "human", svc.Name, timeline.SyncDoneData{Service: svc.Name, Behind: s.Behind, Merged: s.Merged, Conflicts: s.Conflicts})
 	}
 	if p.Service != "" && len(res.Services) == 0 {
 		unlock()
