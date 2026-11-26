@@ -104,7 +104,7 @@ func TestLogsFollowStreamsUntilInterrupted(t *testing.T) {
 		if code != 0 {
 			t.Errorf("exit code %d after Ctrl-C, stderr %q", code, errOut.String())
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("logs -f did not stop")
 	}
 }

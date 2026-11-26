@@ -33,12 +33,15 @@ func TestWaitReturnsWhenSomethingHappensOrTimesOut(t *testing.T) {
 	var wg sync.WaitGroup
 	var stdout string
 	var code int
+	clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())} // the fake clock starts at real now so it is not before the daemon records real times; no elapsed time is compared
+	dw := d
+	dw.clock = clk
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		stdout, _, code = rig(t, d, "wait", "demo", "--record", "note", "--phase-request", "--timeout", "10s", "--json")
+		stdout, _, code = rig(t, dw, "wait", "demo", "--record", "note", "--phase-request", "--timeout", "10s", "--json")
 	}()
-	time.Sleep(700 * time.Millisecond)
+	testkit.Eventually(t, "the wait to start", func() bool { return len(clk.asked()) > 0 })
 	t.Setenv("RIG_TICKET", "demo")
 	t.Setenv("RIG_SERVICE", "svc1")
 	rig(t, d, "agent-event", `{"kind":"note","text":"a question for you"}`)
@@ -124,7 +127,7 @@ func TestWaitEndsOnAnEventWithoutAPollInterval(t *testing.T) {
 	_, d, repo, _ := newEnvWithTerminal(t)
 	newTicket(t, d, "demo", repo)
 	rig(t, d, "start", "demo", "--sandbox", "host")
-	clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())}
+	clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())} // the fake clock starts at real now so it is not before the daemon records real times; no elapsed time is compared
 	d.clock = clk
 
 	var wg sync.WaitGroup
@@ -156,7 +159,7 @@ func TestWaitAnswersAtOnceFromStateAndStillTimesOutOnTheClock(t *testing.T) {
 	_, d, repo, _ := newEnvWithTerminal(t)
 	newTicket(t, d, "demo", repo)
 	rig(t, d, "start", "demo", "--sandbox", "host")
-	clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())}
+	clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())} // the fake clock starts at real now so it is not before the daemon records real times; no elapsed time is compared
 	d.clock = clk
 	if stdout, _, code := rig(t, d, "wait", "demo", "--phase", "plan"); code != 0 || !strings.Contains(stdout, "phase is plan") {
 		t.Errorf("code %d, %q", code, stdout)
@@ -173,7 +176,7 @@ func TestWaitAnswersAtOnceFromStateAndStillTimesOutOnTheClock(t *testing.T) {
 		if code != 1 {
 			t.Errorf("code %d, want 1", code)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("the wait did not time out when the clock reached the deadline")
 	}
 }
@@ -184,7 +187,7 @@ func TestWaitAnswersAtOnceFromStateAndStillTimesOutOnTheClock(t *testing.T) {
 // changed, even though no further timeline entry follows.
 func TestWaitEndsOnTheEventAfterTheStateChangedNotOnTheEntryBeforeIt(t *testing.T) {
 	home := rigEnv(t)
-	bus := events.NewBus(testkit.NewFakeClock(time.Now()), 0)
+	bus := events.NewBus(testkit.NewFakeClock(time.Now()), 0) // the fake clock starts at real now so it is not before the daemon records real times; no elapsed time is compared
 	srv, err := daemon.Listen(daemon.Options{SocketPath: filepath.Join(home, "rigd.sock"), PIDPath: filepath.Join(home, "rigd.pid"), Version: "test"})
 	if err != nil {
 		t.Fatal(err)
@@ -202,7 +205,7 @@ func TestWaitEndsOnTheEventAfterTheStateChangedNotOnTheEntryBeforeIt(t *testing.
 	go func() { done <- srv.Serve(ctx) }()
 	t.Cleanup(func() { cancel(); <-done })
 
-	clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())}
+	clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())} // the fake clock starts at real now so it is not before the daemon records real times; no elapsed time is compared
 	out := make(chan int, 1)
 	var stdout lockedBuffer
 	go func() {
@@ -228,14 +231,14 @@ func TestWaitEndsOnTheEventAfterTheStateChangedNotOnTheEntryBeforeIt(t *testing.
 		if code != 0 || !strings.Contains(stdout.String(), "phase is implement") {
 			t.Fatalf("code %d, %q", code, stdout.String())
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("the wait did not end on the event published after the state changed")
 	}
 }
 
 func TestWaitReturnsTheConnectErrorWhenTheStreamCannotBeReestablished(t *testing.T) {
 	home := rigEnv(t)
-	bus := events.NewBus(testkit.NewFakeClock(time.Now()), 0)
+	bus := events.NewBus(testkit.NewFakeClock(time.Now()), 0) // the fake clock starts at real now so it is not before the daemon records real times; no elapsed time is compared
 	srv, err := daemon.Listen(daemon.Options{SocketPath: filepath.Join(home, "rigd.sock"), PIDPath: filepath.Join(home, "rigd.pid"), Version: "test"})
 	if err != nil {
 		t.Fatal(err)
@@ -247,7 +250,7 @@ func TestWaitReturnsTheConnectErrorWhenTheStreamCannotBeReestablished(t *testing
 	served := make(chan struct{})
 	go func() { srv.Serve(context.Background()); close(served) }()
 
-	clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())}
+	clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())} // the fake clock starts at real now so it is not before the daemon records real times; no elapsed time is compared
 	failing := func(context.Context) error { return errors.New("no such binary") }
 	out := make(chan int, 1)
 	var stderr lockedBuffer
@@ -265,7 +268,7 @@ func TestWaitReturnsTheConnectErrorWhenTheStreamCannotBeReestablished(t *testing
 		if code == 0 || !strings.Contains(stderr.String(), "no such binary") {
 			t.Fatalf("code %d, stderr %q; want the connect error", code, stderr.String())
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("the wait did not end when it could not reconnect")
 	}
 }
@@ -287,12 +290,15 @@ func TestWaitRecordTakesSeveralKindsAndQuestionEndsOnAnOpenQuestion(t *testing.T
 		var wg sync.WaitGroup
 		var stdout string
 		var code int
+		clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())} // the fake clock starts at real now so it is not before the daemon records real times; no elapsed time is compared
+		dw := d
+		dw.clock = clk
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			stdout, _, code = rig(t, d, "wait", "demo", "--record", "note,question", "--timeout", "10s", "--json")
+			stdout, _, code = rig(t, dw, "wait", "demo", "--record", "note,question", "--timeout", "10s", "--json")
 		}()
-		time.Sleep(700 * time.Millisecond)
+		testkit.Eventually(t, "the wait to start", func() bool { return len(clk.asked()) > 0 })
 		rig(t, d, "agent-event", `{"kind":"`+kind+`","text":"see `+kind+`"}`)
 		wg.Wait()
 		if code != 0 || !strings.Contains(stdout, `"matched": "record"`) && !strings.Contains(stdout, `"matched":"record"`) || !strings.Contains(stdout, "see "+kind) {
@@ -322,12 +328,15 @@ func TestWaitRecordTakesSeveralKindsAndQuestionEndsOnAnOpenQuestion(t *testing.T
 	var wg sync.WaitGroup
 	var out string
 	var c int
+	clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())} // the fake clock starts at real now so it is not before the daemon records real times; no elapsed time is compared
+	dw := d
+	dw.clock = clk
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		out, _, c = rig(t, d, "wait", "demo", "--question", "--new", "--timeout", "10s")
+		out, _, c = rig(t, dw, "wait", "demo", "--question", "--new", "--timeout", "10s")
 	}()
-	time.Sleep(700 * time.Millisecond)
+	testkit.Eventually(t, "the wait to start", func() bool { return len(clk.asked()) > 0 })
 	rig(t, d, "agent-event", `{"kind":"question","text":"later one"}`)
 	wg.Wait()
 	if c != 0 || !strings.Contains(out, "later one") {
@@ -396,7 +405,7 @@ func TestWaitReviewNewEndsOnlyOnAVerdictReachedAfterTheWaitBegan(t *testing.T) {
 		status := tc.status
 		t.Run(fmt.Sprintf("%s in round %d", status, tc.round), func(t *testing.T) {
 			home := rigEnv(t)
-			clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())}
+			clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())} // the fake clock starts at real now so it is not before the daemon records real times; no elapsed time is compared
 			bus := events.NewBus(clk, 0)
 			srv, err := daemon.Listen(daemon.Options{SocketPath: filepath.Join(home, "rigd.sock"), PIDPath: filepath.Join(home, "rigd.pid"), Version: "test"})
 			if err != nil {
@@ -454,7 +463,7 @@ func TestWaitReviewNewEndsOnlyOnAVerdictReachedAfterTheWaitBegan(t *testing.T) {
 				if code != 0 || !strings.Contains(stdout.String(), "review "+string(status)+", round "+strconv.Itoa(tc.round)) {
 					t.Fatalf("code %d, %q", code, stdout.String())
 				}
-			case <-time.After(5 * time.Second):
+			case <-time.After(testkit.WaitLimit):
 				t.Fatal("--new did not end on the next verdict")
 			}
 		})

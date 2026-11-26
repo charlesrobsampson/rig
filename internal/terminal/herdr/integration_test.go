@@ -19,7 +19,7 @@ func TestTheBackendMeetsTheContractAgainstRealHerdr(t *testing.T) {
 		t.Skip("herdr is not installed")
 	}
 	terminaltest.Run(t, func(t *testing.T) terminaltest.Subject {
-		session := fmt.Sprintf("rig-itest-%d-%d", os.Getpid(), time.Now().UnixNano()%100000)
+		session := fmt.Sprintf("rig-itest-%d-%d", os.Getpid(), time.Now().UnixNano()%100000) // uniqueness of a name, not a duration
 		b := herdr.New(herdr.Options{Session: session})
 		if err := b.Ready(ctx); err != nil {
 			t.Fatal(err)

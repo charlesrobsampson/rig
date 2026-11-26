@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/charlesrobsampson/rig/internal/testkit"
 	"io"
 	"reflect"
 	"strings"
@@ -120,7 +121,7 @@ func (s *session) recv() map[string]any {
 			s.t.Fatalf("not a JSON-RPC 2.0 message: %q", line)
 		}
 		return m
-	case <-time.After(3 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		s.t.Fatal("no message from the server")
 		return nil
 	}
@@ -465,7 +466,7 @@ func TestServeEndsWhenTheClientHangsUp(t *testing.T) {
 		if err != nil {
 			t.Errorf("Serve returned %v at end of input", err)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("Serve did not return at end of input")
 	}
 }

@@ -265,7 +265,7 @@ func TestListNotesTicketsThatTouchTheSameFile(t *testing.T) {
 		{ID: "f", Phase: domain.PhaseImplement, Touched: touch("backend", "other.go")},
 	}
 	var out strings.Builder
-	writeTicketTable(&out, tickets, time.Now(), 0)
+	writeTicketTable(&out, tickets, time.Now(), 0) // the table reference time; nothing compares elapsed time
 	lines := map[string]string{}
 	for _, l := range strings.Split(out.String(), "\n") {
 		if f := strings.Fields(l); len(f) > 0 {
@@ -295,7 +295,7 @@ func TestListShowsAReviewThatWaitsForReady(t *testing.T) {
 		{ID: "b", Phase: domain.PhaseImplement, Review: &api.ReviewSummary{Status: domain.ReviewFixing, Round: 1}},
 	}
 	var out strings.Builder
-	writeTicketTable(&out, tickets, time.Now(), 0)
+	writeTicketTable(&out, tickets, time.Now(), 0) // the table reference time; nothing compares elapsed time
 	if !strings.Contains(out.String(), "review waits for ready r2") || !strings.Contains(out.String(), "review fixing r1") {
 		t.Errorf("list:\n%s", out.String())
 	}
@@ -307,7 +307,7 @@ func TestListShowsAPassTheBranchHasMovedPast(t *testing.T) {
 		{ID: "b", Phase: domain.PhaseImplement, Review: &api.ReviewSummary{Status: domain.ReviewPassed, Round: 1}},
 	}
 	var out strings.Builder
-	writeTicketTable(&out, tickets, time.Now(), 0)
+	writeTicketTable(&out, tickets, time.Now(), 0) // the table reference time; nothing compares elapsed time
 	if !strings.Contains(out.String(), "review passed r2 (new commits)") || strings.Contains(out.String(), "review passed r1 (") {
 		t.Errorf("list:\n%s", out.String())
 	}
@@ -319,7 +319,7 @@ func TestListShowsAStalledChecker(t *testing.T) {
 		{ID: "b", Phase: domain.PhaseImplement, Review: &api.ReviewSummary{Status: domain.ReviewReviewing, Round: 1, Stalled: &api.ReviewStalled{Service: domain.ReviewerService}}},
 	}
 	var out strings.Builder
-	writeTicketTable(&out, tickets, time.Now(), 0)
+	writeTicketTable(&out, tickets, time.Now(), 0) // the table reference time; nothing compares elapsed time
 	if !strings.Contains(out.String(), "review stalled (tester idle)") || !strings.Contains(out.String(), "review stalled (reviewer idle)") {
 		t.Errorf("list:\n%s", out.String())
 	}

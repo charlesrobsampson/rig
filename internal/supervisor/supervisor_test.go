@@ -412,7 +412,7 @@ func TestRunStopsWhenCancelled(t *testing.T) {
 	cancel()
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("Run did not stop after its context was cancelled")
 	}
 }

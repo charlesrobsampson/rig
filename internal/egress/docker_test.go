@@ -36,7 +36,7 @@ func TestAnInternalNetworkContainerReachesOnlyWhatTheProxyAllows(t *testing.T) {
 		t.Skipf("no proxy image: %v", err)
 	}
 
-	suffix := time.Now().UnixNano() % 1000000
+	suffix := time.Now().UnixNano() % 1000000 // uniqueness of a name, not a duration
 	internal, external := "rigt-egress-int-"+itoa(suffix), "rigt-egress-ext-"+itoa(suffix)
 	if _, err := dk.CreateNetwork(bg, docker.NetworkSpec{Name: internal, Internal: true}); err != nil {
 		t.Fatal(err)

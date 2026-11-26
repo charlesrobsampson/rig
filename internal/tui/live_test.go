@@ -18,7 +18,7 @@ import (
 
 func event(t *testing.T, typ api.EventType, ticket, service string, data any) api.Event {
 	t.Helper()
-	ev, err := api.NewEvent(typ, ticket, service, time.Now(), data)
+	ev, err := api.NewEvent(typ, ticket, service, time.Now(), data) // an event timestamp, not a duration
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +285,7 @@ type scriptedSub struct {
 func (s *scriptedSub) Subscribe(context.Context) (<-chan api.Event, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.calls = append(s.calls, time.Now())
+	s.calls = append(s.calls, time.Now()) // a lower bound on the retry spacing (time only passes), which load cannot break
 	if len(s.errs) > 0 {
 		err := s.errs[0]
 		s.errs = s.errs[1:]
@@ -433,7 +433,7 @@ func TestThePumpStopsWhenItsContextEnds(t *testing.T) {
 	cancel()
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("the pump did not stop")
 	}
 	// ... also while it waits to retry
@@ -443,7 +443,7 @@ func TestThePumpStopsWhenItsContextEnds(t *testing.T) {
 	cancel2()
 	select {
 	case <-done2:
-	case <-time.After(2 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("the pump did not stop while waiting to retry")
 	}
 }

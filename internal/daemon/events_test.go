@@ -79,7 +79,7 @@ func TestDisconnectingUnsubscribes(t *testing.T) {
 		t.Fatalf("subscribers = %d, want 1", bus.Subscribers())
 	}
 	c.conn.Close()
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(testkit.WaitLimit)
 	for bus.Subscribers() != 0 {
 		select {
 		case <-deadline:
@@ -117,7 +117,7 @@ func TestASubscriberThatCannotKeepUpIsToldToReconnect(t *testing.T) {
 		if !errors.As(err, &apiErr) || apiErr.Code != api.CodeUnavailable {
 			t.Fatalf("handler returned %v, want an unavailable error telling the client to reconnect", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("the handler never noticed it was dropped")
 	}
 }

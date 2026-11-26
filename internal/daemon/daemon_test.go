@@ -79,7 +79,7 @@ func (h *harness) wait(t *testing.T) error {
 	h.once.Do(func() {
 		select {
 		case h.err = <-h.done:
-		case <-time.After(5 * time.Second):
+		case <-time.After(testkit.WaitLimit):
 			t.Error("server did not shut down")
 		}
 	})
@@ -319,7 +319,7 @@ func TestStreamingHandlers(t *testing.T) {
 		c.conn.Close()
 		select {
 		case <-cancelled:
-		case <-time.After(5 * time.Second):
+		case <-time.After(testkit.WaitLimit):
 			t.Fatal("stream handler kept running after the client left")
 		}
 	})

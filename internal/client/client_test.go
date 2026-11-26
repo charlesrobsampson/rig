@@ -58,7 +58,7 @@ func startDaemon(t *testing.T, p paths, configure func(*daemon.Server)) *daemon.
 		cancel()
 		select {
 		case <-done:
-		case <-time.After(5 * time.Second):
+		case <-time.After(testkit.WaitLimit):
 			t.Error("daemon did not stop")
 		}
 	})
@@ -232,7 +232,7 @@ func TestAutoStartFailures(t *testing.T) {
 			})
 			result <- err
 		}()
-		deadline := time.After(10 * time.Second)
+		deadline := time.After(testkit.WaitLimit)
 		for {
 			select {
 			case err := <-result:
@@ -337,7 +337,7 @@ func TestStreamDeliversItemsUntilTheEndMarker(t *testing.T) {
 			if !errors.Is(err, context.Canceled) {
 				t.Errorf("error = %v, want context.Canceled", err)
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(testkit.WaitLimit):
 			t.Fatal("Stream did not return after cancellation")
 		}
 	})

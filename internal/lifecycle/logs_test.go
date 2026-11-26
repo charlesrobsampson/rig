@@ -192,7 +192,7 @@ func TestFollowStreamsNewLinesFromEveryContainerUntilCancelled(t *testing.T) {
 		if err != nil && err != context.Canceled {
 			t.Errorf("error = %v", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("the stream did not end when the client left")
 	}
 }
@@ -214,7 +214,7 @@ func TestFollowEndsWhenEveryContainerHasStopped(t *testing.T) {
 		if err != nil {
 			t.Errorf("error = %v", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("following never ended after the containers stopped")
 	}
 	if n != 1 {

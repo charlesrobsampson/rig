@@ -61,6 +61,7 @@ Task files must stay simple: each task is a short, readable list of commands, wi
 - **No agent or LLM calls in tests.** Never launch Claude Code or any real agent, and never call a hosted model API. Where a test needs an agent, use the scripted fake agent (`internal/testkit/fakeagent`): a small program driven by a script (write file, commit, append a contract proposal, go idle, echo injected input to a file). Prompt/harness tests assert the prompt text and command only, not model behavior. Whether a real agent follows the prompt is a manual check.
 - **Local LLMs only, and only opt-in.** The one place a model is useful in tests is the summarizer. Default tests use an `httptest` fake. A test against real Ollama is allowed behind the `llm` build tag (free, local), never in default `task test` or CI.
 - **Time from the injected clock** (`internal/clock`), never `time.Now()` or `time.Sleep` in logic.
+- **A test never asserts on elapsed wall-clock time.** Drive time with the fake clock (`FakeClock.BlockUntil`, `NextWait`, `Advance`) and assert the schedule; wait for something to happen with `testkit.Eventually` or a channel and a generous guard (`testkit.WaitLimit`), never a fixed sleep or a tight timeout. `task test:stress` flushes out the ones that slip through.
 - **Sockets:** unix socket paths have a ~104-char limit on macOS. In tests create the socket dir with `os.MkdirTemp("", "rig")`, not `t.TempDir()`.
 - Each task lists the cases its tests must cover. Add more if you find gaps.
 

@@ -447,7 +447,7 @@ func TestTheBackgroundLoopChecksAtOnceAndEveryInterval(t *testing.T) {
 	cancel()
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("the loop did not stop")
 	}
 }

@@ -46,7 +46,7 @@ func (f *watchFixture) start() {
 		cancel()
 		select {
 		case <-done:
-		case <-time.After(5 * time.Second):
+		case <-time.After(testkit.WaitLimit):
 			f.t.Error("the watcher did not stop")
 		}
 	}

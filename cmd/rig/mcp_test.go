@@ -63,7 +63,7 @@ func (c *mcpClient) call(method string, params any) map[string]any {
 			c.t.Fatalf("not JSON on stdout: %q", line)
 		}
 		return m
-	case <-time.After(10 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		c.t.Fatal("no answer from rig mcp")
 		return nil
 	}
@@ -148,7 +148,7 @@ func TestRigMCPSupervisesRealTicketsThroughTheDaemon(t *testing.T) {
 		if code != 0 {
 			t.Errorf("exit code %d", code)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("rig mcp did not exit at end of input")
 	}
 }

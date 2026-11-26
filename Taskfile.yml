@@ -48,6 +48,14 @@ tasks:
     cmds:
       - go test -tags llm {{.CLI_ARGS | default "./..."}}
 
+  test:stress:
+    desc: Flush out timing-dependent tests - race detector, repeated, also on two CPUs; docker-tagged tests too (needs Docker)
+    cmds:
+      - go test -race -count=10 ./...
+      - GOMAXPROCS=2 go test -race -count=10 ./...
+      - go test -tags docker -count=5 ./...
+      - GOMAXPROCS=2 go test -tags docker -count=5 ./...
+
   test:linux:
     desc: Run the default tests on Linux in a container (cross-compiled; needs Docker); pass packages after --
     cmds:

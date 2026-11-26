@@ -406,7 +406,7 @@ func TestACancelledContextStopsAWaitingMessage(t *testing.T) {
 		if !errors.Is(err, context.Canceled) || len(f.term.Input(f.pane)) != 0 {
 			t.Errorf("error = %v, input %v", err, f.term.Input(f.pane))
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("the message kept waiting after cancellation")
 	}
 }
