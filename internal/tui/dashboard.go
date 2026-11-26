@@ -96,6 +96,40 @@ func Light(s domain.AgentState) string {
 	return "·"
 }
 
+// lights lists every agent state with its word, in the order the legend and the help
+// overlay show them.
+var lights = []struct {
+	State domain.AgentState
+	Word  string
+}{
+	{domain.AgentWorking, "working"},
+	{domain.AgentIdle, "idle"},
+	{domain.AgentBlocked, "blocked"},
+	{domain.AgentExited, "exited"},
+	{domain.AgentUnknown, "unknown"},
+}
+
+// legendMinHeight is the shortest terminal that has room for the lights legend.
+const legendMinHeight = 24
+
+// lightLegend is the one-line legend under the table; unknown is left to the help overlay.
+func lightLegend() string {
+	var parts []string
+	for _, l := range lights[:len(lights)-1] {
+		parts = append(parts, Light(l.State)+" "+l.Word)
+	}
+	return strings.Join(parts, "  ")
+}
+
+// warn draws s in the warning colour.
+func warn(s string) string { return "\x1b[33m" + s + "\x1b[0m" }
+
+// exitedNeedsPerson is an exited agent on a ticket that is still going: nobody will
+// restart it but a person (rig start).
+func exitedNeedsPerson(t api.TicketSummary, s api.ServiceSummary) bool {
+	return s.AgentState == domain.AgentExited && t.Phase != domain.PhaseDone && s.Status != domain.ServiceStopped
+}
+
 // dashboard is the fleet table: tickets that need the human first, then the rest by
 // id, with one row selected. Selection follows the ticket, not the row, so a refresh
 // that reorders rows does not move it onto another ticket.
@@ -194,7 +228,7 @@ func (d *dashboard) view(w, h int) string {
 			widths[c] = max(widths[c], len([]rune(s)))
 		}
 	}
-	line := func(sel bool, c [6]string, title string) string {
+	line := func(sel bool, c [6]string, title string, t *api.TicketSummary) string {
 		prefix := "  "
 		if sel {
 			prefix = "> "
@@ -202,15 +236,28 @@ func (d *dashboard) view(w, h int) string {
 		var b strings.Builder
 		b.WriteString(prefix)
 		for i, s := range c {
-			b.WriteString(pad(s, widths[i]) + "  ")
+			cell := pad(s, widths[i])
+			if i == 2 && t != nil {
+				for _, sv := range t.Services {
+					if exitedNeedsPerson(*t, sv) {
+						seg := Light(sv.AgentState) + " " + sv.Name
+						cell = strings.Replace(cell, seg, warn(seg), 1)
+					}
+				}
+			}
+			b.WriteString(cell + "  ")
 		}
 		b.WriteString(title)
 		return strings.TrimRight(b.String(), " ")
 	}
-	out := []string{line(false, [6]string{"TICKET", "PHASE", "AGENTS", "PORTS", "COST", "NEEDS"}, "TITLE")}
+	out := []string{line(false, [6]string{"TICKET", "PHASE", "AGENTS", "PORTS", "COST", "NEEDS"}, "TITLE", nil)}
 
 	pane := d.summaryPane(w, h)
+	legend := h >= legendMinHeight
 	visible := h - 1 - len(pane)
+	if legend {
+		visible--
+	}
 	if visible < 1 {
 		visible = 1
 	}
@@ -228,7 +275,10 @@ func (d *dashboard) view(w, h int) string {
 		if t.Error != "" {
 			title = strings.TrimSpace(title + "  ! " + t.Error)
 		}
-		out = append(out, line(r == i, cells[r], title))
+		out = append(out, line(r == i, cells[r], title, &t))
+	}
+	if legend {
+		out = append(out, lightLegend())
 	}
 	return strings.Join(append(out, pane...), "\n")
 }

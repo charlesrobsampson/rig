@@ -11,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charlesrobsampson/rig/internal/api"
+	"github.com/charlesrobsampson/rig/internal/config"
+	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/testkit"
 	"github.com/charlesrobsampson/rig/internal/tui"
 )
@@ -460,5 +463,96 @@ func TestFleetWarnsOnlyAboutTheDaemonsItListsAndNamesTheVessel(t *testing.T) {
 	_, stderr, code = rig(t, d, "fleet")
 	if code != 0 || strings.Count(stderr, "daemon is version") != 1 || !strings.Contains(stderr, `run "rig -V work daemon restart"`) {
 		t.Errorf("fleet with a stale listed daemon: %d %q", code, stderr)
+	}
+}
+
+func TestVesselSpendSumsEveryTicketAndThisLocalMonths(t *testing.T) {
+	usd := func(v float64) *float64 { return &v }
+	at := func(y int, m time.Month, d int) *time.Time {
+		v := time.Date(y, m, d, 12, 0, 0, 0, time.Local)
+		return &v
+	}
+	now := time.Date(2026, time.November, 30, 23, 0, 0, 0, time.Local)
+	tickets := []api.TicketSummary{
+		{ID: "done-old", Phase: domain.PhaseDone, CostUSD: usd(10), CreatedAt: at(2026, time.October, 31)},
+		{ID: "done-now", Phase: domain.PhaseDone, CostUSD: usd(2.25), CreatedAt: at(2026, time.November, 1)},
+		{ID: "running", CostUSD: usd(0.1), CreatedAt: at(2026, time.November, 30)},
+		{ID: "no-cost", CreatedAt: at(2026, time.November, 2)},
+		{ID: "last-year", CostUSD: usd(1), CreatedAt: at(2025, time.November, 5)},
+	}
+	total, month := vesselSpend(tickets, now)
+	if total != 13.35 || month != 2.35 {
+		t.Errorf("spend = %v, month %v; want 13.35, 2.35", total, month)
+	}
+	if total, month = vesselSpend(nil, now); total != 0 || month != 0 {
+		t.Errorf("no tickets: %v %v", total, month)
+	}
+}
+
+func TestFleetShowsSpendPerVesselRunningOrNot(t *testing.T) {
+	work, home := twoVessels(t)
+	startDaemon(t, work)
+	ticketIn(t, "work", "a")
+	ticketIn(t, "work", "b")
+	ticketIn(t, "home", "c") // starts and stops a daemon of its own; its file is then read directly
+
+	setCost := func(cfg, id string, usd float64, phase string) {
+		g, err := config.LoadGlobal(config.GlobalOptions{Path: cfg})
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(g.TicketsDir(), id, "state.json")
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var st map[string]any
+		if err := json.Unmarshal(raw, &st); err != nil {
+			t.Fatal(err)
+		}
+		st["phase"] = phase
+		for _, s := range st["services"].(map[string]any) {
+			s.(map[string]any)["agent"] = map[string]any{"state": "idle", "cost": map[string]any{"usd": usd, "at": time.Now()}}
+		}
+		raw, _ = json.Marshal(st)
+		if err := os.WriteFile(path, raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setCost(work, "a", 1.5, "done")
+	setCost(work, "b", 10.84, "implement")
+	setCost(home, "c", 3, "plan")
+
+	stdout, stderr, code := rig(t, noSpawn(t), "fleet")
+	if code != 0 {
+		t.Fatalf("fleet: %d %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "SPEND") || !strings.Contains(stdout, "$12.34") || !strings.Contains(stdout, "$3.00") {
+		t.Errorf("fleet lacks the spend:\n%s", stdout)
+	}
+	stdout, _, _ = rig(t, noSpawn(t), "fleet", "--json")
+	var got []struct {
+		Name       string   `json:"name"`
+		Running    bool     `json:"running"`
+		Spend      *float64 `json:"spend_usd"`
+		SpendMonth *float64 `json:"spend_month_usd"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil || len(got) != 2 {
+		t.Fatalf("fleet --json = %s (%v)", stdout, err)
+	}
+	for _, v := range got {
+		want := map[string]float64{"work": 12.34, "home": 3}[v.Name]
+		if v.Spend == nil || v.SpendMonth == nil || *v.Spend < want-1e-9 || *v.Spend > want+1e-9 || *v.SpendMonth != *v.Spend {
+			t.Errorf("%s (running %v): spend %v, month %v; want %v for both", v.Name, v.Running, v.Spend, v.SpendMonth, want)
+		}
+	}
+}
+
+func TestAVesselWithNoTicketsSpendsNothing(t *testing.T) {
+	work, _ := twoVessels(t)
+	startDaemon(t, work)
+	stdout, _, _ := rig(t, noSpawn(t), "fleet")
+	if !strings.Contains(stdout, "$0.00") {
+		t.Errorf("fleet:\n%s", stdout)
 	}
 }

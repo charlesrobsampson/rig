@@ -228,3 +228,54 @@ func TestTheCostColumnSumsReportedCostsAndShowsNothingForUnreported(t *testing.T
 		t.Errorf("view:\n%s", v)
 	}
 }
+
+func TestHelpNamesEveryLightWithItsWord(t *testing.T) {
+	help := New(Options{Source: &fakeSource{}}).helpView()
+	if !strings.Contains(help, "Lights") {
+		t.Fatalf("help has no Lights section:\n%s", help)
+	}
+	for _, l := range lights {
+		if want := Light(l.State) + "  " + l.Word; !strings.Contains(help, want) {
+			t.Errorf("help lacks %q:\n%s", want, help)
+		}
+	}
+	if len(lights) != 5 {
+		t.Errorf("%d lights listed, want working, idle, blocked, exited, unknown", len(lights))
+	}
+}
+
+func TestTheLegendShowsFromTwentyFourRowsAndHidesBelow(t *testing.T) {
+	d := &dashboard{}
+	d.set([]api.TicketSummary{{ID: "t", Services: []api.ServiceSummary{svc("api", domain.AgentWorking, 0)}}})
+	const legend = "● working  ○ idle  ! blocked  ✕ exited"
+	if v := d.view(100, 24); !strings.Contains(v, legend) {
+		t.Errorf("no legend at 24 rows:\n%s", v)
+	}
+	if v := d.view(100, 23); strings.Contains(v, "working  ○") {
+		t.Errorf("legend at 23 rows:\n%s", v)
+	}
+	if got := strings.Count(d.view(100, 24), "\n") + 1; got > 24 {
+		t.Errorf("view is %d lines at 24 rows", got)
+	}
+}
+
+func TestAnExitedAgentOnAGoingTicketIsInTheWarningStyle(t *testing.T) {
+	exited := func(phase domain.Phase, status domain.ServiceStatus) string {
+		d := &dashboard{}
+		s := svc("api", domain.AgentExited, 0)
+		s.Status = status
+		d.set([]api.TicketSummary{{ID: "t", Phase: phase, Services: []api.ServiceSummary{s, svc("web", domain.AgentWorking, 0)}}})
+		return d.view(100, 10)
+	}
+	if v := exited(domain.PhaseImplement, domain.ServiceRunning); !strings.Contains(v, warn("✕ api")) || strings.Contains(v, warn("● web")) {
+		t.Errorf("running ticket, exited agent not in warning style:\n%q", v)
+	}
+	for name, v := range map[string]string{
+		"done":    exited(domain.PhaseDone, domain.ServiceRunning),
+		"stopped": exited(domain.PhaseImplement, domain.ServiceStopped),
+	} {
+		if strings.Contains(v, "\x1b[") {
+			t.Errorf("%s ticket drawn in a style:\n%q", name, v)
+		}
+	}
+}
