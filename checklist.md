@@ -1547,3 +1547,13 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: each appended entry is also published as event `timeline.entry` `{ticket, seq, entry}`. `events.subscribe` takes `{tickets?: [id], since?: {<ticket>: seq}}`: it first replays, from the files, every entry after each given seq, then streams live entries, with no gap and no duplicate between the two. `rig watch [ticket...] [--since seq]` prints entries as they come. `rig wait` subscribes instead of polling (keeping its flags and output); it still answers at once from current state for conditions already true.
 - Tests: replay then live with an append racing the switch-over (no gap, no duplicate); a filter by ticket; `rig wait` ends on an event without a poll interval (the fake clock does not advance); reconnecting with the last seq resumes exactly.
 - Manual check: `rig watch jybe/j05` shows a running card's entries live.
+
+### 122 · A verdict belongs to one commit
+- [ ] Done
+- Session: _(the rigdev vessel)_
+- Branch: rig's ticket branch · Depends: 118, 120
+- Read: `internal/lifecycle/reviewer.go`, `internal/lifecycle/sync.go`, `internal/lifecycle/transition.go` (the leave-implement gate), `internal/lifecycle/push.go`; `docs/formats.md` §4 (`review`)
+- Why: R-028: a passed review stays passed when the branch moves on. On rig task 119 the coder committed a fix after the pass and it was landed unreviewed; on jybe J07, `rig sync` merged master with conflicts into a branch whose review had passed, so the resolved merge would land unreviewed, and the coder's next `review.ready` continued the old loop and hit its round cap.
+- Build: the pass records the commit it passed (it already pins each round's commit). Leaving implement, and `rig push`, require the service's branch tip to be that commit; otherwise they are refused with "the review passed <sha>, but the branch is now at <sha>: journal review.ready for a round on the new work (or rig reviewer <id> --start)". A sync that changes a reviewed service's branch ends the current loop (timeline `review.loop.ended`, as a move back to implement does), so the next `review.ready` starts a new loop with its own rounds; a clean sync then starts that loop's first round itself, as it does today.
+- Tests: a commit after a pass blocks leaving implement and push, naming both commits; `review.ready` then starts a round and a new pass lets it go; a conflicting sync on a passed review ends the loop and the coder's `review.ready` after resolving starts a new loop at round 1 (not a cap stop); a clean sync on a passed review starts a new loop's round 1.
+- Manual check: the next jybe card that commits after its pass is held at landing until it is reviewed again.
