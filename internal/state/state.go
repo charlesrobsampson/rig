@@ -105,7 +105,7 @@ type TesterRound struct {
 	At      time.Time `json:"at"`
 }
 
-// Transition.By is "human" or "agent:<service>"; Reason is required for backward moves.
+// Transition.By is "human", "agent:<service>" or "rig"; Reason is required for backward moves.
 type Transition struct {
 	From   domain.Phase `json:"from"`
 	To     domain.Phase `json:"to"`

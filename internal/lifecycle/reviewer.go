@@ -139,7 +139,7 @@ func (m *Manager) ReviewRecord(ticket, service, kind, text string, data json.Raw
 	case kind == ReviewReplyKind && fromCoder:
 		reply, err := parseReply(data)
 		if err == nil && reply.Status == "question" {
-			m.stopForQuestion(ticket, reply)
+			err = m.stopForQuestion(ticket, reply)
 		}
 		return err
 	case kind == TestResultKind && service == domain.TesterService:
@@ -260,19 +260,22 @@ func (m *Manager) beginRound(id, by string) error {
 // stopForQuestion stops a loop that is waiting on the coder's fixes when the coder
 // asks a person about a finding instead: no round runs on an unanswered question, and
 // the round it ended does not count toward the cap.
-func (m *Manager) stopForQuestion(id string, reply api.ReviewReply) {
+func (m *Manager) stopForQuestion(id string, reply api.ReviewReply) error {
 	l, unlock, err := m.begin(id)
 	if err != nil {
-		return
+		return fmt.Errorf("stop the review loop for the question: %w", err)
 	}
 	defer unlock()
 	r := l.state.Review
 	target, _, _ := reviewers(l.ticket)
 	if r == nil || r.Status != domain.ReviewFixing || len(r.Rounds) == 0 {
-		return
+		return nil
 	}
 	what := ""
-	records, _ := journal.Read(l.dir)
+	records, err := journal.Read(l.dir)
+	if err != nil {
+		return fmt.Errorf("read the journal for the question: %w", err)
+	}
 	findings, _ := roundRecords(records, target.Name, r.Rounds[len(r.Rounds)-1].At, time.Time{})
 	for _, f := range findings {
 		if f.ID == reply.ID {
@@ -286,6 +289,7 @@ func (m *Manager) stopForQuestion(id string, reply api.ReviewReply) {
 	})
 	m.note(l.dir, timeline.ReviewDecided, "rig", "", timeline.ReviewDecidedData{Outcome: "stop", Reason: reason})
 	m.deliver(id, target.Name, "The review loop stopped on your question: "+reason+". Wait for a person.")
+	return nil
 }
 
 // stopReason says why the loop must not run another round: the round cap, the budget,

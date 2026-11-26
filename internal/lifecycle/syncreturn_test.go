@@ -199,3 +199,39 @@ func TestOtherRepliesAndStopsStartANewLoopAsBefore(t *testing.T) {
 		t.Errorf("restart after a person's stop = %+v, %v; want a new loop at round 1", res, err)
 	}
 }
+
+func TestADisagreeStopsAsBeforeAndIsNotAQuestion(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	r.roundWithFinding("a.txt")
+	r.record("svc1", "review.reply", "", map[string]string{"id": "F1", "status": "disagree", "reason": "cannot happen"})
+	r.commit("b.txt", "x\n")
+	r.record("svc1", "review.ready", "", nil)
+	rv := r.review()
+	if rv.Status != domain.ReviewStopped || rv.Asked || rv.Uncounted != 0 || !strings.Contains(rv.Reason, "disagrees") {
+		t.Fatalf("review = %+v", rv)
+	}
+	if res, err := r.lc.ReviewerStart(ctx, api.ReviewerParams{Ticket: "demo"}); err != nil || res.Round != 1 {
+		t.Errorf("start = %+v, %v; want a new loop at round 1", res, err)
+	}
+}
+
+func TestAQuestionOutsideFixingChangesNothing(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	r.commit("a.txt", "x\n")
+	r.record("svc1", "review.ready", "", nil) // round 1 is reviewing
+	if err := r.record("svc1", "review.reply", "", map[string]string{"id": "F1", "status": "question", "reason": "?"}); err != nil {
+		t.Fatal(err)
+	}
+	if rv := r.review(); rv.Status != domain.ReviewReviewing || rv.Asked || rv.Uncounted != 0 {
+		t.Errorf("review = %+v, want the round still running", rv)
+	}
+	// Stopped by a person: a later question does not turn it into a resumable stop.
+	r.record("review", "verdict", "No blocking findings", map[string]int{"round": 1})
+	if _, err := r.lc.ReviewerDecide(ctx, api.ReviewerDecideParams{Ticket: "demo", Outcome: "stop", Reason: "enough"}); err != nil {
+		t.Fatal(err)
+	}
+	r.record("svc1", "review.reply", "", map[string]string{"id": "F1", "status": "question", "reason": "?"})
+	if rv := r.review(); rv.Asked || rv.Uncounted != 0 || rv.By != "human" {
+		t.Errorf("review = %+v", rv)
+	}
+}
