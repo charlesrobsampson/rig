@@ -68,7 +68,7 @@ func (s *Server) dispatch(ctx context.Context, enc *api.Encoder, req api.Request
 	}
 	if req.Method == api.MethodHello {
 		greeted.Store(true)
-		reply(enc, req.ID, api.HelloResult{Protocol: api.ProtocolVersion, Server: "rigd " + s.opts.Version}, nil)
+		reply(enc, req.ID, api.HelloResult{Protocol: api.ProtocolVersion, Server: "rigd " + s.opts.Version, Version: s.opts.Version}, nil)
 		return
 	}
 	if !greeted.Load() {

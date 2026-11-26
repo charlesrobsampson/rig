@@ -175,6 +175,8 @@ type HelloParams struct {
 type HelloResult struct {
 	Protocol int    `json:"protocol"`
 	Server   string `json:"server"`
+	// Version is the daemon's rig build (Server is "rigd " and this; an older daemon sends only Server).
+	Version string `json:"version,omitempty"`
 }
 
 // Compatible reports whether a client can talk to the server that sent this result.

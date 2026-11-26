@@ -466,3 +466,23 @@ func assertOlderDaemon(t *testing.T, err error) {
 		t.Errorf("error = %v, want an unavailable error naming the old daemon, the method and the fix", err)
 	}
 }
+
+func TestVersionMismatchWarnsOnlyForDifferingReleaseBuilds(t *testing.T) {
+	if got := client.VersionMismatch("2.0", "1.0"); !strings.Contains(got, "1.0") || !strings.Contains(got, "2.0") || !strings.Contains(got, "rig daemon stop") {
+		t.Errorf("differing: %q", got)
+	}
+	for _, c := range [][2]string{{"1.0", "1.0"}, {"dev", "1.0"}, {"1.0", "dev"}, {"dev", "dev"}, {"", "1.0"}, {"1.0", ""}} {
+		if got := client.VersionMismatch(c[0], c[1]); got != "" {
+			t.Errorf("%v: %q", c, got)
+		}
+	}
+}
+
+func TestClientKnowsTheDaemonsVersion(t *testing.T) {
+	p := newPaths(t)
+	startDaemon(t, p, nil) // Version: "test"
+	c := mustConnect(t, p)
+	if c.DaemonVersion() != "test" {
+		t.Errorf("DaemonVersion = %q", c.DaemonVersion())
+	}
+}

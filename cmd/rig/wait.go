@@ -22,34 +22,35 @@ const waitRetry = time.Second
 type waitResult struct {
 	// Ticket is the ticket that matched, as it was named ("t1" or "osmo/t1").
 	Ticket  string             `json:"ticket"`
-	Matched string             `json:"matched"` // record, phase_request, phase or review
+	Matched string             `json:"matched"` // record, phase_request, question, phase or review
 	Record  *api.JournalRecord `json:"record,omitempty"`
 	Summary api.TicketSummary  `json:"summary"`
 }
 
 func newWaitCmd(a *app) *cobra.Command {
-	var kind string
-	var phases, reviews []string
-	var request, fresh bool
+	var kinds, phases, reviews []string
+	var request, question, fresh bool
 	var timeout time.Duration
 	cmd := &cobra.Command{
 		Use:   "wait <ticket>...",
 		Short: "Wait until something happens to a ticket (or to any of several)",
 		Long: `Waits until any of the given things is true, prints it, and exits 0; exits 1 on
 --timeout. --record waits for a new journal record of that kind (one left after wait
-started); --phase-request for an agent's open request to move the ticket; --phase for
+started; several kinds, repeated or comma-separated: "--record note,question" ends on
+either); --phase-request for an agent's open request to move the ticket; --question for
+an agent's open question to a person (until a message answers it); --phase for
 the ticket to be in that phase; --review for its review loop to reach that status
 (reviewing, fixing, passed, stopped or awaiting_ready). --phase and --review take several values,
 repeated or comma-separated: "--review passed,stopped" ends on either. States already
-true count at once, except a phase request with --new, which must be made after the
-wait starts (to wait for the next request after answering one).
+true count at once, except a phase request or question with --new, which must be made
+after the wait starts (to wait for the next one after answering).
 
 Several tickets: it ends on the first that matches and names it. A ticket can name its
 vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passed.`,
 		Args: usageArgs(cobra.MinimumNArgs(1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if kind == "" && !request && len(phases) == 0 && len(reviews) == 0 {
-				return usageError(errors.New("say what to wait for: --record, --phase-request, --phase or --review"))
+			if len(kinds) == 0 && !request && !question && len(phases) == 0 && len(reviews) == 0 {
+				return usageError(errors.New("say what to wait for: --record, --phase-request, --question, --phase or --review"))
 			}
 			for _, p := range phases {
 				if !domain.Phase(p).Valid() {
@@ -192,12 +193,17 @@ vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passe
 					switch {
 					case request && s.PhaseRequest != nil && (!fresh || !s.PhaseRequest.At.Before(since)):
 						res.Matched = "phase_request"
+					case question && s.Question != nil && (!fresh || !s.Question.At.Before(since)):
+						res.Matched = "question"
 					case slices.Contains(phases, string(s.Phase)):
 						res.Matched = "phase"
 					case s.Review != nil && slices.Contains(reviews, string(s.Review.Status)):
 						res.Matched = "review"
 					}
-					if res.Matched == "" && kind != "" {
+					for _, kind := range kinds {
+						if res.Matched != "" {
+							break
+						}
 						var j api.JournalListResult
 						if err := tg.c.Call(cmd.Context(), api.MethodJournalList, api.JournalListParams{Ticket: tg.id, Kind: kind}, &j); err != nil {
 							return err
@@ -227,6 +233,8 @@ vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passe
 						fmt.Fprintf(out, "%s %s from %s: %s\n", res.Record.At.Local().Format("15:04:05"), res.Record.Kind, res.Record.Service, res.Record.Text)
 					case "phase_request":
 						fmt.Fprintf(out, "%s asks for %s: %s\n", s.PhaseRequest.Service, s.PhaseRequest.To, s.PhaseRequest.Reason)
+					case "question":
+						fmt.Fprintf(out, "%s asks: %s\n", s.Question.Service, s.Question.Text)
 					case "phase":
 						fmt.Fprintf(out, "phase is %s\n", s.Phase)
 					case "review":
@@ -247,9 +255,10 @@ vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passe
 		},
 	}
 	f := cmd.Flags()
-	f.StringVar(&kind, "record", "", "a journal record of this kind")
+	f.StringSliceVar(&kinds, "record", nil, "a journal record of this kind (several: any of them)")
+	f.BoolVar(&question, "question", false, "an agent's open question to a person")
 	f.BoolVar(&request, "phase-request", false, "an agent's request to move the ticket")
-	f.BoolVar(&fresh, "new", false, "with --phase-request: only a request made after the wait starts")
+	f.BoolVar(&fresh, "new", false, "with --phase-request or --question: only one made after the wait starts")
 	f.StringSliceVar(&phases, "phase", nil, "the ticket being in this phase (several: any of them)")
 	f.StringSliceVar(&reviews, "review", nil, "the review loop reaching this status (several: any of them)")
 	f.DurationVar(&timeout, "timeout", 30*time.Minute, "how long to wait")
