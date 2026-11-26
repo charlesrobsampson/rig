@@ -10,9 +10,6 @@ import (
 	"github.com/charlesrobsampson/rig/internal/timeline"
 )
 
-// QuestionKind is the record kind an agent leaves to ask a person something.
-const QuestionKind = "question"
-
 // AskQuestion records an agent's question as the ticket's open one, so a person sees
 // the ticket waiting. A newer question replaces an older one: the agent has moved on.
 func (m *Manager) AskQuestion(id, service, text string) error {
@@ -42,11 +39,12 @@ func (m *Manager) AskQuestion(id, service, text string) error {
 
 // AnswerQuestion is told of a message a person sent, and delivered, to a service. It
 // closes the open question when that service is the one that asked; anything else
-// leaves it open.
-func (m *Manager) AnswerQuestion(id, service string) {
+// leaves it open. A state that cannot be written is returned, so the caller can say
+// why the question is still open.
+func (m *Manager) AnswerQuestion(id, service string) error {
 	l, unlock, err := m.begin(id)
 	if err != nil {
-		return
+		return err
 	}
 	defer unlock()
 	answered := false
@@ -57,9 +55,13 @@ func (m *Manager) AnswerQuestion(id, service string) {
 		}
 		return nil
 	})
-	if err == nil && answered {
+	if err != nil {
+		return err
+	}
+	if answered {
 		m.note(l.dir, timeline.QuestionAnswered, "human", service, struct{}{})
 	}
+	return nil
 }
 
 // Rework sends a ticket back to implement because a person found something the review

@@ -176,7 +176,11 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 			return lc.ReviewRecord(ticket, service, kind, text, data)
 		}})
 	injector := inject.New(inject.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Readiness: sup, Clock: clk, Timeline: tl,
-		Answered: func(ticket, service string) { lc.AnswerQuestion(ticket, service) }})
+		Answered: func(ticket, service string) {
+			if err := lc.AnswerQuestion(ticket, service); err != nil {
+				logger.Warn("close an answered question", "ticket", ticket, "service", service, "err", err)
+			}
+		}})
 	notifier := &contractnotify.Notifier{Dir: g.TicketsDir(), Sender: injector, Logger: logger}
 	phaseNotifier := phasenotify.New(phasenotify.Options{Sender: injector, Clock: clk, Logger: logger})
 	defer phaseNotifier.Close()

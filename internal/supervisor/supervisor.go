@@ -502,12 +502,15 @@ func (s *Supervisor) Record(ctx context.Context, p api.AgentRecordParams) error 
 // (docs/formats.md §14).
 const TransitionRequestKind = "transition.request"
 
+// QuestionKind is the record kind an agent leaves to ask a person something.
+const QuestionKind = "question"
+
 // act hands a journaled record to whoever acts on its kind.
 func (s *Supervisor) act(ticket, service string, e journal.Entry) error {
 	if e.Kind == TransitionRequestKind {
 		return s.askForPhase(ticket, service, e)
 	}
-	if e.Kind == "question" && s.opts.Question != nil {
+	if e.Kind == QuestionKind && s.opts.Question != nil {
 		return s.opts.Question(ticket, service, e.Text)
 	}
 	if s.opts.Review != nil {

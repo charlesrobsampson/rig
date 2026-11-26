@@ -37,7 +37,9 @@ func TestAQuestionShowsOnTheSummaryUntilAPersonAnswersTheServiceThatAsked(t *tes
 		t.Fatalf("question = %+v", q)
 	}
 
-	f.lc.AnswerQuestion("demo", "svc2") // another service: not an answer
+	if err := f.lc.AnswerQuestion("demo", "svc2"); err != nil { // another service: not an answer
+		t.Fatal(err)
+	}
 	if f.summary("demo").Question == nil {
 		t.Fatal("a message to another service answered the question")
 	}
@@ -47,11 +49,13 @@ func TestAQuestionShowsOnTheSummaryUntilAPersonAnswersTheServiceThatAsked(t *tes
 	if q := f.summary("demo").Question; q == nil || q.Text != "Or drop it?" {
 		t.Fatalf("a newer question did not replace the older: %+v", q)
 	}
-	f.lc.AnswerQuestion("demo", "svc1")
+	if err := f.lc.AnswerQuestion("demo", "svc1"); err != nil {
+		t.Fatal(err)
+	}
 	if q := f.summary("demo").Question; q != nil {
 		t.Fatalf("an answer left the question open: %+v", q)
 	}
-	f.lc.AnswerQuestion("demo", "svc1") // nothing open: nothing recorded
+	_ = f.lc.AnswerQuestion("demo", "svc1") // nothing open: nothing recorded
 
 	entries := readTimeline(t, path)
 	if got := strings.Join(kindsOf(entries), ","); got != "question.asked,question.asked,question.answered" {
@@ -174,5 +178,12 @@ func TestReworkNeedsAFindingAndNamesTheReviewedServiceOfAReviewedTicket(t *testi
 	entries := readTimeline(t, path)
 	if e := entries[len(entries)-1]; e.Kind != tline.ReviewMissed || e.Service != "svc2" {
 		t.Errorf("last = %+v", e)
+	}
+}
+
+func TestAnAnswerThatCannotBeRecordedIsReturned(t *testing.T) {
+	f := newFixture(t, domain.SandboxHost)
+	if err := f.lc.AnswerQuestion("nope", "svc1"); err == nil {
+		t.Error("an unknown ticket was silently ignored")
 	}
 }

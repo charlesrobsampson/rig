@@ -323,6 +323,6 @@ A ticket's journal is what its agents chose to record: feedback about rig or the
 | `push.done` | `{service, mode, pr_url?, files, added, deleted, error?}` | a push was tried for a service (a service already pushed is skipped, not recorded); `error` is set when it failed |
 | `question.asked` | `{text}` | an agent's `question` record was recorded as the open question (`by` is `agent:<service>`; `text` is cut to 200 bytes) |
 | `question.answered` | `{}` | a person's delivered message to the service that asked closed the open question (`by` is `human`) |
-| `review.missed` | `{finding, lens?}` | `rig rework` sent a ticket back with a finding the review did not catch; `service` is the reviewed service (or the only one); `lens` is the kind of reviewer that should have caught it. `finding` is cut to 200 bytes (`phase.moved` has it whole) |
+| `review.missed` | `{finding, lens?}` | `rig rework` sent a ticket back with a finding the review did not catch; `service` is the reviewed service or the ticket's only one, and empty on a several-service ticket with no `review`; `lens` is the kind of reviewer that should have caught it. `finding` is cut to 200 bytes (`phase.moved` has it whole) |
 
 `rig stats` counts review rounds as the `review.round.started` entries of the whole timeline, so a loop that was reset still counts (never fewer than the rounds in `state.json`, which covers tickets older than the timeline). `rig timeline <ticket> [--since <seq>] [--json]` prints it.
