@@ -119,6 +119,10 @@ func TestAgentEventFileJournalsTheFilesRecord(t *testing.T) {
 	if len(got) != 1 || got[0].Kind != "note" || got[0].Text != `it's "quoted"` {
 		t.Errorf("journal = %+v", got)
 	}
+	// a file together with an argument is a bad use: nothing is journaled
+	if _, stderr, code := rig(t, d, "agent-event", "--file", path, `{"kind":"other"}`); code != 0 || stderr != "" {
+		t.Errorf("file and argument: code %d, stderr %q", code, stderr)
+	}
 	// a missing or damaged file is silent and journals nothing more
 	for _, p := range []string{filepath.Join(t.TempDir(), "none.json"), path + ".x"} {
 		if _, stderr, code := rig(t, d, "agent-event", "--file", p); code != 0 || stderr != "" {

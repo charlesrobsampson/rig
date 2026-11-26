@@ -37,14 +37,17 @@ the status line.
 A JSON object ({"kind": "feedback", "text": "...", "data": {...}}) is a record for the
 ticket's journal (see "rig journal"); a badly written one is dropped, still with exit 0.
 
---file <path> reads that one record from a file instead of the argument: write the JSON
+--file <path> reads that one record from a file instead of the argument (give both and nothing is journaled): write the JSON
 with a quoted heredoc (<<'EOF'), so no shell quoting can spoil it, then journal it.`,
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ticket, service := os.Getenv("RIG_TICKET"), os.Getenv("RIG_SERVICE")
-			if file != "" && len(args) == 0 {
-				data, err := io.ReadAll(io.LimitReader(readFileOrNil(file), 1<<20))
+			if file != "" {
+				if len(args) != 0 {
+					return nil // a file and an argument: a bad use, silent like any other
+				}
+				data, err := readRecordFile(file)
 				if err != nil {
 					return nil
 				}
@@ -76,13 +79,14 @@ with a quoted heredoc (<<'EOF'), so no shell quoting can spoil it, then journal 
 	return cmd
 }
 
-// readFileOrNil opens a file for reading; one that cannot be opened reads as empty.
-func readFileOrNil(path string) io.Reader {
+// readRecordFile reads a record file, at most 1 MiB.
+func readRecordFile(path string) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return strings.NewReader("")
+		return nil, err
 	}
-	return f
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, 1<<20))
 }
 
 // reportQuietly sends a hook's report to a running daemon and ignores every failure.
