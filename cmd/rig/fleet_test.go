@@ -438,7 +438,13 @@ func TestFleetWarnsOnlyAboutTheDaemonsItListsAndNamesTheVessel(t *testing.T) {
 	user := os.Getenv("HOME")
 	machine := filepath.Join(user, ".config", "rig", "config.json")
 	os.MkdirAll(filepath.Dir(machine), 0o700)
-	os.WriteFile(machine, []byte(fmt.Sprintf(`{"paths": {"home": %q}}`, filepath.Join(user, "defhome"))), 0o600)
+	// a short path: a unix socket path is limited to 104 bytes on macOS
+	defHome, err := os.MkdirTemp("", "rh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(defHome) })
+	os.WriteFile(machine, []byte(fmt.Sprintf(`{"paths": {"home": %q}}`, defHome)), 0o600)
 	old := version
 	version = "1.0.0"
 	t.Cleanup(func() { version = old })
