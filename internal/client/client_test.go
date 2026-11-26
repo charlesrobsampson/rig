@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -484,5 +485,41 @@ func TestClientKnowsTheDaemonsVersion(t *testing.T) {
 	c := mustConnect(t, p)
 	if c.DaemonVersion() != "test" {
 		t.Errorf("DaemonVersion = %q", c.DaemonVersion())
+	}
+}
+
+// An older daemon answers hello with only "server": the client still learns its version.
+func TestClientReadsAnOldDaemonsVersionFromServer(t *testing.T) {
+	p := newPaths(t)
+	ln, err := net.Listen("unix", p.socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		req, err := api.NewDecoder(conn).ReadRequest()
+		if err != nil {
+			return
+		}
+		raw, _ := json.Marshal(map[string]any{"protocol": api.ProtocolVersion, "server": "rigd 1.0"})
+		resp, _ := api.Success(req.ID, json.RawMessage(raw))
+		api.NewEncoder(conn).Write(resp)
+		io.Copy(io.Discard, conn)
+	}()
+	c, err := connect(t, p, client.Options{Version: "2.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	if c.DaemonVersion() != "1.0" {
+		t.Errorf("DaemonVersion = %q, want 1.0", c.DaemonVersion())
+	}
+	if client.VersionMismatch("2.0", c.DaemonVersion()) == "" {
+		t.Error("an old daemon did not warn")
 	}
 }
