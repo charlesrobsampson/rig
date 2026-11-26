@@ -448,3 +448,16 @@ func TestAPushRecordsTheSizeOfTheChangeEvenWithNoBaseNamed(t *testing.T) {
 		t.Errorf("push record = %+v, want the one-file, one-line change", p)
 	}
 }
+
+func TestPushRefusesABranchThatWouldConflictWithItsBase(t *testing.T) {
+	repo, bare := pushRepo(t)
+	f, _, _ := pushFixture(t, []string{"push-branch"}, repo)
+	repo.Commit("feature-1.txt", "someone else's\n", "the same file lands on main")
+	got, err := runPush(t, f, "")
+	if err != nil || got.Done || !strings.Contains(got.Services[0].Error, "rig sync demo") || !strings.Contains(got.Services[0].Error, "feature-1.txt") {
+		t.Errorf("Push = %+v, %v", got, err)
+	}
+	if remoteHas(t, bare, "rig/demo/svc1") != "" {
+		t.Error("a conflicting branch was pushed")
+	}
+}

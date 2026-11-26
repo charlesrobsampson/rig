@@ -16,6 +16,7 @@ const (
 	MethodConfigGet         = "config.get"
 	MethodTicketList        = "ticket.list"
 	MethodTicketStats       = "ticket.stats"
+	MethodTicketSync        = "ticket.sync"
 	MethodTicketGet         = "ticket.get"
 	MethodTicketRescan      = "ticket.rescan"
 	MethodTicketFile        = "ticket.file"
@@ -56,7 +57,7 @@ var methods = map[string]bool{
 	MethodTicketStop: true, MethodGateList: true, MethodGateApprove: true, MethodPhaseSet: true,
 	MethodTransitionRequest: true, MethodAgentAttach: true, MethodAgentMessage: true,
 	MethodAgentEvent: true, MethodAgentRecord: true, MethodJournalList: true, MethodContractList: true, MethodContractAccept: true,
-	MethodContractReject: true, MethodContractAck: true, MethodContractPropose: true, MethodReviewDiff: true, MethodReviewerStatus: true, MethodTicketStats: true, MethodReviewerStart: true, MethodReviewerDecide: true, MethodPushRun: true, MethodTestsRender: true, MethodTestsStep: true, MethodTestsSignoff: true,
+	MethodContractReject: true, MethodContractAck: true, MethodContractPropose: true, MethodReviewDiff: true, MethodReviewerStatus: true, MethodTicketStats: true, MethodTicketSync: true, MethodReviewerStart: true, MethodReviewerDecide: true, MethodPushRun: true, MethodTestsRender: true, MethodTestsStep: true, MethodTestsSignoff: true,
 	MethodLogsStream: true, MethodEventsSubscribe: true, MethodReconcileRun: true, MethodDaemonStop: true,
 }
 

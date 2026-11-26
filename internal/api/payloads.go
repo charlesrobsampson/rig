@@ -47,6 +47,8 @@ type TicketSummary struct {
 	// spent; absent when none reports cost.
 	CostUSD *float64 `json:"cost_usd,omitempty"`
 	// CreatedAt and DoneAt bound the ticket's time (DoneAt once it moved to done).
+	// Base lists the services whose base branch has moved on since they branched.
+	Base      []BaseInfo `json:"base,omitempty"`
 	CreatedAt *time.Time `json:"created_at,omitempty"`
 	DoneAt    *time.Time `json:"done_at,omitempty"`
 	Error     string     `json:"error,omitempty"`
@@ -782,4 +784,33 @@ type StatsTotals struct {
 type StatsResult struct {
 	Tickets []TicketStats `json:"tickets"`
 	Totals  StatsTotals   `json:"totals"`
+}
+
+// BaseInfo is how one service's branch stands against its base branch.
+type BaseInfo struct {
+	Service   string   `json:"service"`
+	Base      string   `json:"base"`
+	Behind    int      `json:"behind"`
+	Conflicts []string `json:"conflicts,omitempty"`
+}
+
+type SyncParams struct {
+	ID      string `json:"id"`
+	Service string `json:"service,omitempty"`
+}
+
+// SyncService is what syncing one service did.
+type SyncService struct {
+	BaseInfo
+	// Merged is the merge commit; empty when the base had nothing new, or when the
+	// merge conflicted and is left to the agent.
+	Merged string `json:"merged,omitempty"`
+}
+
+type SyncResult struct {
+	Services []SyncService `json:"services"`
+	// Phase is where the ticket is after the sync (a ticket past implement goes back).
+	Phase domain.Phase `json:"phase"`
+	// ReviewStarted: a review round began on the merged work.
+	ReviewStarted bool `json:"review_started,omitempty"`
 }

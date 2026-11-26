@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/charlesrobsampson/rig/internal/api"
+	"github.com/charlesrobsampson/rig/internal/config"
 	"github.com/charlesrobsampson/rig/internal/docker"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/git"
@@ -414,5 +415,85 @@ func TestTheReviewerIsToldWhatPeopleToldTheCoder(t *testing.T) {
 	r2.record("svc1", "review.ready", "", nil)
 	if strings.Contains(r2.last(domain.ReviewerService), "What people told the coder") {
 		t.Error("an empty section was written with no messages")
+	}
+}
+
+func TestSyncMergesAMovedBaseAndStartsAReviewRound(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	r.commit("a.txt", "mine\n")
+	if got := r.lc.BaseStatus(ctx, r.ticketDef(), r.state("demo")); len(got) != 0 {
+		t.Fatalf("a fresh ticket is behind: %+v", got)
+	}
+	r.repo.Commit("other.txt", "theirs\n", "an unrelated change lands on main")
+	got := r.lc.BaseStatus(ctx, r.ticketDef(), r.state("demo"))
+	if len(got) != 1 || got[0].Behind != 1 || len(got[0].Conflicts) != 0 {
+		t.Fatalf("base status = %+v", got)
+	}
+
+	res, err := r.lc.Sync(ctx, api.SyncParams{ID: "demo"})
+	if err != nil || len(res.Services) != 1 || res.Services[0].Merged == "" || !res.ReviewStarted || res.Phase != domain.PhaseImplement {
+		t.Fatalf("sync = %+v, %v", res, err)
+	}
+	if _, err := os.Stat(filepath.Join(r.coder, "other.txt")); err != nil {
+		t.Error("the base's change is not in the coder's checkout")
+	}
+	if msg := r.last("svc1"); !strings.Contains(msg, "rig merged main (1 new commits)") {
+		t.Errorf("the coder was told: %q", msg)
+	}
+	if rv := r.review(); rv.Status != domain.ReviewReviewing {
+		t.Errorf("review = %+v, want a round on the merged work", rv)
+	}
+	if again, err := r.lc.Sync(ctx, api.SyncParams{ID: "demo"}); err != nil || again.Services[0].Behind != 0 || again.Services[0].Merged != "" {
+		t.Errorf("a second sync = %+v, %v", again, err)
+	}
+}
+
+func TestSyncLeavesAConflictToTheCoder(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	r.commit("shared.txt", "mine\n")
+	r.repo.Commit("shared.txt", "theirs\n", "the same file changes on main")
+	if got := r.lc.BaseStatus(ctx, r.ticketDef(), r.state("demo")); len(got) != 1 || len(got[0].Conflicts) != 1 {
+		t.Fatalf("base status = %+v", got)
+	}
+	res, err := r.lc.Sync(ctx, api.SyncParams{ID: "demo"})
+	if err != nil || res.Services[0].Merged != "" || res.ReviewStarted || len(res.Services[0].Conflicts) != 1 {
+		t.Fatalf("sync = %+v, %v", res, err)
+	}
+	if msg := r.last("svc1"); !strings.Contains(msg, "these files conflict: shared.txt") || !strings.Contains(msg, "commit the merge") {
+		t.Errorf("the coder was told: %q", msg)
+	}
+	if out, _ := git.Hardened().Run(ctx, r.coder, "rev-parse", "-q", "--verify", "MERGE_HEAD"); out == "" {
+		t.Error("the merge is not left in progress")
+	}
+	if _, err := r.lc.Sync(ctx, api.SyncParams{ID: "demo"}); apiCode(t, err) != api.CodeBlocked {
+		t.Errorf("a sync over an unresolved merge = %v, want blocked", err)
+	}
+}
+
+// ticketDef is the ticket as rig reads it from ticket.yaml.
+func (r *reviewRig) ticketDef() domain.Ticket {
+	r.t.Helper()
+	tk, err := config.LoadTicket(filepath.Join(r.path, "ticket.yaml"), config.TicketOptions{})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	return tk
+}
+
+func TestSyncingATicketInReviewSendsItBackToImplement(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	r.commit("a.txt", "mine\n")
+	if _, err := r.lc.ReviewerDecide(ctx, api.ReviewerDecideParams{Ticket: "demo", Outcome: "pass", Reason: "checked by hand"}); err != nil {
+		t.Fatal(err)
+	}
+	r.mustSet("demo", domain.PhaseTest, "")
+	r.mustSet("demo", domain.PhaseReview, "")
+	r.repo.Commit("other.txt", "theirs\n", "main moves on")
+	res, err := r.lc.Sync(ctx, api.SyncParams{ID: "demo"})
+	if err != nil || res.Phase != domain.PhaseImplement || r.state("demo").Phase != domain.PhaseImplement {
+		t.Fatalf("sync = %+v, %v; phase %s", res, err, r.state("demo").Phase)
+	}
+	if !res.ReviewStarted {
+		t.Error("no review round on the merged work")
 	}
 }

@@ -176,6 +176,9 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		Deliver:            phaseNotifier.Deliver,
 	})
 	defer lc.Close()
+	reg.WithBase(func(t domain.Ticket, st state.State) []api.BaseInfo {
+		return lc.BaseStatus(context.Background(), t, st)
+	})
 	daemon.RegisterLifecycleHandlers(srv, lc)
 	summaries.SetInputs(summaryInputs{lc: lc, reg: reg})
 	reconciler = reconcile.New(reconcile.Options{Dir: g.TicketsDir(), States: states, Docker: dk, Backend: backend, Bus: bus, Clock: clk, Logger: logger, Busy: lc.Busy})
