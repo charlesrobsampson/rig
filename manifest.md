@@ -218,7 +218,7 @@ rig/
 * `rig review <id>` open `delta` diff
 * `rig push <id>` run push policy
 * `rig logs <id>` stream logs
-* `rig events` print daemon events as they happen
+* `rig watch [ticket...] [--since seq]` (alias `rig events`) print daemon events, or those tickets' timeline entries after a replay, as they happen
 * `rig journal [id] [--kind feedback] [--service s] [--limit n]` records agents left (feedback on rig or their environment, results); every ticket when no id
 * `rig daemon start|status|stop|run` manage the background daemon (`run` is the foreground form the others re-exec)
 * `rig config show` print the effective global config

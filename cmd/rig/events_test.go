@@ -158,3 +158,100 @@ func TestEventsExitsWithAnErrorWhenTheDaemonGoesAway(t *testing.T) {
 		t.Errorf("exit code %d, stderr %q; want 4 and a message that the daemon went away", code, msg)
 	}
 }
+
+// watchWith runs `rig watch` against the in-process daemon until stop is called.
+func watchWith(t *testing.T, d deps, args ...string) (stdout *lockedBuffer, stop func() int) {
+	t.Helper()
+	stdout = &lockedBuffer{}
+	stderr := &lockedBuffer{}
+	defer waitFor(t, "the subscription", func() bool {
+		return strings.Contains(stderr.String(), "listening") || strings.Contains(stdout.String(), "subscribed")
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	code := make(chan int, 1)
+	go func() { code <- run(ctx, append([]string{"watch"}, args...), stdout, stderr, d) }()
+	return stdout, func() int {
+		cancel()
+		select {
+		case c := <-code:
+			return c
+		case <-time.After(5 * time.Second):
+			t.Fatal("rig watch did not exit")
+			return -1
+		}
+	}
+}
+
+func TestWatchATicketReplaysFromSinceThenShowsEntriesLive(t *testing.T) {
+	_, d, repo, _ := newEnvWithTerminal(t)
+	newTicket(t, d, "demo", repo)
+	newTicket(t, d, "other", repo)
+	rig(t, d, "start", "demo", "--sandbox", "host")
+	rig(t, d, "start", "other", "--sandbox", "host")
+	var res api.TimelineListResult
+	tl, _, _ := rig(t, d, "timeline", "demo", "--json")
+	if err := json.Unmarshal([]byte(tl), &res); err != nil || len(res.Entries) == 0 {
+		t.Fatalf("timeline %q: %v", tl, err)
+	}
+
+	stdout, stop := watchWith(t, d, "demo", "--since", "0", "--json")
+	waitFor(t, "the replay", func() bool { return strings.Count(stdout.String(), `"timeline.entry"`) >= len(res.Entries) })
+	t.Setenv("RIG_TICKET", "other")
+	t.Setenv("RIG_SERVICE", "svc1")
+	rig(t, d, "agent-event", `{"kind":"note","text":"not for demo"}`)
+	t.Setenv("RIG_TICKET", "demo")
+	rig(t, d, "agent-event", `{"kind":"note","text":"for demo"}`)
+	waitFor(t, "the live entry", func() bool { return strings.Contains(stdout.String(), "for demo") })
+	if code := stop(); code != 0 {
+		t.Errorf("exit %d", code)
+	}
+	var seqs []int
+	for _, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n") {
+		var ev api.Event
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if ev.Type != api.EventTimelineEntry {
+			continue
+		}
+		if ev.Ticket != "demo" {
+			t.Errorf("an event of %s came through", ev.Ticket)
+		}
+		var td api.TimelineEntryData
+		ev.DecodeData(&td)
+		seqs = append(seqs, td.Seq)
+	}
+	for i, s := range seqs {
+		if s != i+1 {
+			t.Fatalf("seqs %v: want 1, 2, 3, ... once each", seqs)
+		}
+	}
+	if strings.Contains(stdout.String(), "not for demo") {
+		t.Error("another ticket's entry was shown")
+	}
+}
+
+func TestWatchWithoutSinceShowsOnlyNewEntries(t *testing.T) {
+	_, d, repo, _ := newEnvWithTerminal(t)
+	newTicket(t, d, "demo", repo)
+	rig(t, d, "start", "demo", "--sandbox", "host")
+	stdout, stop := watchWith(t, d, "demo")
+	t.Setenv("RIG_TICKET", "demo")
+	t.Setenv("RIG_SERVICE", "svc1")
+	rig(t, d, "agent-event", `{"kind":"note","text":"fresh"}`)
+	waitFor(t, "the live entry", func() bool { return strings.Contains(stdout.String(), "fresh") })
+	stop()
+	if strings.Contains(stdout.String(), "ticket.started") {
+		t.Errorf("the past was replayed without --since:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "journal.recorded") || !strings.Contains(stdout.String(), "demo") {
+		t.Errorf("output: %s", stdout.String())
+	}
+}
+
+func TestWatchSinceNeedsATicket(t *testing.T) {
+	rigEnv(t)
+	if _, _, code := rig(t, deps{}, "watch", "--since", "3"); code != 2 {
+		t.Errorf("code %d, want 2", code)
+	}
+}
