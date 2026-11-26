@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -47,16 +48,8 @@ has been pushed.`,
 					return err
 				}
 			} else {
-				tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-				fmt.Fprintln(tw, "SERVICE\tMODE\tRESULT\tDETAIL")
-				for _, s := range res.Services {
-					fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", s.Service, s.Mode, pushResultWord(s), pushDetail(s))
-				}
-				if err := tw.Flush(); err != nil {
+				if err := renderPush(cmd.OutOrStdout(), res, p.ID); err != nil {
 					return err
-				}
-				if res.Done {
-					fmt.Fprintf(cmd.OutOrStdout(), "\n%s: every service is pushed; the ticket is done\n", p.ID)
 				}
 			}
 			if failed > 0 {
@@ -91,4 +84,33 @@ func pushDetail(s api.PushServiceResult) string {
 		return s.Ref
 	}
 	return ""
+}
+
+// renderPush prints the result table, then one line per service whose note the table
+// does not already show (in pr mode DETAIL holds the pull request link, and an error
+// takes its place), then the done line.
+func renderPush(w io.Writer, res api.PushRunResult, id string) error {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "SERVICE\tMODE\tRESULT\tDETAIL")
+	for _, s := range res.Services {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", s.Service, s.Mode, pushResultWord(s), pushDetail(s))
+	}
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	first := true
+	for _, s := range res.Services {
+		if s.Note == "" || pushDetail(s) == s.Note {
+			continue
+		}
+		if first {
+			fmt.Fprintln(w)
+			first = false
+		}
+		fmt.Fprintf(w, "%s: %s\n", s.Service, s.Note)
+	}
+	if res.Done {
+		fmt.Fprintf(w, "\n%s: every service is pushed; the ticket is done\n", id)
+	}
+	return nil
 }

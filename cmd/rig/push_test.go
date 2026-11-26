@@ -157,3 +157,37 @@ func TestPushErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderPushShowsNotesUnderTheTable(t *testing.T) {
+	note := "master has moved on by 3 commits; they merge without conflicts"
+	res := api.PushRunResult{Services: []api.PushServiceResult{
+		{Service: "a", Mode: domain.PushPR, Pushed: true, PRURL: "https://github.com/acme/a/pull/1", Note: note},
+		{Service: "b", Mode: domain.PushPR, Pushed: true, PRURL: "https://github.com/acme/b/pull/2"},
+		{Service: "c", Mode: domain.PushNone, Note: "just a note"},
+	}}
+	var out strings.Builder
+	if err := renderPush(&out, res, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	if !strings.Contains(s, "\na: "+note+"\n") {
+		t.Errorf("the note is missing:\n%s", s)
+	}
+	if strings.Contains(s, "b: ") {
+		t.Errorf("b has no note:\n%s", s)
+	}
+	if strings.Count(s, "just a note") != 1 {
+		t.Errorf("a note shown as DETAIL must not repeat:\n%s", s)
+	}
+}
+
+func TestRenderPushWithoutNotesAddsNoLines(t *testing.T) {
+	res := api.PushRunResult{Services: []api.PushServiceResult{{Service: "a", Mode: domain.PushPR, Pushed: true, PRURL: "https://github.com/acme/a/pull/1"}}}
+	var out strings.Builder
+	if err := renderPush(&out, res, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(out.String(), "\n"); n != 2 {
+		t.Errorf("want header and one row, got %d lines:\n%s", n, out.String())
+	}
+}
