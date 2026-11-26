@@ -184,7 +184,9 @@ func TestRenderPushShowsNotesUnderTheTable(t *testing.T) {
 func TestRenderPushWithoutNotesAddsNoLines(t *testing.T) {
 	res := api.PushRunResult{Services: []api.PushServiceResult{{Service: "a", Mode: domain.PushPR, Pushed: true, PRURL: "https://github.com/acme/a/pull/1"}}}
 	var out strings.Builder
-	renderPush(&out, res, "demo")
+	if err := renderPush(&out, res, "demo"); err != nil {
+		t.Fatal(err)
+	}
 	if n := strings.Count(out.String(), "\n"); n != 2 {
 		t.Errorf("want header and one row, got %d lines:\n%s", n, out.String())
 	}
