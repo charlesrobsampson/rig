@@ -436,15 +436,10 @@ func TestTheBackgroundLoopChecksAtOnceAndEveryInterval(t *testing.T) {
 
 	waitFor := func(what string, ok func() bool) {
 		t.Helper()
-		deadline := time.Now().Add(3 * time.Second)
-		for time.Now().Before(deadline) {
+		testkit.Eventually(t, what, func() bool {
 			f.clock.Advance(time.Minute)
-			if ok() {
-				return
-			}
-			time.Sleep(5 * time.Millisecond)
-		}
-		t.Fatalf("timed out waiting for %s", what)
+			return ok()
+		})
 	}
 	f.dk.RemoveContainer(ctx, r.svc.ID, true)
 	waitFor("the loop to notice the killed container", func() bool { return len(f.r.Drift("demo")) == 1 })

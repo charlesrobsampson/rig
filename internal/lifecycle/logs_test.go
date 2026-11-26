@@ -2,6 +2,7 @@ package lifecycle_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -177,12 +178,7 @@ func TestFollowStreamsNewLinesFromEveryContainerUntilCancelled(t *testing.T) {
 	}
 	wait := func(want string) {
 		t.Helper()
-		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
-			if seen(want) {
-				return
-			}
-		}
-		t.Fatalf("never saw %q; got %v", want, got)
+		testkit.Eventually(t, fmt.Sprintf("%q in the output", want), func() bool { return seen(want) })
 	}
 	wait("svc1|before")
 	dk.Print("rig-demo-dep-db", "db is up")

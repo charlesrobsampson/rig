@@ -60,15 +60,8 @@ func TestTheFakeAgentReceivesTheExactTextThroughRealTmux(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "[rig] " + text
-	deadline := time.Now().Add(10 * time.Second)
-	for {
+	testkit.Eventually(t, fmt.Sprintf("the agent to receive %q", want), func() bool {
 		raw, _ := os.ReadFile(received)
-		if strings.TrimRight(string(raw), "\n") == want {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the agent received %q, want %q", raw, want)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+		return strings.TrimRight(string(raw), "\n") == want
+	})
 }

@@ -100,7 +100,7 @@ func dial(t *testing.T, path string) *client {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close() })
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	testkit.GuardConn(conn)
 	return &client{conn: conn, enc: api.NewEncoder(conn), dec: api.NewDecoder(conn)}
 }
 
@@ -345,7 +345,7 @@ func TestConcurrentClients(t *testing.T) {
 				return
 			}
 			defer conn.Close()
-			conn.SetDeadline(time.Now().Add(5 * time.Second))
+			testkit.GuardConn(conn)
 			c := &client{conn: conn, enc: api.NewEncoder(conn), dec: api.NewDecoder(conn)}
 			if resp := c.call(t, api.MethodHello, api.HelloParams{Client: "c"}); resp.Err() != nil {
 				t.Error(resp.Err())

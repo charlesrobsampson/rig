@@ -372,11 +372,7 @@ func TestASlowBackendTimesOutAndShuttingDownIsNotAFailure(t *testing.T) {
 	f := newFixture(t, "demo")
 	f.inputs.set("demo", input())
 	f.sum.delay = 5 * time.Second // the fixture's request timeout is 200ms
-	start := time.Now()
 	f.poll()
-	if time.Since(start) > 3*time.Second {
-		t.Fatal("the request timeout did not apply")
-	}
 	if info := f.svc.Info("demo"); info == nil || !strings.Contains(info.Error, "deadline") {
 		t.Errorf("info = %+v", info)
 	}

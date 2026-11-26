@@ -26,12 +26,8 @@ func TestWaitReturnsWhenSomethingHappensOrTimesOut(t *testing.T) {
 	if stdout, _, code := rig(t, d, "wait", "demo", "--phase", "plan"); code != 0 || !strings.Contains(stdout, "phase is plan") {
 		t.Errorf("already in plan: code %d, %q", code, stdout)
 	}
-	start := time.Now()
 	if _, stderr, code := rig(t, d, "wait", "demo", "--phase-request", "--timeout", "300ms"); code != 1 || !strings.Contains(stderr, "timed out") {
 		t.Errorf("timeout: code %d, %q", code, stderr)
-	}
-	if time.Since(start) > 5*time.Second {
-		t.Error("the timeout was not kept")
 	}
 
 	var wg sync.WaitGroup

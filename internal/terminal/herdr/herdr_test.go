@@ -338,16 +338,10 @@ esac
 
 func waitForFile(t *testing.T, path string) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if _, err := os.Stat(path); err == nil {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for %s", path)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	testkit.Eventually(t, path, func() bool {
+		_, err := os.Stat(path)
+		return err == nil
+	})
 }
 
 func TestReadyStartsTheServerOnceAndFindsItsSocket(t *testing.T) {

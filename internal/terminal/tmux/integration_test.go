@@ -5,6 +5,7 @@ package tmux_test
 import (
 	"context"
 	"fmt"
+	"github.com/charlesrobsampson/rig/internal/testkit"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,12 +55,7 @@ func realTmux(t *testing.T) *tmux.Backend {
 
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		if cond() {
-			return
-		}
-	}
-	t.Fatalf("timed out waiting for %s", what)
+	testkit.Eventually(t, what, cond)
 }
 
 func TestAFinishedPaneIsKeptWithItsExitStatus(t *testing.T) {

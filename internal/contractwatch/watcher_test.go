@@ -315,14 +315,13 @@ func TestRunPollsOnTheClockAndStopsWhenCancelled(t *testing.T) {
 	done := make(chan struct{})
 	go func() { f.w.Run(ctx); close(done) }()
 
-	deadline := time.Now().Add(5 * time.Second)
-	for !f.state("demo").Contract.Pending {
-		if time.Now().After(deadline) {
-			t.Fatal("the running watcher never noticed the proposal")
+	testkit.Eventually(t, "the running watcher to notice the proposal", func() bool {
+		if f.state("demo").Contract.Pending {
+			return true
 		}
 		f.clock.Advance(100 * time.Millisecond)
-		time.Sleep(time.Millisecond)
-	}
+		return false
+	})
 	cancel()
 	select {
 	case <-done:
