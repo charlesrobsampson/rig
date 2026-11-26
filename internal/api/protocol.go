@@ -51,6 +51,7 @@ const (
 	MethodEventsSubscribe   = "events.subscribe"
 	MethodReconcileRun      = "reconcile.run"
 	MethodDaemonStop        = "daemon.stop"
+	MethodDaemonBusy        = "daemon.busy"
 )
 
 var methods = map[string]bool{
@@ -60,7 +61,7 @@ var methods = map[string]bool{
 	MethodTransitionRequest: true, MethodTicketRework: true, MethodAgentAttach: true, MethodAgentMessage: true,
 	MethodAgentEvent: true, MethodAgentRecord: true, MethodJournalList: true, MethodTimelineList: true, MethodContractList: true, MethodContractAccept: true,
 	MethodContractReject: true, MethodContractAck: true, MethodContractPropose: true, MethodReviewDiff: true, MethodReviewerStatus: true, MethodTicketStats: true, MethodTicketSync: true, MethodReviewerStart: true, MethodReviewerDecide: true, MethodPushRun: true, MethodTestsRender: true, MethodTestsStep: true, MethodTestsSignoff: true,
-	MethodLogsStream: true, MethodEventsSubscribe: true, MethodReconcileRun: true, MethodDaemonStop: true,
+	MethodLogsStream: true, MethodEventsSubscribe: true, MethodReconcileRun: true, MethodDaemonStop: true, MethodDaemonBusy: true,
 }
 
 func KnownMethod(m string) bool { return methods[m] }

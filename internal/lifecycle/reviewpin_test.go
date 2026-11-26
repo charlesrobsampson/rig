@@ -478,3 +478,27 @@ func TestReviewStaleSaysWhenThePassedCommitIsBehindTheBranch(t *testing.T) {
 		t.Error("a pass with no commit is stale")
 	}
 }
+
+func TestInFlightListsTicketsWithAnOperationOrARoundStarting(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	if got := r.lc.InFlight(); len(got) != 0 {
+		t.Fatalf("an idle manager reports %+v", got)
+	}
+	unlock := r.lc.Hold("demo")
+	got := r.lc.InFlight()
+	unlock()
+	if len(got) != 1 || got[0].Ticket != "demo" || !strings.Contains(got[0].Doing, "start, stop or sync") {
+		t.Fatalf("a held ticket = %+v", got)
+	}
+	r.commit("a.txt", "mine\n")
+	if err := r.lc.BeginRound("demo", "agent:svc1"); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.lc.InFlight(); len(got) != 1 || got[0].Ticket != "demo" || !strings.Contains(got[0].Doing, "review round") {
+		t.Fatalf("a round starting = %+v", got)
+	}
+	r.lc.RunRound(ctx, "demo")
+	if got := r.lc.InFlight(); len(got) != 0 {
+		t.Errorf("after the round was pinned: %+v", got)
+	}
+}

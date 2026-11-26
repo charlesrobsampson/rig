@@ -43,7 +43,10 @@ the ticket to be in that phase; --review for its review loop to reach that statu
 (reviewing, fixing, passed, stopped or awaiting_ready). --phase and --review take several values,
 repeated or comma-separated: "--review passed,stopped" ends on either. States already
 true count at once, except a phase request or question with --new, which must be made
-after the wait starts (to wait for the next one after answering).
+after the wait starts (to wait for the next one after answering). --new also makes
+--review end only on a verdict reached after the wait started: a later round's, or a later
+decision on the same round, not the one already standing. A review that reads awaiting_ready
+because the daemon restarted keeps its old time, so --new does not end on it.
 
 Several tickets: it ends on the first that matches and names it. A ticket can name its
 vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passed.`,
@@ -197,7 +200,7 @@ vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passe
 						res.Matched = "question"
 					case slices.Contains(phases, string(s.Phase)):
 						res.Matched = "phase"
-					case s.Review != nil && slices.Contains(reviews, string(s.Review.Status)):
+					case s.Review != nil && slices.Contains(reviews, string(s.Review.Status)) && (!fresh || !s.Review.At.Before(since)):
 						res.Matched = "review"
 					}
 					for _, kind := range kinds {
@@ -258,7 +261,7 @@ vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passe
 	f.StringSliceVar(&kinds, "record", nil, "a journal record of this kind (several: any of them)")
 	f.BoolVar(&question, "question", false, "an agent's open question to a person")
 	f.BoolVar(&request, "phase-request", false, "an agent's request to move the ticket")
-	f.BoolVar(&fresh, "new", false, "with --phase-request or --question: only one made after the wait starts")
+	f.BoolVar(&fresh, "new", false, "with --phase-request, --question or --review: only one made after the wait starts")
 	f.StringSliceVar(&phases, "phase", nil, "the ticket being in this phase (several: any of them)")
 	f.StringSliceVar(&reviews, "review", nil, "the review loop reaching this status (several: any of them)")
 	f.DurationVar(&timeout, "timeout", 30*time.Minute, "how long to wait")

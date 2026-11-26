@@ -203,7 +203,7 @@ func (r *Registry) load(id string) api.TicketGetResult {
 			if status == domain.ReviewReviewing && rv.Commit == "" && (r.roundPending == nil || !r.roundPending(id)) {
 				status = domain.ReviewAwaitingReady
 			}
-			res.Summary.Review = &api.ReviewSummary{Status: status, Round: rv.Round, Reason: rv.Reason}
+			res.Summary.Review = &api.ReviewSummary{Status: status, Round: rv.Round, Reason: rv.Reason, At: rv.At}
 			if rv.Status == domain.ReviewPassed && rv.Commit != "" && r.reviewStale != nil && res.Ticket != nil {
 				res.Summary.Review.Stale = r.reviewStale(*res.Ticket, st)
 			}

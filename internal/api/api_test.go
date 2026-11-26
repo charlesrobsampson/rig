@@ -181,7 +181,7 @@ func TestEveryDocumentedMethodIsKnownAndOnlyStreamingOnesStream(t *testing.T) {
 		"ticket.start", "ticket.stop", "gate.list", "gate.approve", "phase.set", "transition.request",
 		"agent.attach", "agent.message", "agent.event", "contract.list", "contract.accept",
 		"contract.reject", "contract.ack", "contract.propose", "review.diff", "push.run", "tests.render", "tests.step", "tests.signoff", "logs.stream", "events.subscribe",
-		"reconcile.run", "daemon.stop",
+		"reconcile.run", "daemon.stop", "daemon.busy",
 	}
 	for _, m := range documented {
 		if !api.KnownMethod(m) {

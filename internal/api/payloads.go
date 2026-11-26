@@ -293,6 +293,8 @@ type ReviewSummary struct {
 	Status domain.ReviewStatus `json:"status"`
 	Round  int                 `json:"round"`
 	Reason string              `json:"reason,omitempty"`
+	// At is when the loop last changed: a round starting, or a pass, stop or other decision.
+	At time.Time `json:"at,omitzero"`
 	// Stale: the review passed one commit and the reviewed branch has moved past it.
 	Stale bool `json:"stale,omitempty"`
 }
@@ -882,4 +884,15 @@ type TimelineEntryData struct {
 	Ticket string        `json:"ticket"`
 	Seq    int           `json:"seq"`
 	Entry  TimelineEntry `json:"entry"`
+}
+
+// DaemonBusyResult lists what the daemon is part way through, which a restart would cut off.
+type DaemonBusyResult struct {
+	Tickets []InFlight `json:"tickets"`
+}
+
+// InFlight is one ticket with work under way and what that work is.
+type InFlight struct {
+	Ticket string `json:"ticket"`
+	Doing  string `json:"doing"`
 }
