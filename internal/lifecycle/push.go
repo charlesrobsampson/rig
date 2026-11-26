@@ -14,6 +14,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/policy"
 	"github.com/charlesrobsampson/rig/internal/state"
+	"github.com/charlesrobsampson/rig/internal/timeline"
 )
 
 // Push runs the push step of a ticket in the push phase: each service is published the
@@ -63,6 +64,7 @@ func (m *Manager) Push(ctx context.Context, p api.PushRunParams) (api.PushRunRes
 		if err := m.opts.States.SetPush(l.statePath, svc.Name, record); err != nil {
 			out.Status, out.Error = domain.PushFailed, fmt.Sprintf("record the result: %v", err)
 		}
+		m.note(l.dir, timeline.PushDone, "human", svc.Name, timeline.PushDoneData{Service: svc.Name, Mode: string(out.Mode), PRURL: out.PRURL, Files: change.Files, Added: change.Added, Deleted: change.Deleted, Error: out.Error})
 		res.Services = append(res.Services, out)
 	}
 

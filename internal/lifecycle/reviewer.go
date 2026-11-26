@@ -19,6 +19,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/policy"
 	"github.com/charlesrobsampson/rig/internal/state"
 	"github.com/charlesrobsampson/rig/internal/terminal"
+	"github.com/charlesrobsampson/rig/internal/timeline"
 )
 
 // The record kinds of a review loop (docs/formats.md §14).
@@ -188,9 +189,13 @@ func (m *Manager) beginRound(id, by string) error {
 	if !newLoop {
 		if reason := m.stopReason(l, target.Name, *r, spent); reason != "" {
 			m.setReview(l, func(r *state.Review) { r.Status, r.Reason, r.By = domain.ReviewStopped, reason, "rig" })
+			m.note(l.dir, timeline.ReviewDecided, "rig", "", timeline.ReviewDecidedData{Outcome: "stop", Reason: reason})
 			m.deliver(id, target.Name, "The review loop stopped: "+reason+". Wait for a person.")
 			return nil
 		}
+	}
+	if newLoop && r != nil {
+		m.note(l.dir, timeline.ReviewLoopEnded, by, "", timeline.ReviewLoopEndedData{Rounds: len(r.Rounds), Status: string(r.Status)})
 	}
 	m.setReview(l, func(r *state.Review) {
 		if newLoop {
@@ -243,6 +248,7 @@ func (m *Manager) runRound(ctx context.Context, id string) {
 	fail := func(err error) {
 		reason := "round " + fmt.Sprint(r.Round) + " could not start: " + err.Error()
 		m.setReview(l, func(r *state.Review) { r.Status, r.Reason, r.By = domain.ReviewStopped, reason, "rig" })
+		m.note(l.dir, timeline.ReviewDecided, "rig", "", timeline.ReviewDecidedData{Outcome: "stop", Reason: reason})
 		m.deliver(id, target.Name, "The review loop stopped: "+reason+". Wait for a person.")
 	}
 	dir := reviewerDir(l.dir)
@@ -267,6 +273,7 @@ func (m *Manager) runRound(ctx context.Context, id string) {
 		r.Commit, r.Base = sha, base
 		r.Rounds[len(r.Rounds)-1].Commit = sha
 	})
+	m.note(l.dir, timeline.ReviewRoundStarted, "rig", "", timeline.ReviewRoundStartedData{Round: r.Round, Commit: sha})
 	m.deliver(id, domain.ReviewerService, m.roundBrief(l, *r, sha, base, target.Name))
 	m.deliver(id, target.Name, fmt.Sprintf("Review round %d started on your commit %s. Wait for the findings; what you commit meanwhile is reviewed next round.", r.Round, short(sha)))
 }
@@ -396,19 +403,28 @@ func (m *Manager) closeRound(id string, data json.RawMessage) error {
 		}
 	}
 	var open, nits []api.ReviewFinding
+	closed := timeline.ReviewRoundClosedData{Round: r.Round, Verdict: timeline.Excerpt(verdict)}
 	for _, f := range findings {
-		if f.Severity == "nit" {
+		switch f.Severity {
+		case "nit":
 			nits = append(nits, f)
-		} else {
+			closed.Nit++
+		case "should-fix":
 			open = append(open, f)
+			closed.ShouldFix++
+		default:
+			open = append(open, f)
+			closed.Blocking++
 		}
 	}
+	m.note(l.dir, timeline.ReviewRoundClosed, "agent:"+domain.ReviewerService, domain.ReviewerService, closed)
 	if len(open) == 0 {
 		reason := fmt.Sprintf("round %d: no blocking or should-fix findings", r.Round)
 		m.setReview(l, func(r *state.Review) {
 			r.Status, r.Reason, r.By = domain.ReviewPassed, reason, domain.ReviewerService
 			r.Rounds[len(r.Rounds)-1].Verdict = verdict
 		})
+		m.note(l.dir, timeline.ReviewDecided, "agent:"+domain.ReviewerService, domain.ReviewerService, timeline.ReviewDecidedData{Outcome: "pass", Reason: reason})
 		text := fmt.Sprintf("The review passed in round %d. Nothing more to do for it; wait to be moved on.", r.Round)
 		if len(nits) > 0 {
 			text += "\n\nNits, for your judgement only:" + listFindings(nits)
@@ -641,6 +657,7 @@ func (m *Manager) ReviewerDecide(ctx context.Context, p api.ReviewerDecideParams
 		return api.ReviewerStatus{}, invalid("ticket %q has no review in its ticket.yaml", p.Ticket)
 	}
 	m.setReview(l, func(r *state.Review) { r.Status, r.Reason, r.By = outcome, reason, "human" })
+	m.note(l.dir, timeline.ReviewDecided, "human", "", timeline.ReviewDecidedData{Outcome: p.Outcome, Reason: reason})
 	unlock()
 	if outcome == domain.ReviewPassed {
 		m.deliver(p.Ticket, target.Name, "A person passed the review: "+reason+". Wait to be moved on.")

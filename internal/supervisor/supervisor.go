@@ -27,14 +27,17 @@ import (
 	"github.com/charlesrobsampson/rig/internal/journal"
 	"github.com/charlesrobsampson/rig/internal/state"
 	"github.com/charlesrobsampson/rig/internal/terminal"
+	"github.com/charlesrobsampson/rig/internal/timeline"
 )
 
 type Options struct {
-	Dir      string // the tickets directory
-	States   *state.Manager
-	Backend  terminal.Backend
-	Bus      *events.Bus
-	Clock    clock.Clock // nil means the real clock
+	Dir     string // the tickets directory
+	States  *state.Manager
+	Backend terminal.Backend
+	Bus     *events.Bus
+	Clock   clock.Clock // nil means the real clock
+	// Timeline, when set, gets a journal.recorded entry for every record journaled.
+	Timeline *timeline.Log
 	Logger   *slog.Logger
 	Interval time.Duration // between polls (default 2s)
 	// HookTTL is how long a hook report outranks the screen guess (default 5m).
@@ -451,6 +454,8 @@ func (s *Supervisor) appendRecord(ticketDir, ticket, service string, source api.
 		s.opts.Logger.Warn("journal a record", "ticket", ticket, "service", service, "err", err)
 		return err
 	}
+	s.opts.Timeline.Append(ticketDir, timeline.Entry{Kind: timeline.JournalRecorded, By: recordedBy(source, service), Service: service,
+		Data: timeline.Data(timeline.JournalRecordedData{Kind: e.Kind, Text: timeline.Excerpt(e.Text)})})
 	if s.opts.Bus != nil {
 		s.opts.Bus.Publish(api.EventAgentRecord, ticket, service, api.AgentRecordData{Kind: e.Kind, Text: e.Text})
 	}
@@ -600,4 +605,13 @@ func lastOfEachKind(lines []string) []string {
 		out = append(out, lastCost)
 	}
 	return out
+}
+
+// recordedBy says who wrote a journal record: the agent, or rig for the record it
+// writes itself when it refuses one.
+func recordedBy(source api.JournalSource, service string) string {
+	if source == api.JournalSourceRig {
+		return "rig"
+	}
+	return "agent:" + service
 }

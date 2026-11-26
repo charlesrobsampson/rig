@@ -50,12 +50,13 @@ The exact shapes that every part of rig shares. `manifest.md` says *what* and *w
 ├── .rig-claude/<svc>/ # the agent's own Claude Code configuration (`CLAUDE_CONFIG_DIR`, §13): every container agent, and a host agent with a credential profile
 ├── .rig-agent-config/<svc>/ # rig-written copy of the agent configuration templates (`agent_config`, §13), rebuilt at every launch; mounted read-only at `/rig/agent-config` in a container
 ├── journal.jsonl      # rig-written journal of agent records, stamped by rig (§14); never mounted into a container
+├── timeline.jsonl     # rig-written, append-only: every change to the ticket once, in order, numbered from 1 (§15); never mounted into a container
 ├── journal.offsets.json # rig-written: how far into each service's events.log has been journaled (§14)
 ├── review/            # the reviewer's own clone, made again from the reviewed service's commit every round (`review`, §4); removed at stop
 ├── messages.jsonl     # rig-written log of messages typed into agents (`rig msg`, and rig's own notices with from "rig"): {at, service, from, text, delivered, reason?}
 └── <service path>/    # checkout (default `./<service name>`): isolated shared clone in container mode, git worktree in host mode
 ```
-`state.json` and `journal.offsets.json` are the only files rig rewrites; it also appends to `messages.jsonl` and `journal.jsonl`, and creates the stubs of `rig new`. Agents must never edit `state.json` or `ticket.yaml`. `store.json` is a rebuildable cache (see manifest §1, principle 4).
+`state.json` and `journal.offsets.json` are the only files rig rewrites; it also appends to `messages.jsonl`, `journal.jsonl` and `timeline.jsonl`, and creates the stubs of `rig new`. Agents must never edit `state.json` or `ticket.yaml`. `store.json` is a rebuildable cache (see manifest §1, principle 4).
 
 ## 4. `ticket.yaml`
 Shape per manifest §5, plus:
@@ -175,6 +176,7 @@ Error codes: `invalid`, `not_found`, `conflict`, `blocked` (gate/dirty/limit; `e
 | `agent.event` | agent hook reports a state (`ready\|working\|blocked\|idle\|exited`) for a ticket/service; or `{state: "cost", cost_usd}`, the harness's running cost for the agent session (0 to 1,000,000; anything else is `invalid`), which is recorded in `services.<name>.agent.cost` `{usd, at}` without touching the agent's state and is announced as `agent.cost` only when the displayed cents change |
 | `agent.record` | `{ticket, service, kind, text?, data?}` -> `{}`: a host agent adds a record to its ticket's journal (§14). The daemon stamps `at` and `source: "host"`. `invalid` for a bad kind, text or data, or a bad ticket id; `not_found` for an unknown ticket or service. Publishes `agent.record` |
 | `journal.list` | `{ticket?, service?, kind?, limit?}` -> `{records[]}`: journal records, oldest first; without `ticket`, every ticket's; `limit` keeps the newest n (0 = all, negative is `invalid`); `not_found` for an unknown ticket; a ticket without a journal gives `[]` |
+| `timeline.list` | `{ticket, since?}` -> `{entries[]}`: the ticket's timeline (§15) after seq `since` (0 = all), oldest first; a ticket with no timeline gives `[]`; an unknown ticket is `not_found`. Human clients only: `rig timeline` |
 | `contract.list` | `{ticket}` -> `{ticket, proposals[{id, from, status, what, why, rejected?}], problems?[], violation?}`; `not_found` without a contract.md |
 | `contract.accept` | `{ticket, proposal}` -> `{proposal, outcome: "accepted"}`: human action. Merges the proposal into the agreed section (as a `####` entry), marks it accepted, appends a changelog line, publishes `contract.resolved` and types a notice into every agent. `not_found` for an unknown id, `conflict` when it is not open |
 | `contract.reject` | `{ticket, proposal, reason}` -> `{proposal, outcome: "rejected"}`: human action; `reason` required (`invalid` without). Records `**Rejected:** <reason>` under the proposal and in the changelog; the proposer is told the reason |
@@ -290,3 +292,26 @@ A ticket's journal is what its agents chose to record: feedback about rig or the
 **Phase requests:** a record of kind `transition.request` with `data: {"to": "<phase>", "reason"?: "..."}`, from either sandbox, is journaled as usual and then recorded as the ticket's `phase_request` (§5). A missing or unknown `to`, or a request rig would refuse as asked (the phase the ticket is in, a skipped step forward, or, in a ticket with a `review`, the reviewed agent leaving `implement` before the review passes), adds a `record.rejected` record saying why and what to ask for instead, and the same is typed back to the agent. `rig wait <ticket> [--record <kind>] [--phase-request] [--phase <p>] [--review <status>] [--timeout <d>]` polls until one holds (states already true count at once; records only if left after it started), prints it (`--json`: `{matched, record?, summary}`), and exits 1 on timeout. The prompt's common rules name this record.
 
 **Trust:** records are what an agent said, not facts rig checked. rig guarantees who wrote them and when, not that they are true, and does not scrub them: an agent that holds a secret can write it into a record.
+
+## 15. Timeline
+`timeline.jsonl` (in the ticket directory, 0600, one JSON object per line, append-only) is the record of everything that changed in a ticket, once and in order: `{seq, at, kind, by?, service?, data}`. Only the daemon writes it, through one writer that serializes appends, so `seq` counts 1, 2, 3, ... per ticket without gaps and a reader that has seen entry n asks for `since` n. `state.json`, `journal.jsonl` and `messages.jsonl` are unchanged; the timeline repeats what they hold only as far as needed to say what happened (a message's text, for one, stays in `messages.jsonl`). A ticket from before the timeline has no file and reads as empty; a torn last line (a crash in the middle of a write) is cut before the next append. A change is recorded after it was made, and a refused action records nothing. A timeline that cannot be written never fails the action.
+
+`by` is `human`, `agent:<service>` (a reviewer is `agent:review`), or `rig`; `service` names the service the entry concerns, when there is one.
+
+| `kind` | `data` | made when |
+|---|---|---|
+| `ticket.started` | `{}` | a start provisioned something new |
+| `ticket.stopped` | `{}` | a stop took something down |
+| `phase.moved` | `{from, to, reason?}` | the phase changed, by a person, an accepted agent request, a sync sending work back, or the last push |
+| `gate.approved` | `{gate}` | an approval was newly given (`service` is set for a per-service one) |
+| `phase.requested` | `{to, reason?}` | an agent's `transition.request` was recorded as the open request |
+| `journal.recorded` | `{kind, text?}` | every record added to `journal.jsonl`, rig's own `record.rejected` included; `text` is cut to 200 bytes (the full text is in the journal) |
+| `message.sent` | `{service, from, delivered}` | a message to an agent, delivered or not (the text is in `messages.jsonl`) |
+| `review.round.started` | `{round, commit}` | a round's reviewer copy was made from `commit` |
+| `review.round.closed` | `{round, verdict, blocking, should_fix, nit}` | the reviewer's verdict was taken; `verdict` is cut to 200 bytes; counts are of the round's findings |
+| `review.decided` | `{outcome, reason}` | the loop passed (`pass`, by the reviewer or a person) or stopped (`stop`, by rig at a cap or a failed round, or by a person) |
+| `review.loop.ended` | `{rounds, status}` | the loop in `state.json` was dropped: a move back to implement (a sync's included) or a person starting a new loop over a stopped one. Its rounds stay in the timeline |
+| `sync.done` | `{service, behind, merged?, conflicts?}` | a sync looked at a service |
+| `push.done` | `{service, mode, pr_url?, files, added, deleted, error?}` | a push was tried for a service (a service already pushed is skipped, not recorded); `error` is set when it failed |
+
+`rig stats` counts review rounds as the `review.round.started` entries of the whole timeline, so a loop that was reset still counts (never fewer than the rounds in `state.json`, which covers tickets older than the timeline). `rig timeline <ticket> [--since <seq>] [--json]` prints it.

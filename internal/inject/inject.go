@@ -22,6 +22,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/state"
 	"github.com/charlesrobsampson/rig/internal/terminal"
+	"github.com/charlesrobsampson/rig/internal/timeline"
 )
 
 // Readiness says whether an agent's interface is up (the supervisor knows from hooks).
@@ -35,6 +36,8 @@ type Options struct {
 	Backend   terminal.Backend
 	Readiness Readiness
 	Clock     clock.Clock // nil means the real clock
+	// Timeline, when set, gets a message.sent entry for every message, delivered or not.
+	Timeline *timeline.Log
 	// Pause is the wait between typing the text and pressing Enter, so the agent's
 	// interface registers the text first (default 400ms).
 	Pause time.Duration
@@ -233,6 +236,8 @@ func (i *Injector) record(p api.AgentMessageParams, from string, outcome error) 
 	if outcome != nil {
 		e.Reason = outcome.Error()
 	}
+	i.opts.Timeline.Append(filepath.Join(i.opts.Dir, p.Ticket), timeline.Entry{Kind: timeline.MessageSent, By: from, Service: p.Service,
+		Data: timeline.Data(timeline.MessageSentData{Service: p.Service, From: from, Delivered: e.Delivered})})
 	line, err := json.Marshal(e)
 	if err != nil {
 		return

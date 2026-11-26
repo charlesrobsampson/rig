@@ -12,6 +12,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/gates"
 	"github.com/charlesrobsampson/rig/internal/state"
+	"github.com/charlesrobsampson/rig/internal/timeline"
 )
 
 // Gates lists every approval the ticket's services require, and which are given.
@@ -104,6 +105,7 @@ func (m *Manager) Approve(_ context.Context, p api.GateApproveParams) (api.GateL
 	}
 	if added {
 		m.publish(api.EventGateApproved, p.ID, "", api.GateApprovedData{Gate: p.Gate, Service: p.Service})
+		m.note(l.dir, timeline.GateApproved, "human", p.Service, timeline.GateApprovedData{Gate: string(p.Gate)})
 	}
 
 	st, err := m.opts.States.Load(l.statePath)

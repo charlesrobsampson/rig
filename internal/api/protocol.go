@@ -32,6 +32,7 @@ const (
 	MethodAgentEvent        = "agent.event"
 	MethodAgentRecord       = "agent.record"
 	MethodJournalList       = "journal.list"
+	MethodTimelineList      = "timeline.list"
 	MethodContractList      = "contract.list"
 	MethodContractAccept    = "contract.accept"
 	MethodContractReject    = "contract.reject"
@@ -56,7 +57,7 @@ var methods = map[string]bool{
 	MethodTicketGet: true, MethodTicketRescan: true, MethodTicketFile: true, MethodTicketNew: true, MethodTicketStart: true,
 	MethodTicketStop: true, MethodGateList: true, MethodGateApprove: true, MethodPhaseSet: true,
 	MethodTransitionRequest: true, MethodAgentAttach: true, MethodAgentMessage: true,
-	MethodAgentEvent: true, MethodAgentRecord: true, MethodJournalList: true, MethodContractList: true, MethodContractAccept: true,
+	MethodAgentEvent: true, MethodAgentRecord: true, MethodJournalList: true, MethodTimelineList: true, MethodContractList: true, MethodContractAccept: true,
 	MethodContractReject: true, MethodContractAck: true, MethodContractPropose: true, MethodReviewDiff: true, MethodReviewerStatus: true, MethodTicketStats: true, MethodTicketSync: true, MethodReviewerStart: true, MethodReviewerDecide: true, MethodPushRun: true, MethodTestsRender: true, MethodTestsStep: true, MethodTestsSignoff: true,
 	MethodLogsStream: true, MethodEventsSubscribe: true, MethodReconcileRun: true, MethodDaemonStop: true,
 }

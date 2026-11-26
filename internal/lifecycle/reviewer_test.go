@@ -446,6 +446,10 @@ func TestSyncMergesAMovedBaseAndStartsAReviewRound(t *testing.T) {
 	if again, err := r.lc.Sync(ctx, api.SyncParams{ID: "demo"}); err != nil || again.Services[0].Behind != 0 || again.Services[0].Merged != "" {
 		t.Errorf("a second sync = %+v, %v", again, err)
 	}
+	synced := only(readTimeline(t, r.path), "sync.done")
+	if len(synced) != 2 || synced[0]["service"] != "svc1" || synced[0]["behind"] != 1.0 || synced[0]["merged"] != res.Services[0].Merged || synced[1]["behind"] != 0.0 || synced[1]["merged"] != nil {
+		t.Errorf("sync.done = %v", synced)
+	}
 }
 
 func TestSyncLeavesAConflictToTheCoder(t *testing.T) {
@@ -461,6 +465,9 @@ func TestSyncLeavesAConflictToTheCoder(t *testing.T) {
 	}
 	if msg := r.last("svc1"); !strings.Contains(msg, "these files conflict: shared.txt") || !strings.Contains(msg, "commit the merge") {
 		t.Errorf("the coder was told: %q", msg)
+	}
+	if synced := only(readTimeline(t, r.path), "sync.done"); len(synced) != 1 || synced[0]["merged"] != nil || len(synced[0]["conflicts"].([]any)) != 1 {
+		t.Errorf("sync.done = %v", synced)
 	}
 	if out, _ := git.Hardened().Run(ctx, r.coder, "rev-parse", "-q", "--verify", "MERGE_HEAD"); out == "" {
 		t.Error("the merge is not left in progress")

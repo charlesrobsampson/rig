@@ -28,6 +28,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/registry"
 	"github.com/charlesrobsampson/rig/internal/state"
 	"github.com/charlesrobsampson/rig/internal/terminal"
+	"github.com/charlesrobsampson/rig/internal/timeline"
 )
 
 type Options struct {
@@ -36,6 +37,10 @@ type Options struct {
 	Global config.Global
 	Bus    *events.Bus
 	Clock  clock.Clock // nil means the real clock
+	// Timeline records every change in the ticket's timeline.jsonl. The daemon shares one
+	// with the supervisor and the injector, because seq is numbered by a single writer;
+	// nil gives this manager its own.
+	Timeline *timeline.Log
 
 	// Backend runs agents. Without one, starting only provisions checkouts.
 	Backend     terminal.Backend
@@ -102,6 +107,9 @@ type Manager struct {
 func New(o Options) *Manager {
 	if o.Clock == nil {
 		o.Clock = clock.Real()
+	}
+	if o.Timeline == nil {
+		o.Timeline = timeline.New(o.Clock.Now)
 	}
 	m := &Manager{opts: o, reg: registry.New(o.Dir, o.States), locks: map[string]*sync.Mutex{}, starting: map[string]bool{}}
 	m.bgCtx, m.bgCancel = context.WithCancel(context.Background())
@@ -239,6 +247,7 @@ func (m *Manager) Start(ctx context.Context, p api.TicketStartParams) (api.Ticke
 	}
 	if len(changed) > 0 {
 		m.publish(api.EventTicketStarted, p.ID, "", api.EmptyData{})
+		m.note(ticketDir, timeline.TicketStarted, "human", "", struct{}{})
 	}
 
 	if err := m.placeFiles(ctx, l, infos, p.Sandbox); err != nil {
@@ -334,6 +343,12 @@ func (m *Manager) record(path string, current state.State, t domain.Ticket, info
 		return nil, &api.Error{Code: api.CodeInternal, Message: fmt.Sprintf("record checkouts: %v", err)}
 	}
 	return changed, nil
+}
+
+// note appends one entry to the ticket's timeline. A timeline that cannot be written
+// never fails the change that was already made.
+func (m *Manager) note(ticketDir, kind, by, service string, data any) {
+	m.opts.Timeline.Append(ticketDir, timeline.Entry{Kind: kind, By: by, Service: service, Data: timeline.Data(data)})
 }
 
 func (m *Manager) publish(typ api.EventType, ticket, service string, data any) {
