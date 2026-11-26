@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -90,7 +91,59 @@ func newDaemonCmd(a *app) *cobra.Command {
 		&cobra.Command{Use: "status", Short: "Show whether the daemon is running", Args: usageArgs(cobra.NoArgs), RunE: a.daemonStatus},
 		&cobra.Command{Use: "stop", Short: "Stop the daemon", Args: usageArgs(cobra.NoArgs), RunE: a.stopDaemon},
 	)
+	var force bool
+	restart := &cobra.Command{
+		Use:   "restart",
+		Short: "Stop the daemon and start it again from this rig",
+		Long: `Stops the vessel's daemon and starts it from this rig binary, so it runs the build
+you have. Refuses, naming the tickets, while a review round is being started or a ticket
+is being started, stopped or synced, since a restart would cut that off; --force
+restarts anyway. A review round already running is not lost: after the restart it reads
+as awaiting_ready, and review.ready or "rig reviewer <ticket> --start" starts it again.
+A daemon that is not running is just started.`,
+		Args: usageArgs(cobra.NoArgs),
+		RunE: func(cmd *cobra.Command, _ []string) error { return a.restartDaemon(cmd, force) },
+	}
+	restart.Flags().BoolVar(&force, "force", false, "restart even with work in flight")
+	cmd.AddCommand(restart)
 	return cmd
+}
+
+func (a *app) restartDaemon(cmd *cobra.Command, force bool) error {
+	c, err := a.connect(cmd.Context(), false)
+	var apiErr *api.Error
+	switch {
+	case errors.As(err, &apiErr) && apiErr.Code == api.CodeNotRunning:
+		return a.startDaemon(cmd, nil)
+	case err != nil:
+		return err
+	}
+	if !force {
+		var busy api.DaemonBusyResult
+		switch err := c.Call(cmd.Context(), api.MethodDaemonBusy, nil, &busy); {
+		case errors.As(err, &apiErr) && apiErr.Code == api.CodeUnavailable:
+			c.Close()
+			return &api.Error{Code: api.CodeConflict, Message: "this daemon is too old to say what it is doing, so a restart cannot be checked; use --force to restart anyway (a ticket being started or stopped, or a review round being started, would be cut off)"}
+		case err != nil:
+			c.Close()
+			return err
+		}
+		if len(busy.Tickets) > 0 {
+			c.Close()
+			var ids, details []string
+			for _, t := range busy.Tickets {
+				ids = append(ids, t.Ticket)
+				details = append(details, fmt.Sprintf("%s: %s", t.Ticket, t.Doing))
+			}
+			return &api.Error{Code: api.CodeConflict, Message: fmt.Sprintf("the daemon is busy with %s; nothing was restarted. Wait for it, or use --force", strings.Join(ids, ", ")), Details: details}
+		}
+	}
+	err = c.Stop(cmd.Context())
+	c.Close()
+	if err != nil {
+		return err
+	}
+	return a.startDaemon(cmd, nil)
 }
 
 func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {

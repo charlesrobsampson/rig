@@ -885,3 +885,14 @@ type TimelineEntryData struct {
 	Seq    int           `json:"seq"`
 	Entry  TimelineEntry `json:"entry"`
 }
+
+// DaemonBusyResult lists what the daemon is part way through, which a restart would cut off.
+type DaemonBusyResult struct {
+	Tickets []InFlight `json:"tickets"`
+}
+
+// InFlight is one ticket with work under way and what that work is.
+type InFlight struct {
+	Ticket string `json:"ticket"`
+	Doing  string `json:"doing"`
+}

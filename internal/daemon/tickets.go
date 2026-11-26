@@ -108,6 +108,9 @@ func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 		return m.Start(ctx, p)
 	})
 	registerStop(s, m)
+	s.Handle(api.MethodDaemonBusy, func(context.Context, json.RawMessage) (any, error) {
+		return api.DaemonBusyResult{Tickets: m.InFlight()}, nil
+	})
 	s.Handle(api.MethodTicketSync, func(ctx context.Context, params json.RawMessage) (any, error) {
 		var p api.SyncParams
 		if err := json.Unmarshal(params, &p); err != nil {

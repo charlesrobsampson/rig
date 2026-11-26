@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -160,6 +162,35 @@ func (m *Manager) Busy(id string) bool {
 		return false
 	}
 	return true
+}
+
+// InFlight lists the tickets with an operation under way or a review round being
+// started: work a restart of the daemon would cut off, as opposed to a round already
+// pinned to a commit, which a restart leaves readable as awaiting_ready.
+func (m *Manager) InFlight() []api.InFlight {
+	doing := map[string]string{}
+	m.mu.Lock()
+	ids := make([]string, 0, len(m.locks))
+	for id := range m.locks {
+		ids = append(ids, id)
+	}
+	m.mu.Unlock()
+	for _, id := range ids {
+		if m.Busy(id) {
+			doing[id] = "an operation is under way (start, stop or sync)"
+		}
+	}
+	m.pendingMu.Lock()
+	for id := range m.pending {
+		doing[id] = "a review round is starting"
+	}
+	m.pendingMu.Unlock()
+	out := make([]api.InFlight, 0, len(doing))
+	for id, d := range doing {
+		out = append(out, api.InFlight{Ticket: id, Doing: d})
+	}
+	slices.SortFunc(out, func(a, b api.InFlight) int { return strings.Compare(a.Ticket, b.Ticket) })
+	return out
 }
 
 func invalid(format string, args ...any) *api.Error {
