@@ -143,7 +143,11 @@ func phaseCell(t api.TicketSummary, overlaps []string) string {
 		notes = append(notes, fmt.Sprintf("%s asks for %s", r.Service, r.To))
 	}
 	if r := t.Review; r != nil {
-		notes = append(notes, fmt.Sprintf("review %s r%d", r.Status, r.Round))
+		if r.Status == domain.ReviewAwaitingReady {
+			notes = append(notes, fmt.Sprintf("review waits for ready r%d", r.Round))
+		} else {
+			notes = append(notes, fmt.Sprintf("review %s r%d", r.Status, r.Round))
+		}
 	}
 	if t.ContractPending {
 		notes = append(notes, "contract change pending")

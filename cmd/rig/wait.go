@@ -39,7 +39,7 @@ func newWaitCmd(a *app) *cobra.Command {
 --timeout. --record waits for a new journal record of that kind (one left after wait
 started); --phase-request for an agent's open request to move the ticket; --phase for
 the ticket to be in that phase; --review for its review loop to reach that status
-(reviewing, fixing, passed or stopped). --phase and --review take several values,
+(reviewing, fixing, passed, stopped or awaiting_ready). --phase and --review take several values,
 repeated or comma-separated: "--review passed,stopped" ends on either. States already
 true count at once, except a phase request with --new, which must be made after the
 wait starts (to wait for the next request after answering one).
@@ -58,7 +58,7 @@ vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passe
 			}
 			for _, r := range reviews {
 				if !domain.ReviewStatus(r).Valid() {
-					return usageError(fmt.Errorf("%q is not a review status (reviewing, fixing, passed or stopped)", r))
+					return usageError(fmt.Errorf("%q is not a review status (reviewing, fixing, passed, stopped or awaiting_ready)", r))
 				}
 			}
 			// Each ticket may be on its own vessel; one connection per vessel for questions

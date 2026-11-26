@@ -38,6 +38,15 @@ type Registry struct {
 	aiSummary func(id string) *api.SummaryInfo
 	// drift, when set, supplies how a ticket's reality differs from its state.
 	drift func(id string) []string
+	// roundPending, when set, says whether a review round is being started for a ticket.
+	roundPending func(id string) bool
+}
+
+// WithRoundPending makes summaries tell a round that is only starting (reviewing, no
+// commit yet) from one nothing runs: the latter is shown as awaiting_ready.
+func (r *Registry) WithRoundPending(f func(id string) bool) *Registry {
+	r.roundPending = f
+	return r
 }
 
 // WithBase makes summaries carry how each service's branch stands against its base.
@@ -181,8 +190,12 @@ func (r *Registry) load(id string) api.TicketGetResult {
 				res.Summary.CostUSD = &total
 			}
 		}
-		if r := st.Review; r != nil {
-			res.Summary.Review = &api.ReviewSummary{Status: r.Status, Round: r.Round, Reason: r.Reason}
+		if rv := st.Review; rv != nil {
+			status := rv.Status
+			if status == domain.ReviewReviewing && rv.Commit == "" && (r.roundPending == nil || !r.roundPending(id)) {
+				status = domain.ReviewAwaitingReady
+			}
+			res.Summary.Review = &api.ReviewSummary{Status: status, Round: rv.Round, Reason: rv.Reason}
 		}
 		if q := st.Question; q != nil {
 			res.Summary.Question = &api.QuestionSummary{Service: q.Service, Text: q.Text, At: q.At}

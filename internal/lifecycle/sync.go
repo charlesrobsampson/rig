@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -91,9 +92,9 @@ func identity(ctx context.Context, repo string) (name, email string) {
 	return name, email
 }
 
-// endLoopAfterSync drops the review loop of a reviewed service whose branch a sync
-// changed: what it passed or found is not what the branch holds now, so the next
-// review.ready starts a new loop with its own rounds. A loop whose round is running is
+// endLoopAfterSync ends the review loop of a reviewed service whose branch a sync
+// changed: what it passed or found is not what the branch holds now, so the review
+// waits (awaiting_ready) and the next review.ready or --start begins a new loop. A loop whose round is running is
 // left, because the round's verdict still has to land. A move back to implement has
 // cleared the loop already, and then there is nothing to end.
 func (m *Manager) endLoopAfterSync(id string) error {
@@ -103,14 +104,17 @@ func (m *Manager) endLoopAfterSync(id string) error {
 	}
 	defer unlock()
 	ended := l.state.Review
-	if ended == nil || ended.Status == domain.ReviewReviewing {
+	if ended == nil || ended.Status == domain.ReviewReviewing || ended.Status == domain.ReviewAwaitingReady {
 		return nil
 	}
-	if err := m.opts.States.Update(l.statePath, func(s *state.State) error {
-		s.Review = nil
-		return nil
-	}); err != nil {
-		return err
+	// The loop is over, but the next round must still be startable: the review waits
+	// for review.ready (or --start) with its round number kept and no commit pinned.
+	m.setReview(l, func(r *state.Review) {
+		r.Status, r.Commit, r.Base, r.Reason, r.By = domain.ReviewAwaitingReady, "", "", "", ""
+	})
+	// setReview reports nothing back; read the state to know the change was made.
+	if now, err := m.opts.States.Load(l.statePath); err != nil || now.Review == nil || now.Review.Status != domain.ReviewAwaitingReady {
+		return errors.New("the review could not be marked as waiting for review.ready")
 	}
 	m.note(l.dir, timeline.ReviewLoopEnded, "human", "", timeline.ReviewLoopEndedData{Rounds: len(ended.Rounds), Status: string(ended.Status)})
 	return nil
@@ -218,7 +222,14 @@ func (m *Manager) Sync(ctx context.Context, p api.SyncParams) (api.SyncResult, e
 		clean = clean && len(s.Conflicts) == 0
 	}
 	if clean && reviewed && res.Phase == domain.PhaseImplement {
-		if err := m.beginRound(p.ID, "rig sync"); err == nil {
+		if err := m.beginRound(p.ID, "rig sync"); err != nil {
+			// The review waits as awaiting_ready; say why, so the coder can start it.
+			// (A round that is already running is left alone, silently.)
+			now, _ := m.load(p.ID)
+			if target, _, ok := reviewers(l.ticket); ok && (now.state.Review == nil || now.state.Review.Status != domain.ReviewReviewing) {
+				m.deliver(p.ID, target.Name, "The review round on the merged work did not start: "+err.Error()+". Fix that, commit, then journal review.ready.")
+			}
+		} else {
 			res.ReviewStarted = true
 			// beginRound only marks the round; the reviewer's copy and brief are made
 			// here, as for a review.ready, or the loop would wait on a round nobody runs.

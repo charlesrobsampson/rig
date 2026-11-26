@@ -185,7 +185,10 @@ func (m *Manager) beginRound(id, by string) error {
 	}
 
 	spent := agentsCost(l.state)
-	newLoop := r == nil || (r.Status == domain.ReviewStopped && human)
+	// From awaiting_ready the old loop is over (a sync ended it, or its round was lost),
+	// so the round starts a new one; the end was logged when it happened.
+	awaiting := r != nil && r.Status == domain.ReviewAwaitingReady
+	newLoop := r == nil || awaiting || (r.Status == domain.ReviewStopped && human)
 	if !newLoop {
 		if reason := m.stopReason(l, target.Name, *r, spent); reason != "" {
 			m.setReview(l, func(r *state.Review) { r.Status, r.Reason, r.By = domain.ReviewStopped, reason, "rig" })
@@ -194,7 +197,7 @@ func (m *Manager) beginRound(id, by string) error {
 			return nil
 		}
 	}
-	if newLoop && r != nil {
+	if newLoop && r != nil && !awaiting {
 		m.note(l.dir, timeline.ReviewLoopEnded, by, "", timeline.ReviewLoopEndedData{Rounds: len(r.Rounds), Status: string(r.Status)})
 	}
 	m.setReview(l, func(r *state.Review) {
@@ -205,6 +208,7 @@ func (m *Manager) beginRound(id, by string) error {
 		r.Round++
 		r.Rounds = append(r.Rounds, state.ReviewRound{Round: r.Round, At: m.opts.Clock.Now().UTC()})
 	})
+	m.setPending(id, true) // until runRound has pinned the round or given it up
 	return nil
 }
 
@@ -235,6 +239,7 @@ func (m *Manager) stopReason(l loaded, coder string, r state.Review, spent float
 // runRound does the slow part of a round: the reviewer's copy, its agent, and the
 // messages. A failure stops the loop, saying why, rather than leaving it hanging.
 func (m *Manager) runRound(ctx context.Context, id string) {
+	defer m.setPending(id, false)
 	l, unlock, err := m.begin(id)
 	if err != nil {
 		return
@@ -246,6 +251,11 @@ func (m *Manager) runRound(ctx context.Context, id string) {
 		return
 	}
 	fail := func(err error) {
+		if ctx.Err() != nil {
+			// rig is shutting down, not the round failing: leave it to be started again.
+			m.setReview(l, func(r *state.Review) { r.Status, r.Commit, r.Base = domain.ReviewAwaitingReady, "", "" })
+			return
+		}
 		reason := "round " + fmt.Sprint(r.Round) + " could not start: " + err.Error()
 		m.setReview(l, func(r *state.Review) { r.Status, r.Reason, r.By = domain.ReviewStopped, reason, "rig" })
 		m.note(l.dir, timeline.ReviewDecided, "rig", "", timeline.ReviewDecidedData{Outcome: "stop", Reason: reason})

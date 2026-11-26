@@ -122,8 +122,8 @@ func TestASyncChangingAPassedBranchEndsTheLoop(t *testing.T) {
 		if err != nil || len(res.Services[0].Conflicts) != 1 || res.ReviewStarted {
 			t.Fatalf("sync = %+v, %v", res, err)
 		}
-		if st := r.state("demo"); st.Review != nil {
-			t.Fatalf("review after the sync = %+v, want the loop ended", st.Review)
+		if rv := r.review(); rv.Status != domain.ReviewAwaitingReady || rv.Round != 1 || rv.Commit != "" {
+			t.Fatalf("review after the sync = %+v, want awaiting_ready, round kept, no commit", rv)
 		}
 		if ended := only(readTimeline(t, r.path), "review.loop.ended"); len(ended) != 1 || ended[0]["rounds"] != 1.0 || ended[0]["status"] != "passed" {
 			t.Errorf("review.loop.ended = %v", ended)
@@ -199,4 +199,104 @@ func TestASyncChangingAPassedBranchEndsTheLoop(t *testing.T) {
 			t.Errorf("review.loop.ended = %v", ended)
 		}
 	})
+}
+
+// resolveMerge commits the coder's resolution of a conflicting sync.
+func (r *reviewRig) resolveMerge() {
+	r.t.Helper()
+	for _, args := range [][]string{{"checkout", "--ours", "shared.txt"}, {"add", "shared.txt"}, {"-c", "user.name=c", "-c", "user.email=c@example.com", "commit", "-q", "--no-edit"}} {
+		if _, err := git.Hardened().Run(ctx, r.coder, args...); err != nil {
+			r.t.Fatal(err)
+		}
+	}
+}
+
+func (r *reviewRig) conflictAfterPass() {
+	r.t.Helper()
+	r.commit("shared.txt", "mine\n")
+	r.passRound(1)
+	r.repo.Commit("shared.txt", "theirs\n", "the same file changes on main")
+	if _, err := r.lc.Sync(ctx, api.SyncParams{ID: "demo"}); err != nil {
+		r.t.Fatal(err)
+	}
+}
+
+func TestAfterASyncReviewReadyStartsTheRoundOnTheMergedTip(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	r.conflictAfterPass()
+	r.resolveMerge()
+	tip, _ := git.Hardened().Run(ctx, r.coder, "rev-parse", "HEAD")
+	if err := r.record("svc1", "review.ready", "merge resolved", nil); err != nil {
+		t.Fatalf("review.ready after a sync: %v (told %q)", err, r.last("svc1"))
+	}
+	if rv := r.review(); rv.Status != domain.ReviewReviewing || rv.Round != 1 || rv.Commit != strings.TrimSpace(tip) {
+		t.Fatalf("review = %+v, want round 1 on %s", rv, tip)
+	}
+	if strings.Contains(r.last("svc1"), "was not taken") {
+		t.Errorf("the coder was told %q", r.last("svc1"))
+	}
+}
+
+func TestAfterASyncReviewerStartStartsTheRoundOnTheMergedTip(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	r.conflictAfterPass()
+	r.resolveMerge()
+	tip, _ := git.Hardened().Run(ctx, r.coder, "rev-parse", "HEAD")
+	if _, err := r.lc.ReviewerStart(ctx, api.ReviewerParams{Ticket: "demo"}); err != nil {
+		t.Fatalf("--start after a sync: %v", err)
+	}
+	if rv := r.review(); rv.Status != domain.ReviewReviewing || rv.Round != 1 || rv.Commit != strings.TrimSpace(tip) {
+		t.Fatalf("review = %+v, want round 1 on %s", rv, tip)
+	}
+}
+
+// r121: round 3 passed, then rig sync merged cleanly; the round must pin the merged
+// tip without anyone journaling review.ready.
+func TestACleanSyncAfterAPassPinsTheMergedTipWithoutReviewReady(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	r.commit("a.txt", "one\n")
+	r.passRound(1)
+	r.commit("b.txt", "two\n")
+	r.passRound(2)
+	r.repo.Commit("other.txt", "theirs\n", "an unrelated change lands on main")
+	res, err := r.lc.Sync(ctx, api.SyncParams{ID: "demo"})
+	if err != nil || !res.ReviewStarted {
+		t.Fatalf("sync = %+v, %v", res, err)
+	}
+	r.lc.Wait()
+	rv := r.review()
+	if rv.Status != domain.ReviewReviewing || rv.Round != 1 || rv.Commit != res.Services[0].Merged || rv.Commit == "" {
+		t.Fatalf("review = %+v, want round 1 pinned on the merge %s", rv, res.Services[0].Merged)
+	}
+}
+
+func TestAStuckRoundLoadsAsAwaitingReady(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	r.commit("a.txt", "mine\n")
+	if err := r.states.Update(filepath.Join(r.path, "state.json"), func(s *state.State) error {
+		s.Review = &state.Review{Status: domain.ReviewReviewing, Round: 2, Rounds: []state.ReviewRound{{Round: 1}, {Round: 2}}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.record("svc1", "review.ready", "ready", nil); err != nil {
+		t.Fatalf("review.ready on a stuck round: %v", err)
+	}
+	if rv := r.review(); rv.Status != domain.ReviewReviewing || rv.Commit == "" || rv.Round != 1 {
+		t.Fatalf("review = %+v, want a new round pinned", rv)
+	}
+
+	// The stuck state is normalised when read, even with no request that starts a round.
+	if err := r.states.Update(filepath.Join(r.path, "state.json"), func(s *state.State) error {
+		s.Review = &state.Review{Status: domain.ReviewReviewing, Round: 2}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.lc.ReviewerStatus(ctx, api.ReviewerParams{Ticket: "demo"}); err != nil {
+		t.Fatal(err)
+	}
+	if rv := r.review(); rv.Status != domain.ReviewAwaitingReady || rv.Round != 2 {
+		t.Fatalf("review = %+v, want awaiting_ready, round kept", rv)
+	}
 }

@@ -195,6 +195,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	reg.WithBase(func(t domain.Ticket, st state.State) []api.BaseInfo {
 		return lc.BaseStatus(context.Background(), t, st)
 	})
+	reg.WithRoundPending(lc.RoundPending)
 	reg.WithTouched(func(t domain.Ticket, st state.State) []api.TouchedInfo {
 		return lc.Touched(context.Background(), t, st)
 	})

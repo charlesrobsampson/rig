@@ -98,6 +98,12 @@ type Manager struct {
 	capMu    sync.Mutex
 	starting map[string]bool
 
+	// pendingMu guards pending: tickets whose review round is marked as started but
+	// not yet pinned to a commit (runRound has not finished). A round marked reviewing
+	// with no commit and not in this set was lost (rig restarted, a round never run).
+	pendingMu sync.Mutex
+	pending   map[string]bool
+
 	// bg runs the review rounds an agent's record starts, which outlive the call.
 	bg       sync.WaitGroup
 	bgCtx    context.Context
@@ -111,7 +117,7 @@ func New(o Options) *Manager {
 	if o.Timeline == nil {
 		o.Timeline = timeline.New(o.Clock.Now)
 	}
-	m := &Manager{opts: o, reg: registry.New(o.Dir, o.States), locks: map[string]*sync.Mutex{}, starting: map[string]bool{}}
+	m := &Manager{opts: o, reg: registry.New(o.Dir, o.States), locks: map[string]*sync.Mutex{}, starting: map[string]bool{}, pending: map[string]bool{}}
 	m.bgCtx, m.bgCancel = context.WithCancel(context.Background())
 	if o.Docker != nil {
 		min, max := o.Global.Docker.PortRange.Min, o.Global.Docker.PortRange.Max
