@@ -35,6 +35,8 @@ type reviewRig struct {
 	mu      sync.Mutex
 	got     []delivered
 	reviewY string
+	// onDeliver, when set, runs when rig types into an agent (the coder reacting).
+	onDeliver func(service, text string)
 }
 
 func newReviewRig(t *testing.T, review string) *reviewRig {
@@ -46,6 +48,9 @@ func newReviewRig(t *testing.T, review string) *reviewRig {
 			r.mu.Lock()
 			defer r.mu.Unlock()
 			r.got = append(r.got, delivered{service, text})
+			if r.onDeliver != nil {
+				r.onDeliver(service, text)
+			}
 		}
 	})
 	r.path = r.create("demo", r.repo)

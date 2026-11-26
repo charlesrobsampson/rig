@@ -61,11 +61,14 @@ const (
 	ReviewFixing    ReviewStatus = "fixing"    // the coder has the findings
 	ReviewPassed    ReviewStatus = "passed"    // nothing blocking or should-fix is left
 	ReviewStopped   ReviewStatus = "stopped"   // a cap, a dispute or a person stopped it
+	// ReviewAwaitingReady: no round is running and none has a commit; the next
+	// review.ready or `rig reviewer --start` starts one on the branch tip.
+	ReviewAwaitingReady ReviewStatus = "awaiting_ready"
 )
 
 // Valid says whether s is one of the review statuses.
 func (s ReviewStatus) Valid() bool {
-	return slices.Contains([]ReviewStatus{ReviewReviewing, ReviewFixing, ReviewPassed, ReviewStopped}, s)
+	return slices.Contains([]ReviewStatus{ReviewReviewing, ReviewFixing, ReviewPassed, ReviewStopped, ReviewAwaitingReady}, s)
 }
 
 var agentStates = []AgentState{AgentWorking, AgentBlocked, AgentIdle, AgentUnknown, AgentExited}

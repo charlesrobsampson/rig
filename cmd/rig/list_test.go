@@ -288,3 +288,15 @@ func TestListNotesTicketsThatTouchTheSameFile(t *testing.T) {
 		}
 	}
 }
+
+func TestListShowsAReviewThatWaitsForReady(t *testing.T) {
+	tickets := []api.TicketSummary{
+		{ID: "a", Phase: domain.PhaseImplement, Review: &api.ReviewSummary{Status: domain.ReviewAwaitingReady, Round: 2}},
+		{ID: "b", Phase: domain.PhaseImplement, Review: &api.ReviewSummary{Status: domain.ReviewFixing, Round: 1}},
+	}
+	var out strings.Builder
+	writeTicketTable(&out, tickets, time.Now(), 0)
+	if !strings.Contains(out.String(), "review waits for ready r2") || !strings.Contains(out.String(), "review fixing r1") {
+		t.Errorf("list:\n%s", out.String())
+	}
+}
