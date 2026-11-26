@@ -91,30 +91,49 @@ func printReviewer(w io.Writer, ticket string, r api.ReviewerStatus) {
 	if r.BudgetUSD > 0 {
 		budget = fmt.Sprintf(" of $%.2f", r.BudgetUSD)
 	}
-	fmt.Fprintf(w, "spent $%.2f%s this loop (coder $%.2f, reviewer $%.2f in all)\n", r.SpentUSD, budget, r.CoderUSD, r.ReviewerUSD)
+	in := fmt.Sprintf("coder $%.2f, reviewer $%.2f", r.CoderUSD, r.ReviewerUSD)
+	if r.TesterUSD > 0 {
+		in += fmt.Sprintf(", tester $%.2f", r.TesterUSD)
+	}
+	fmt.Fprintf(w, "spent $%.2f%s this loop (%s in all)\n", r.SpentUSD, budget, in)
 	for _, round := range r.Rounds {
 		verdict := round.Verdict
 		if verdict == "" {
 			verdict = "no verdict yet"
 		}
 		fmt.Fprintf(w, "\nround %d on %s: %s\n", round.Round, shortSHA(round.Commit), verdict)
-		for _, f := range round.Findings {
-			where := f.File
-			if f.Line > 0 {
-				where += fmt.Sprintf(":%d", f.Line)
+		printFindings(w, round.Findings)
+		if t := round.Tester; t != nil {
+			switch {
+			case t.Outcome == "":
+				fmt.Fprintln(w, "  tester: no result yet")
+			case len(t.Findings) == 0:
+				fmt.Fprintf(w, "  tester: %s\n", t.Outcome)
+			default:
+				fmt.Fprintf(w, "  tester: %s, %d findings\n", t.Outcome, len(t.Findings))
 			}
-			answer := "no answer"
-			if f.Reply != nil {
-				answer = f.Reply.Status
-				if f.Reply.Commit != "" {
-					answer += " in " + shortSHA(f.Reply.Commit)
-				}
-				if f.Reply.Reason != "" {
-					answer += ": " + f.Reply.Reason
-				}
-			}
-			fmt.Fprintf(w, "  %s %-10s %s %s\n    -> %s\n", f.ID, f.Severity, where, f.What, answer)
+			printFindings(w, t.Findings)
 		}
+	}
+}
+
+func printFindings(w io.Writer, findings []api.ReviewFinding) {
+	for _, f := range findings {
+		where := f.File
+		if f.Line > 0 {
+			where += fmt.Sprintf(":%d", f.Line)
+		}
+		answer := "no answer"
+		if f.Reply != nil {
+			answer = f.Reply.Status
+			if f.Reply.Commit != "" {
+				answer += " in " + shortSHA(f.Reply.Commit)
+			}
+			if f.Reply.Reason != "" {
+				answer += ": " + f.Reply.Reason
+			}
+		}
+		fmt.Fprintf(w, "  %s %-10s %s %s\n    -> %s\n", f.ID, f.Severity, where, f.What, answer)
 	}
 }
 
