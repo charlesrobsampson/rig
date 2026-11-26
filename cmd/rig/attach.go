@@ -53,7 +53,7 @@ at the end of the agent's last 2000 lines; --no-pager prints them instead.`,
 			}
 			if read && res.Screen == "" {
 				// A daemon from before --read ignores it and sends no screen.
-				fmt.Fprintln(cmd.ErrOrStderr(), "rig: the agent's screen came back empty; if the daemon predates --read, restart it with: rig daemon stop")
+				fmt.Fprintln(cmd.ErrOrStderr(), "rig: the agent's screen came back empty; if the daemon predates --read, restart it with: rig daemon restart")
 			}
 			switch {
 			case a.json:

@@ -135,7 +135,7 @@ func (c *Client) explainMissing(method string, err error) error {
 		return err
 	}
 	return &api.Error{Code: api.CodeUnavailable, Message: fmt.Sprintf(
-		"the running daemon (version %s) does not know %s: it is older than this rig (version %s). Run \"rig daemon stop\"; the next command starts the daemon from this rig",
+		"the running daemon (version %s) does not know %s: it is older than this rig (version %s). Run \"rig daemon restart\" to start the daemon from this rig",
 		c.server, method, c.opts.Version)}
 }
 
@@ -148,7 +148,7 @@ func VersionMismatch(client, daemon string) string {
 	if client == "" || daemon == "" || client == "dev" || daemon == "dev" || client == daemon {
 		return ""
 	}
-	return fmt.Sprintf("rig: the daemon is version %s but this rig is %s; run \"rig daemon stop\" (the next command starts the daemon from this rig)", daemon, client)
+	return fmt.Sprintf("rig: the daemon is version %s but this rig is %s; run \"rig daemon restart\" to start the daemon from this rig", daemon, client)
 }
 
 func isNotRunning(err error) bool {

@@ -432,3 +432,27 @@ func TestAnEmptyDefaultVesselIsNoReasonForAPicker(t *testing.T) {
 		t.Errorf("-V work: %d %s %+v", code, stderr, r.opts)
 	}
 }
+
+func TestFleetWarnsOnlyAboutTheDaemonsItListsAndNamesTheVessel(t *testing.T) {
+	work, _ := twoVessels(t)
+	user := os.Getenv("HOME")
+	machine := filepath.Join(user, ".config", "rig", "config.json")
+	os.MkdirAll(filepath.Dir(machine), 0o700)
+	os.WriteFile(machine, []byte(fmt.Sprintf(`{"paths": {"home": %q}}`, filepath.Join(user, "defhome"))), 0o600)
+	old := version
+	version = "1.0.0"
+	t.Cleanup(func() { version = old })
+	startDaemon(t, machine) // the default vessel's daemon runs but has no tickets, so fleet does not list it
+	d := noSpawn(t)
+	d.version = "2.0.0"
+
+	out, stderr, code := rig(t, d, "fleet")
+	if code != 0 || strings.Contains(out, "default") || strings.Contains(stderr, "daemon is version") {
+		t.Fatalf("fleet: %d %q %q; want no warning for a daemon it does not list", code, out, stderr)
+	}
+	startDaemon(t, work)
+	_, stderr, code = rig(t, d, "fleet")
+	if code != 0 || strings.Count(stderr, "daemon is version") != 1 || !strings.Contains(stderr, `run "rig -V work daemon restart"`) {
+		t.Errorf("fleet with a stale listed daemon: %d %q", code, stderr)
+	}
+}

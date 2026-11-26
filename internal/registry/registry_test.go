@@ -403,3 +403,39 @@ func TestAPassedReviewIsMarkedStaleOnlyWhenItHasACommitAndTheHookSaysSo(t *testi
 		t.Errorf("stale: a=%v b=%v c=%v, want true false false", got[0].Review.Stale, got[1].Review.Stale, got[2].Review.Stale)
 	}
 }
+
+func TestAStalledCheckerShowsAfterFiveMinutesIdleAndClearsWithItsResult(t *testing.T) {
+	f := newFixture(t)
+	now := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	f.reg.WithClock(func() time.Time { return now })
+	f.writeYAML("a", yaml("a", "A", "api")+"review: {tester: {}}\n")
+	idle := func(since time.Time) map[string]state.ServiceState {
+		return map[string]state.ServiceState{"tester": {Agent: state.Agent{State: domain.AgentIdle, IdleSince: since}}}
+	}
+	round := state.ReviewRound{Round: 1, Commit: "abc", ReviewerDone: true}
+	write := func(services map[string]state.ServiceState, r state.ReviewRound) {
+		os.Remove(filepath.Join(f.ticketDir("a"), "state.json"))
+		f.writeState("a", state.State{Phase: domain.PhaseImplement, Services: services,
+			Review: &state.Review{Status: domain.ReviewReviewing, Round: 1, Commit: "abc", Rounds: []state.ReviewRound{r}}})
+	}
+
+	write(idle(now.Add(-4*time.Minute)), round)
+	if got := f.list()[0].Review; got == nil || got.Stalled != nil {
+		t.Fatalf("stalled after 4 minutes: %+v", got)
+	}
+	since := now.Add(-5 * time.Minute)
+	write(idle(since), round)
+	if got := f.list()[0].Review.Stalled; got == nil || got.Service != "tester" || !got.Since.Equal(since) {
+		t.Fatalf("stalled = %+v, want tester since %v", got, since)
+	}
+	// it clears when the agent works again, or when its result arrives
+	write(map[string]state.ServiceState{"tester": {Agent: state.Agent{State: domain.AgentWorking}}}, round)
+	if got := f.list()[0].Review.Stalled; got != nil {
+		t.Errorf("stalled while working: %+v", got)
+	}
+	round.Tester = &state.TesterRound{Outcome: "pass", At: now}
+	write(idle(since), round)
+	if got := f.list()[0].Review.Stalled; got != nil {
+		t.Errorf("stalled after the result: %+v", got)
+	}
+}

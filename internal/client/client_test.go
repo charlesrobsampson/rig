@@ -463,13 +463,13 @@ func TestAnOlderDaemonIsNamedAsTheCauseOfAMissingMethod(t *testing.T) {
 func assertOlderDaemon(t *testing.T, err error) {
 	t.Helper()
 	var apiErr *api.Error
-	if !errors.As(err, &apiErr) || apiErr.Code != api.CodeUnavailable || !strings.Contains(apiErr.Message, "older") || !strings.Contains(apiErr.Message, "rig daemon stop") || !strings.Contains(apiErr.Message, "journal.list") {
+	if !errors.As(err, &apiErr) || apiErr.Code != api.CodeUnavailable || !strings.Contains(apiErr.Message, "older") || !strings.Contains(apiErr.Message, "rig daemon restart") || !strings.Contains(apiErr.Message, "journal.list") {
 		t.Errorf("error = %v, want an unavailable error naming the old daemon, the method and the fix", err)
 	}
 }
 
 func TestVersionMismatchWarnsOnlyForDifferingReleaseBuilds(t *testing.T) {
-	if got := client.VersionMismatch("2.0", "1.0"); !strings.Contains(got, "1.0") || !strings.Contains(got, "2.0") || !strings.Contains(got, "rig daemon stop") {
+	if got := client.VersionMismatch("2.0", "1.0"); !strings.Contains(got, "1.0") || !strings.Contains(got, "2.0") || !strings.Contains(got, "rig daemon restart") {
 		t.Errorf("differing: %q", got)
 	}
 	for _, c := range [][2]string{{"1.0", "1.0"}, {"dev", "1.0"}, {"1.0", "dev"}, {"dev", "dev"}, {"", "1.0"}, {"1.0", ""}} {

@@ -145,6 +145,8 @@ func phaseCell(t api.TicketSummary, overlaps []string) string {
 	if r := t.Review; r != nil {
 		if r.Status == domain.ReviewAwaitingReady {
 			notes = append(notes, fmt.Sprintf("review waits for ready r%d", r.Round))
+		} else if r.Stalled != nil {
+			notes = append(notes, fmt.Sprintf("review stalled (%s idle)", stalledName(r.Stalled.Service)))
 		} else if r.Stale {
 			notes = append(notes, fmt.Sprintf("review %s r%d (new commits)", r.Status, r.Round))
 		} else {
@@ -330,4 +332,12 @@ func overlapsOf(tickets []api.TicketSummary) map[string][]string {
 		slices.Sort(out[id])
 	}
 	return out
+}
+
+// stalledName is what a person calls the checker a stalled round waits on.
+func stalledName(service string) string {
+	if service == domain.ReviewerService {
+		return "reviewer"
+	}
+	return service
 }
