@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -25,6 +26,11 @@ var version = "dev"
 
 // deps are the seams tests replace: how the daemon gets started, and the clock.
 type deps struct {
+	// version replaces the build's version in the daemon handshake (tests); stderr is where
+	// the version warning goes.
+	version string
+	stderr  io.Writer
+
 	spawner client.Spawner // nil means start a detached `rig daemon run`
 	clock   clock.Clock    // nil means the real clock
 	stdin   io.Reader      // nil means os.Stdin; read for confirmation prompts
@@ -62,6 +68,7 @@ func main() {
 
 // run executes one rig invocation and returns its exit code (docs/formats.md §10).
 func run(ctx context.Context, args []string, stdout, stderr io.Writer, d deps) int {
+	d.stderr = stderr
 	root := newRootCmd(d)
 	root.SetOut(stdout)
 	root.SetErr(stderr)
@@ -122,10 +129,12 @@ type app struct {
 	// vesselFromFlag: the vessel was named with -V (not only $RIG_VESSEL)
 	vesselFromFlag bool
 	json           bool
+	// warned makes the version warning appear once per process, across vessel copies.
+	warned *sync.Once
 }
 
 func newRootCmd(d deps) *cobra.Command {
-	a := &app{deps: d}
+	a := &app{deps: d, warned: new(sync.Once)}
 	var ticket, tab string
 	root := &cobra.Command{
 		Use:           "rig",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -464,5 +465,61 @@ func assertOlderDaemon(t *testing.T, err error) {
 	var apiErr *api.Error
 	if !errors.As(err, &apiErr) || apiErr.Code != api.CodeUnavailable || !strings.Contains(apiErr.Message, "older") || !strings.Contains(apiErr.Message, "rig daemon stop") || !strings.Contains(apiErr.Message, "journal.list") {
 		t.Errorf("error = %v, want an unavailable error naming the old daemon, the method and the fix", err)
+	}
+}
+
+func TestVersionMismatchWarnsOnlyForDifferingReleaseBuilds(t *testing.T) {
+	if got := client.VersionMismatch("2.0", "1.0"); !strings.Contains(got, "1.0") || !strings.Contains(got, "2.0") || !strings.Contains(got, "rig daemon stop") {
+		t.Errorf("differing: %q", got)
+	}
+	for _, c := range [][2]string{{"1.0", "1.0"}, {"dev", "1.0"}, {"1.0", "dev"}, {"dev", "dev"}, {"", "1.0"}, {"1.0", ""}} {
+		if got := client.VersionMismatch(c[0], c[1]); got != "" {
+			t.Errorf("%v: %q", c, got)
+		}
+	}
+}
+
+func TestClientKnowsTheDaemonsVersion(t *testing.T) {
+	p := newPaths(t)
+	startDaemon(t, p, nil) // Version: "test"
+	c := mustConnect(t, p)
+	if c.DaemonVersion() != "test" {
+		t.Errorf("DaemonVersion = %q", c.DaemonVersion())
+	}
+}
+
+// An older daemon answers hello with only "server": the client still learns its version.
+func TestClientReadsAnOldDaemonsVersionFromServer(t *testing.T) {
+	p := newPaths(t)
+	ln, err := net.Listen("unix", p.socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		req, err := api.NewDecoder(conn).ReadRequest()
+		if err != nil {
+			return
+		}
+		raw, _ := json.Marshal(map[string]any{"protocol": api.ProtocolVersion, "server": "rigd 1.0"})
+		resp, _ := api.Success(req.ID, json.RawMessage(raw))
+		api.NewEncoder(conn).Write(resp)
+		io.Copy(io.Discard, conn)
+	}()
+	c, err := connect(t, p, client.Options{Version: "2.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	if c.DaemonVersion() != "1.0" {
+		t.Errorf("DaemonVersion = %q, want 1.0", c.DaemonVersion())
+	}
+	if client.VersionMismatch("2.0", c.DaemonVersion()) == "" {
+		t.Error("an old daemon did not warn")
 	}
 }

@@ -271,3 +271,121 @@ func TestWaitReturnsTheConnectErrorWhenTheStreamCannotBeReestablished(t *testing
 		t.Fatal("the wait did not end when it could not reconnect")
 	}
 }
+
+func TestWaitRecordTakesSeveralKindsAndQuestionEndsOnAnOpenQuestion(t *testing.T) {
+	_, d, repo, _ := newEnvWithTerminal(t)
+	newTicket(t, d, "demo", repo)
+	rig(t, d, "start", "demo", "--sandbox", "host")
+	t.Setenv("RIG_TICKET", "demo")
+	t.Setenv("RIG_SERVICE", "svc1")
+
+	// --question with nothing asked times out
+	if _, _, code := rig(t, d, "wait", "demo", "--question", "--timeout", "300ms"); code != 1 {
+		t.Errorf("no question: exit %d, want the timeout", code)
+	}
+
+	// --record note,question ends on either kind
+	for _, kind := range []string{"question", "note"} {
+		var wg sync.WaitGroup
+		var stdout string
+		var code int
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			stdout, _, code = rig(t, d, "wait", "demo", "--record", "note,question", "--timeout", "10s", "--json")
+		}()
+		time.Sleep(700 * time.Millisecond)
+		rig(t, d, "agent-event", `{"kind":"`+kind+`","text":"see `+kind+`"}`)
+		wg.Wait()
+		if code != 0 || !strings.Contains(stdout, `"matched": "record"`) && !strings.Contains(stdout, `"matched":"record"`) || !strings.Contains(stdout, "see "+kind) {
+			t.Errorf("%s: code %d, %q", kind, code, stdout)
+		}
+	}
+
+	// the question left above is open: --question ends at once, naming it; --new does not
+	stdout, _, code := rig(t, d, "wait", "demo", "--question", "--timeout", "2s")
+	if code != 0 || !strings.Contains(stdout, "svc1 asks: see question") {
+		t.Errorf("open question: code %d, %q", code, stdout)
+	}
+	if _, _, code := rig(t, d, "wait", "demo", "--question", "--new", "--timeout", "1s"); code != 1 {
+		t.Errorf("--new with an older question: exit %d, want the timeout", code)
+	}
+
+	// answered: it no longer counts
+	rig(t, d, "agent-event", "ready")
+	if _, stderr, code := rig(t, d, "msg", "demo", "svc1", "do it"); code != 0 {
+		t.Fatalf("msg: %d %q", code, stderr)
+	}
+	if _, _, code := rig(t, d, "wait", "demo", "--question", "--timeout", "500ms"); code != 1 {
+		t.Errorf("answered question: exit %d, want the timeout", code)
+	}
+
+	// --new ends on a question asked after the wait began
+	var wg sync.WaitGroup
+	var out string
+	var c int
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		out, _, c = rig(t, d, "wait", "demo", "--question", "--new", "--timeout", "10s")
+	}()
+	time.Sleep(700 * time.Millisecond)
+	rig(t, d, "agent-event", `{"kind":"question","text":"later one"}`)
+	wg.Wait()
+	if c != 0 || !strings.Contains(out, "later one") {
+		t.Errorf("new question: code %d, %q", c, out)
+	}
+}
+
+func TestACommandWarnsOnStderrWhenTheDaemonIsAnotherBuild(t *testing.T) {
+	_, d, repo := newEnv(t)
+	old := version
+	version = "1.0.0" // the in-process daemon's build
+	t.Cleanup(func() { version = old })
+	newTicket(t, d, "demo", repo) // starts the daemon at 1.0.0
+
+	d.version = "2.0.0"
+	stdout, stderr, code := rig(t, d, "list", "--json")
+	if code != 0 || strings.Count(stderr, "version 1.0.0 but this rig is 2.0.0") != 1 || !strings.Contains(stderr, "rig daemon stop") {
+		t.Errorf("code %d, stderr %q", code, stderr)
+	}
+	if strings.Contains(stderr, "-V") {
+		t.Errorf("no vessel chosen, but the command names one: %q", stderr)
+	}
+	var v any
+	if err := json.Unmarshal([]byte(stdout), &v); err != nil || strings.Contains(stdout, "daemon is version") {
+		t.Errorf("stdout is not clean JSON: %q (%v)", stdout, err)
+	}
+
+	// one line per process even though wait opens several connections
+	_, stderr, _ = rig(t, d, "wait", "demo", "--phase", "plan", "--timeout", "2s")
+	if n := strings.Count(stderr, "rig daemon stop"); n != 1 {
+		t.Errorf("wait warned %d times: %q", n, stderr)
+	}
+
+	for _, ver := range []string{"1.0.0", "dev"} {
+		d.version = ver
+		if _, stderr, _ := rig(t, d, "list"); strings.Contains(stderr, "daemon") {
+			t.Errorf("client %s: unexpected warning %q", ver, stderr)
+		}
+	}
+}
+
+func TestTheVersionWarningNamesTheVesselWhoseDaemonIsStale(t *testing.T) {
+	work, _ := twoVessels(t)
+	old := version
+	version = "1.0.0"
+	t.Cleanup(func() { version = old })
+	startDaemon(t, work)
+	d := deps{version: "2.0.0"}
+
+	_, stderr, code := rig(t, d, "-V", "work", "daemon", "status")
+	if code != 0 || !strings.Contains(stderr, `run "rig -V work daemon stop"`) {
+		t.Errorf("-V work: code %d, stderr %q", code, stderr)
+	}
+	t.Setenv("RIG_VESSEL", "work")
+	_, stderr, code = rig(t, d, "daemon", "status")
+	if code != 0 || !strings.Contains(stderr, `run "rig -V work daemon stop"`) {
+		t.Errorf("RIG_VESSEL=work: code %d, stderr %q", code, stderr)
+	}
+}

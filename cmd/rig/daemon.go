@@ -52,9 +52,13 @@ func (a *app) connect(ctx context.Context, autostart bool) (*client.Client, erro
 	if err != nil {
 		return nil, err
 	}
+	ver := version
+	if a.deps.version != "" {
+		ver = a.deps.version
+	}
 	opts := client.Options{
 		SocketPath: g.SocketPath(),
-		Version:    version,
+		Version:    ver,
 		Clock:      a.deps.clock,
 		StartHint:  "see " + g.LogPath(),
 	}
@@ -64,7 +68,13 @@ func (a *app) connect(ctx context.Context, autostart bool) (*client.Client, erro
 			opts.Spawner = spawnDetached(a.configPath)
 		}
 	}
-	return client.Connect(ctx, opts)
+	c, err := client.Connect(ctx, opts)
+	if err == nil && a.deps.stderr != nil && a.warned != nil {
+		if msg := client.VersionMismatch(ver, c.DaemonVersion()); msg != "" {
+			a.warned.Do(func() { fmt.Fprintln(a.deps.stderr, withVessel(msg, a.vesselName)) })
+		}
+	}
+	return c, err
 }
 
 func newDaemonCmd(a *app) *cobra.Command {

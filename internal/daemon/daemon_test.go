@@ -157,7 +157,7 @@ func TestHelloAndStatus(t *testing.T) {
 
 	resp := c.call(t, api.MethodHello, api.HelloParams{Client: "test", Version: "x"})
 	var hello api.HelloResult
-	if err := json.Unmarshal(resp.Result, &hello); err != nil || hello.Protocol != api.ProtocolVersion || !strings.Contains(hello.Server, "test") {
+	if err := json.Unmarshal(resp.Result, &hello); err != nil || hello.Protocol != api.ProtocolVersion || !strings.Contains(hello.Server, "test") || hello.Version != h.opts.Version {
 		t.Fatalf("hello = %+v, %v", hello, err)
 	}
 

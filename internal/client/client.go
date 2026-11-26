@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -52,6 +53,8 @@ type Client struct {
 	broken bool
 	// server is the daemon's version from hello, to name it when it is out of date.
 	server string
+	// daemonVersion is the daemon's version alone, from hello (or parsed from server).
+	daemonVersion string
 }
 
 func Connect(ctx context.Context, opts Options) (*Client, error) {
@@ -104,6 +107,10 @@ func open(ctx context.Context, opts Options) (*Client, error) {
 	err = c.Call(ctx, api.MethodHello, api.HelloParams{Client: "rig", Version: opts.Version}, &hello)
 	if err == nil {
 		c.server = hello.Server
+		c.daemonVersion = hello.Version
+		if c.daemonVersion == "" {
+			c.daemonVersion = strings.TrimPrefix(hello.Server, "rigd ")
+		}
 		if err = hello.Compatible(); err != nil {
 			err = &api.Error{Code: api.CodeUnavailable, Message: err.Error()}
 		}
@@ -130,6 +137,18 @@ func (c *Client) explainMissing(method string, err error) error {
 	return &api.Error{Code: api.CodeUnavailable, Message: fmt.Sprintf(
 		"the running daemon (version %s) does not know %s: it is older than this rig (version %s). Run \"rig daemon stop\"; the next command starts the daemon from this rig",
 		c.server, method, c.opts.Version)}
+}
+
+// DaemonVersion is the rig build of the daemon this client is connected to ("" if unknown).
+func (c *Client) DaemonVersion() string { return c.daemonVersion }
+
+// VersionMismatch returns the warning line for a client and daemon built differently, or ""
+// when they match or either is unknown or a dev build.
+func VersionMismatch(client, daemon string) string {
+	if client == "" || daemon == "" || client == "dev" || daemon == "dev" || client == daemon {
+		return ""
+	}
+	return fmt.Sprintf("rig: the daemon is version %s but this rig is %s; run \"rig daemon stop\" (the next command starts the daemon from this rig)", daemon, client)
 }
 
 func isNotRunning(err error) bool {
