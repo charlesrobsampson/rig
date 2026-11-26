@@ -482,3 +482,23 @@ func TestOverlongSocketPathsAreRejectedClearly(t *testing.T) {
 		t.Fatalf("error = %v, want one saying the socket path is too long", err)
 	}
 }
+
+// Requests arriving while the daemon shuts down must not race with the wait for
+// in-flight requests (a WaitGroup may not Add during Wait at zero).
+func TestRequestsDuringShutdownDoNotRace(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		h := start(t, nil)
+		c := dial(t, h.opts.SocketPath)
+		c.hello(t)
+		go func() {
+			for j := 0; j < 50; j++ {
+				req := api.Request{V: api.ProtocolVersion, ID: strconv.Itoa(j), Method: api.MethodStatus}
+				if c.enc.Write(req) != nil {
+					return
+				}
+			}
+		}()
+		h.srv.Stop()
+		h.wait(t)
+	}
+}

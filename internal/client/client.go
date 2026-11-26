@@ -31,7 +31,10 @@ type Spawner func(ctx context.Context) error
 
 type Options struct {
 	SocketPath string
-	Version    string // sent in hello
+	// PIDPath, when set, makes Stop wait for the old daemon to release its pid file
+	// as well as its socket, so a daemon started next never meets "already running".
+	PIDPath string
+	Version string // sent in hello
 	// Spawner starts the daemon when none is running; nil turns auto-start off.
 	Spawner        Spawner
 	Clock          clock.Clock // nil means the real clock
@@ -242,7 +245,7 @@ func (c *Client) Stop(ctx context.Context) error {
 	c.broken = true
 	deadline := c.opts.Clock.After(c.opts.StartupTimeout)
 	for {
-		if _, err := os.Stat(c.opts.SocketPath); errors.Is(err, fs.ErrNotExist) {
+		if gone(c.opts.SocketPath) && (c.opts.PIDPath == "" || gone(c.opts.PIDPath)) {
 			return nil
 		}
 		select {
@@ -307,4 +310,9 @@ func (c *Client) fail(ctx context.Context, err error) error {
 		return &api.Error{Code: api.CodeNotRunning, Message: "daemon connection lost"}
 	}
 	return err
+}
+
+func gone(path string) bool {
+	_, err := os.Stat(path)
+	return errors.Is(err, fs.ErrNotExist)
 }

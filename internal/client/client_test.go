@@ -523,3 +523,33 @@ func TestClientReadsAnOldDaemonsVersionFromServer(t *testing.T) {
 		t.Error("an old daemon did not warn")
 	}
 }
+
+// Stop returns when the old daemon has let go of the pid file too, so the daemon
+// that restart starts next never meets "already running".
+func TestANewDaemonCanListenTheMomentStopReturns(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		p := newPaths(t)
+		srv, err := daemon.Listen(daemon.Options{SocketPath: p.socket, PIDPath: p.pid, Version: "test"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		srv.Handle(api.MethodDaemonStop, func(context.Context, json.RawMessage) (any, error) {
+			srv.Stop()
+			return api.EmptyData{}, nil
+		})
+		go srv.Serve(context.Background())
+		c, err := connect(t, p, client.Options{PIDPath: p.pid})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Stop(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		next, err := daemon.Listen(daemon.Options{SocketPath: p.socket, PIDPath: p.pid, Version: "test"})
+		if err != nil {
+			t.Fatalf("round %d: a new daemon right after Stop: %v", i, err)
+		}
+		go next.Serve(context.Background())
+		next.Stop()
+	}
+}

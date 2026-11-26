@@ -57,7 +57,7 @@ type Server struct {
 	connMu sync.Mutex
 	conns  map[net.Conn]struct{}
 
-	inflight sync.WaitGroup // requests being handled
+	inflight inflightCount  // requests being handled
 	connWG   sync.WaitGroup // connection goroutines
 
 	stop     chan struct{}
@@ -180,10 +180,8 @@ func (s *Server) Serve(ctx context.Context) error {
 
 func (s *Server) shutdown() {
 	s.log.Info("shutting down")
-	grace := make(chan struct{})
-	go func() { s.inflight.Wait(); close(grace) }()
 	select {
-	case <-grace:
+	case <-s.inflight.idle():
 	case <-time.After(s.opts.ShutdownGrace):
 		s.log.Warn("requests still running after the grace period; closing connections anyway")
 	}
@@ -205,4 +203,43 @@ func (s *Server) status(context.Context, json.RawMessage) (any, error) {
 		PID:           os.Getpid(),
 		UptimeSeconds: int64(s.clock.Now().Sub(s.started) / time.Second),
 	}, nil
+}
+
+// inflightCount counts requests being handled. Unlike a sync.WaitGroup it may be
+// added to while shutdown is already waiting for it to reach zero.
+type inflightCount struct {
+	mu sync.Mutex
+	n  int
+	ch chan struct{} // closed when n is zero; nil while no one waits
+}
+
+func (c *inflightCount) Add() {
+	c.mu.Lock()
+	c.n++
+	c.mu.Unlock()
+}
+
+func (c *inflightCount) Done() {
+	c.mu.Lock()
+	c.n--
+	if c.n == 0 && c.ch != nil {
+		close(c.ch)
+		c.ch = nil
+	}
+	c.mu.Unlock()
+}
+
+// idle returns a channel that is closed when no request is in flight.
+func (c *inflightCount) idle() <-chan struct{} {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ch := make(chan struct{})
+	if c.n == 0 {
+		close(ch)
+		return ch
+	}
+	if c.ch == nil {
+		c.ch = ch
+	}
+	return c.ch
 }

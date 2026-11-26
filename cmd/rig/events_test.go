@@ -152,6 +152,11 @@ func TestEventsExitsWithAnErrorWhenTheDaemonGoesAway(t *testing.T) {
 	waitFor(t, "the subscription", func() bool { return bus.Subscribers() == 1 })
 	srv.Stop()
 	<-srvDone
+	// The client must notice on its own; cancelling it first would end it with 0.
+	waitFor(t, "the client to see the daemon go", func() bool {
+		msg := stderr.String()
+		return strings.Contains(msg, "shutting down") || strings.Contains(msg, "connection lost")
+	})
 
 	code := stop()
 	if msg := stderr.String(); code != 4 || !(strings.Contains(msg, "shutting down") || strings.Contains(msg, "connection lost")) {
