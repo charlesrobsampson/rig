@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"github.com/charmbracelet/lipgloss"
 	"sort"
 	"strconv"
 	"strings"
@@ -121,8 +122,10 @@ func lightLegend() string {
 	return strings.Join(parts, "  ")
 }
 
-// warn draws s in the warning colour.
-func warn(s string) string { return "\x1b[33m" + s + "\x1b[0m" }
+var warnStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+
+// warn draws s in the warning colour; on a terminal without colour it is plain.
+func warn(s string) string { return warnStyle.Render(s) }
 
 // exitedNeedsPerson is an exited agent on a ticket that is still going: nobody will
 // restart it but a person (rig start).
@@ -237,13 +240,8 @@ func (d *dashboard) view(w, h int) string {
 		b.WriteString(prefix)
 		for i, s := range c {
 			cell := pad(s, widths[i])
-			if i == 2 && t != nil {
-				for _, sv := range t.Services {
-					if exitedNeedsPerson(*t, sv) {
-						seg := Light(sv.AgentState) + " " + sv.Name
-						cell = strings.Replace(cell, seg, warn(seg), 1)
-					}
-				}
+			if i == 2 && t != nil && len(t.Services) > 0 {
+				cell = agentsCellStyled(*t) + strings.Repeat(" ", widths[i]-len([]rune(s)))
 			}
 			b.WriteString(cell + "  ")
 		}
@@ -358,6 +356,19 @@ func agentsCell(t api.TicketSummary) string {
 	parts := make([]string, len(t.Services))
 	for i, s := range t.Services {
 		parts[i] = Light(s.AgentState) + " " + s.Name
+	}
+	return strings.Join(parts, "  ")
+}
+
+// agentsCellStyled is agentsCell with each exited agent that needs a person in the
+// warning style; its plain text is the same, so padding is done on that.
+func agentsCellStyled(t api.TicketSummary) string {
+	parts := make([]string, len(t.Services))
+	for i, s := range t.Services {
+		parts[i] = Light(s.AgentState) + " " + s.Name
+		if exitedNeedsPerson(t, s) {
+			parts[i] = warn(parts[i])
+		}
 	}
 	return strings.Join(parts, "  ")
 }

@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/domain"
@@ -229,13 +231,19 @@ func TestTheCostColumnSumsReportedCostsAndShowsNothingForUnreported(t *testing.T
 	}
 }
 
+func withColour(t *testing.T, p termenv.Profile) {
+	old := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(p)
+	t.Cleanup(func() { lipgloss.SetColorProfile(old) })
+}
+
 func TestHelpNamesEveryLightWithItsWord(t *testing.T) {
 	help := New(Options{Source: &fakeSource{}}).helpView()
 	if !strings.Contains(help, "Lights") {
 		t.Fatalf("help has no Lights section:\n%s", help)
 	}
 	for _, l := range lights {
-		if want := Light(l.State) + "  " + l.Word; !strings.Contains(help, want) {
+		if want := Light(l.State) + " " + l.Word; !strings.Contains(help, want) {
 			t.Errorf("help lacks %q:\n%s", want, help)
 		}
 	}
@@ -260,6 +268,7 @@ func TestTheLegendShowsFromTwentyFourRowsAndHidesBelow(t *testing.T) {
 }
 
 func TestAnExitedAgentOnAGoingTicketIsInTheWarningStyle(t *testing.T) {
+	withColour(t, termenv.ANSI)
 	exited := func(phase domain.Phase, status domain.ServiceStatus) string {
 		d := &dashboard{}
 		s := svc("api", domain.AgentExited, 0)
@@ -277,5 +286,39 @@ func TestAnExitedAgentOnAGoingTicketIsInTheWarningStyle(t *testing.T) {
 		if strings.Contains(v, "\x1b[") {
 			t.Errorf("%s ticket drawn in a style:\n%q", name, v)
 		}
+	}
+}
+
+func TestHelpShowsTheLightsOnAnEightyByTwentyFourTerminal(t *testing.T) {
+	m, _ := load(t, New(Options{Source: &fakeSource{}}))
+	m, _ = send(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m, _ = send(m, key("?"))
+	v := m.View()
+	for _, l := range lights {
+		if !strings.Contains(v, Light(l.State)+" "+l.Word) {
+			t.Errorf("help at 80x24 lacks %q:\n%s", l.Word, v)
+		}
+	}
+}
+
+func TestWithoutColourTheWarningIsPlainText(t *testing.T) {
+	withColour(t, termenv.Ascii)
+	d := &dashboard{}
+	s := svc("api", domain.AgentExited, 0)
+	d.set([]api.TicketSummary{{ID: "t", Phase: domain.PhaseImplement, Services: []api.ServiceSummary{s}}})
+	if v := d.view(100, 10); strings.Contains(v, "\x1b") || !strings.Contains(v, "✕ api") {
+		t.Errorf("view without colour:\n%q", v)
+	}
+}
+
+func TestTheWarningStylesTheServiceNotAPrefixSharingOne(t *testing.T) {
+	withColour(t, termenv.ANSI)
+	stopped := svc("api2", domain.AgentExited, 0)
+	stopped.Status = domain.ServiceStopped
+	d := &dashboard{}
+	d.set([]api.TicketSummary{{ID: "t", Phase: domain.PhaseImplement, Services: []api.ServiceSummary{stopped, svc("api", domain.AgentExited, 0)}}})
+	v := d.view(100, 10)
+	if !strings.Contains(v, warn("✕ api")) || strings.Contains(v, warn("✕ api2")) || strings.Contains(v, "\x1b[33m✕ api\x1b[0m2") {
+		t.Errorf("wrong service styled:\n%q", v)
 	}
 }

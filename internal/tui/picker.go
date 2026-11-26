@@ -142,10 +142,15 @@ func (p Picker) View() string {
 	if p.typing {
 		footer = "/" + string(p.filter) + "█   enter open · esc clear"
 	}
-	parts := []string{"rig · fleet · choose a vessel", fit(body, w, h-3), footer}
+	parts := []string{"rig · fleet · choose a vessel", fit(body, w, h-3)}
 	if len(rows) > 0 {
 		r := rows[min(p.sel, len(rows)-1)]
-		parts = []string{parts[0], fit(body, w, h-3), ansi.Truncate(fmt.Sprintf("%s · %s · %s this month", r.Name, r.Status, r.SpendMonth), w, "…"), footer}
+		detail := r.Name + " · " + r.Status
+		if r.SpendMonth != "" && r.SpendMonth != "-" {
+			detail += " · " + r.SpendMonth + " this month"
+		}
+		parts = append(parts, ansi.Truncate(detail, w, "…"))
 	}
+	parts = append(parts, footer)
 	return strings.Join(parts, "\n")
 }

@@ -571,15 +571,14 @@ func (m Model) downView() string {
 }
 
 func (m Model) helpView() string {
-	lines := []string{"Keys", ""}
+	words := make([]string, len(lights))
+	for i, l := range lights {
+		words[i] = Light(l.State) + " " + l.Word
+	}
+	lines := []string{"Lights  " + strings.Join(words, "  ") + "  (yellow ✕ needs you)", "Keys"}
 	for _, k := range Keys {
 		lines = append(lines, fmt.Sprintf("  %-8s %s", k.Key, k.Help))
 	}
-	lines = append(lines, "", "Lights (an agent per service, in the AGENTS column)", "")
-	for _, l := range lights {
-		lines = append(lines, fmt.Sprintf("  %s  %s", Light(l.State), l.Word))
-	}
-	lines = append(lines, "", "  An exited agent on a ticket that is still going shows in yellow: it needs you (rig start).")
 	return strings.Join(lines, "\n")
 }
 
