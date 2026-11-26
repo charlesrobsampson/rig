@@ -210,6 +210,18 @@ func TestAPartialFailureDoesNotMarkDoneAndARerunRetriesOnlyTheFailedService(t *t
 		t.Error("the ticket should be done once both are pushed")
 	}
 	_ = res
+
+	// Each attempt is one push.done: svc1 and the failed svc2, then the retried svc2 (the
+	// skipped svc1 is not a push), and the move to done follows the last one.
+	entries := readTimeline(t, filepath.Dir(f.state("demo").Services["svc1"].Checkout.Path))
+	pushes := only(entries, "push.done")
+	if len(pushes) != 3 || pushes[0]["service"] != "svc1" || pushes[0]["mode"] != "push-branch" || pushes[0]["files"] != 1.0 || pushes[0]["added"] != 1.0 ||
+		pushes[1]["service"] != "svc2" || pushes[1]["error"] == nil || pushes[2]["service"] != "svc2" || pushes[2]["error"] != nil {
+		t.Errorf("push.done = %v", pushes)
+	}
+	if last := entries[len(entries)-1]; last.Kind != "phase.moved" || only(entries[len(entries)-1:], "phase.moved")[0]["to"] != "done" {
+		t.Errorf("the last entry is %s, want the move to done", last.Kind)
+	}
 }
 
 func TestOneServiceCanBePushedOnItsOwn(t *testing.T) {
