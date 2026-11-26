@@ -1516,3 +1516,33 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Tests: behind and conflicts measured in a real clone; a clean sync merges, tells the coder and starts a round; a second sync does nothing; a conflicting sync leaves the merge and blocks another sync until it is resolved; a ticket in review goes back to implement; push refuses a conflicting branch.
 - Manual check: osmo's next parallel pair: after the first lands, `rig -V osmo list` shows the second behind, and `rig -V osmo sync <id>` brings it in without the operator touching git.
 - Notes (as built): `git.CompareBase` runs in the ticket's checkout (a clone borrows the main repository's objects), `merge-tree --write-tree --name-only` predicts conflicts without touching files; `git.Error` now keeps stdout. The base is the main repository's local branch: a base that moved only on the remote (someone merged on GitHub) is not seen until the local branch is updated (R-021 remains).
+
+### 119 · `rig push` shows every service's note
+- [ ] Done
+- Session: _(the rigdev vessel, ticket r119)_
+- Branch: rig's ticket branch · Depends: 118
+- Read: `cmd/rig/push.go`; `docs/formats.md` (`push.run`)
+- Why: R-027: the push table's DETAIL column holds the pull request link in pr mode, so a service's note (for example "master has moved on by 3 commits; they merge without conflicts" from task 118, or "a pull request for this branch was already open") never reaches the person.
+- Build: under the table, one line per service that has a note: `<service>: <note>`. `--json` is unchanged (it already carries `note`).
+- Tests: a pr-mode push whose result has a note prints it under the table; a push without notes prints no extra lines; the existing push tests still pass.
+- Manual check: none beyond the tests (a CLI rendering change).
+
+### 120 · The ticket timeline: every change recorded once, in order
+- [ ] Done
+- Session: _(the rigdev vessel)_
+- Branch: rig's ticket branch · Depends: 119
+- Read: `manifest.md` (lifecycle); `docs/formats.md` §3, §5, §9, §14; `internal/lifecycle`, `internal/inject`, `internal/supervisor`, `internal/journal`
+- Why: a ticket's history is spread over state.json (rewritten, so earlier review loops are lost: R-024), the journal, messages.jsonl and transitions; stats reconstruct it, `rig wait` polls it, and nothing can be replayed from a point. One append-only timeline per ticket is the record everything else reads (the design discussion of 2026-11-25: "one timeline").
+- Build: `internal/timeline`: `<ticket>/timeline.jsonl`, append-only, one entry per line `{seq, at, kind, by?, service?, data}`, `seq` counting from 1 per ticket, written through one writer that serializes appends (a reader can rely on seq being dense and ordered). The daemon appends an entry where each change is made: `ticket.started`, `ticket.stopped`, `phase.moved` `{from, to, reason?}`, `gate.approved` `{gate}`, `phase.requested` `{to, reason?}`, `journal.recorded` `{kind, text?}` (every agent journal record), `message.sent` `{service, from, delivered}` (not the text, which stays in messages.jsonl), `review.round.started` `{round, commit}`, `review.round.closed` `{round, verdict, blocking, should_fix, nit}`, `review.decided` `{outcome, reason}`, `review.loop.ended` `{rounds, status}` (when a move back to implement or a sync resets the loop: earlier loops are kept here), `sync.done` `{service, behind, merged?, conflicts?}`, `push.done` `{service, mode, pr_url?, files, added, deleted}`. Existing files are not changed. `rig timeline <ticket> [--since <seq>] [--json]` prints it. `rig stats` counts review rounds over every loop in the timeline (R-024), falling back to state for tickets older than the timeline.
+- Tests: each kind appended once by the action that makes it; seq dense and ordered under concurrent appends; a reset loop's rounds survive in the timeline and in stats; `--since`; a ticket with no timeline file reads as empty.
+- Manual check: a jybe card run through rig afterwards shows its whole history with `rig timeline`.
+
+### 121 · Subscribing to timelines: replay, then live; `rig wait` without polling
+- [ ] Done
+- Session: _(the rigdev vessel)_
+- Branch: rig's ticket branch · Depends: 120
+- Read: `docs/formats.md` §9 (events); `internal/events`; `internal/daemon` (streams); `cmd/rig/wait.go`, `cmd/rig/events.go`
+- Why: every timeline entry should reach whoever is watching as it happens, and a watcher that connects late or reconnects must not miss or repeat anything. Then `rig wait` (and later jybe's queue) can react instead of polling every half second.
+- Build: each appended entry is also published as event `timeline.entry` `{ticket, seq, entry}`. `events.subscribe` takes `{tickets?: [id], since?: {<ticket>: seq}}`: it first replays, from the files, every entry after each given seq, then streams live entries, with no gap and no duplicate between the two. `rig watch [ticket...] [--since seq]` prints entries as they come. `rig wait` subscribes instead of polling (keeping its flags and output); it still answers at once from current state for conditions already true.
+- Tests: replay then live with an append racing the switch-over (no gap, no duplicate); a filter by ticket; `rig wait` ends on an event without a poll interval (the fake clock does not advance); reconnecting with the last seq resumes exactly.
+- Manual check: `rig watch jybe/j05` shows a running card's entries live.
