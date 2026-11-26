@@ -185,10 +185,19 @@ func (m *Manager) beginRound(id, by string) error {
 	}
 
 	spent := agentsCost(l.state)
-	// From awaiting_ready the old loop is over (a sync ended it, or its round was lost),
-	// so the round starts a new one; the end was logged when it happened.
+	// From awaiting_ready the loop is either over (a sync ended it: every round it had
+	// was pinned), so the round starts a new one, or it continues (its last round was
+	// lost before it pinned a commit): then that round is dropped and counted again, and
+	// the round cap and the budget keep what the loop has used.
 	awaiting := r != nil && r.Status == domain.ReviewAwaitingReady
-	newLoop := r == nil || awaiting || (r.Status == domain.ReviewStopped && human)
+	lost := awaiting && len(r.Rounds) > 0 && r.Rounds[len(r.Rounds)-1].Commit == ""
+	newLoop := r == nil || (awaiting && !lost) || (r.Status == domain.ReviewStopped && human)
+	if lost {
+		cp := *r
+		cp.Round--
+		cp.Rounds = cp.Rounds[:len(cp.Rounds)-1]
+		r = &cp
+	}
 	if !newLoop {
 		if reason := m.stopReason(l, target.Name, *r, spent); reason != "" {
 			m.setReview(l, func(r *state.Review) { r.Status, r.Reason, r.By = domain.ReviewStopped, reason, "rig" })
@@ -200,15 +209,19 @@ func (m *Manager) beginRound(id, by string) error {
 	if newLoop && r != nil && !awaiting {
 		m.note(l.dir, timeline.ReviewLoopEnded, by, "", timeline.ReviewLoopEndedData{Rounds: len(r.Rounds), Status: string(r.Status)})
 	}
-	m.setReview(l, func(r *state.Review) {
+	// Pending before the state says reviewing, so no reader sees a round that is only
+	// starting as a lost one.
+	m.setPending(id, true)
+	m.setReview(l, func(cur *state.Review) {
 		if newLoop {
-			*r = state.Review{CostAtStart: spent}
+			*cur = state.Review{CostAtStart: spent}
+		} else if lost {
+			cur.Round, cur.Rounds = r.Round, r.Rounds
 		}
-		r.Status, r.Reason, r.By = domain.ReviewReviewing, "", ""
-		r.Round++
-		r.Rounds = append(r.Rounds, state.ReviewRound{Round: r.Round, At: m.opts.Clock.Now().UTC()})
+		cur.Status, cur.Reason, cur.By = domain.ReviewReviewing, "", ""
+		cur.Round++
+		cur.Rounds = append(cur.Rounds, state.ReviewRound{Round: cur.Round, At: m.opts.Clock.Now().UTC()})
 	})
-	m.setPending(id, true) // until runRound has pinned the round or given it up
 	return nil
 }
 

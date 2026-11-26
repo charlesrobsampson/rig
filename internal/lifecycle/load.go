@@ -46,17 +46,19 @@ func (m *Manager) begin(id string) (l loaded, unlock func(), err error) {
 	if l.state, err = m.opts.States.Load(l.statePath); err != nil {
 		return loaded{}, nil, invalid("%v", err)
 	}
-	m.settleLostRound(&l)
+	if err := m.settleLostRound(&l); err != nil {
+		return loaded{}, nil, &api.Error{Code: api.CodeInternal, Message: fmt.Sprintf("a review round was lost and could not be marked awaiting_ready: %v", err)}
+	}
 	return l, release, nil
 }
 
 // settleLostRound turns a round that is marked reviewing but has no commit and is not
 // being started by this process into awaiting_ready, in the copy read and in
 // state.json: nothing runs it, so review.ready or --start must be able to start it.
-func (m *Manager) settleLostRound(l *loaded) {
+func (m *Manager) settleLostRound(l *loaded) error {
 	r := l.state.Review
 	if r == nil || r.Status != domain.ReviewReviewing || r.Commit != "" || m.roundPending(l.id) {
-		return
+		return nil
 	}
 	err := m.opts.States.Update(l.statePath, func(s *state.State) error {
 		if s.Review != nil && s.Review.Status == domain.ReviewReviewing && s.Review.Commit == "" {
@@ -65,11 +67,12 @@ func (m *Manager) settleLostRound(l *loaded) {
 		return nil
 	})
 	if err != nil {
-		return
+		return err
 	}
 	cp := *r
 	cp.Status = domain.ReviewAwaitingReady
 	l.state.Review = &cp
+	return nil
 }
 
 // RoundPending says whether a review round is being started for the ticket.

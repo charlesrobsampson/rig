@@ -1,6 +1,8 @@
 package lifecycle_test
 
 import (
+	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -282,8 +284,8 @@ func TestAStuckRoundLoadsAsAwaitingReady(t *testing.T) {
 	if err := r.record("svc1", "review.ready", "ready", nil); err != nil {
 		t.Fatalf("review.ready on a stuck round: %v", err)
 	}
-	if rv := r.review(); rv.Status != domain.ReviewReviewing || rv.Commit == "" || rv.Round != 1 {
-		t.Fatalf("review = %+v, want a new round pinned", rv)
+	if rv := r.review(); rv.Status != domain.ReviewReviewing || rv.Commit == "" || rv.Round != 2 {
+		t.Fatalf("review = %+v, want round 2 of the same loop pinned", rv)
 	}
 
 	// The stuck state is normalised when read, even with no request that starts a round.
@@ -298,5 +300,118 @@ func TestAStuckRoundLoadsAsAwaitingReady(t *testing.T) {
 	}
 	if rv := r.review(); rv.Status != domain.ReviewAwaitingReady || rv.Round != 2 {
 		t.Fatalf("review = %+v, want awaiting_ready, round kept", rv)
+	}
+}
+
+func TestACleanSyncFromTestOrReviewAfterAPassPinsTheMergedTip(t *testing.T) {
+	for _, phase := range []domain.Phase{domain.PhaseTest, domain.PhaseReview} {
+		t.Run(string(phase), func(t *testing.T) {
+			r := newReviewRig(t, "{}")
+			r.commit("a.txt", "one\n")
+			r.passRound(1)
+			r.mustSet("demo", domain.PhaseTest, "")
+			if phase == domain.PhaseReview {
+				r.mustSet("demo", domain.PhaseReview, "")
+			}
+			r.repo.Commit("other.txt", "theirs\n", "an unrelated change lands on main")
+			res, err := r.lc.Sync(ctx, api.SyncParams{ID: "demo"})
+			if err != nil || !res.ReviewStarted || res.Phase != domain.PhaseImplement {
+				t.Fatalf("sync = %+v, %v", res, err)
+			}
+			r.lc.Wait()
+			rv := r.review()
+			if rv.Status != domain.ReviewReviewing || rv.Round != 1 || rv.Commit != res.Services[0].Merged || rv.Commit == "" {
+				t.Fatalf("review = %+v, want round 1 pinned on the merge %s", rv, res.Services[0].Merged)
+			}
+		})
+	}
+}
+
+func TestARoundThatIsOnlyStartingIsNotTakenForALostOne(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	r.commit("a.txt", "mine\n")
+	if err := r.lc.BeginRound("demo", "agent:svc1"); err != nil {
+		t.Fatal(err)
+	}
+	// Reads while the round is starting leave it alone.
+	if _, err := r.lc.ReviewerStatus(ctx, api.ReviewerParams{Ticket: "demo"}); err != nil {
+		t.Fatal(err)
+	}
+	if rv := r.review(); rv.Status != domain.ReviewReviewing {
+		t.Fatalf("a starting round became %s", rv.Status)
+	}
+	if err := r.lc.BeginRound("demo", "agent:svc1"); err == nil || !strings.Contains(err.Error(), "still running") {
+		t.Errorf("a second review.ready = %v, want refused as running", err)
+	}
+	r.lc.RunRound(ctx, "demo")
+	if rv := r.review(); rv.Status != domain.ReviewReviewing || rv.Commit == "" {
+		t.Fatalf("review = %+v, want the round pinned", rv)
+	}
+}
+
+func TestARoundCancelledByShutdownWaitsForReadyAndKeepsTheLoop(t *testing.T) {
+	r := newReviewRig(t, `{max_rounds: 3}`)
+	r.commit("a.txt", "mine\n")
+	r.record("svc1", "review.ready", "ready", nil)
+	r.record("review", "review.result", "x", map[string]string{"id": "F1", "severity": "blocking", "what": "w"})
+	r.record("review", "verdict", "Blocking findings: 1", map[string]int{"round": 1})
+	r.commit("b.txt", "fix\n")
+	before := r.review()
+
+	if err := r.lc.BeginRound("demo", "agent:svc1"); err != nil {
+		t.Fatal(err)
+	}
+	gone, cancel := context.WithCancel(ctx)
+	cancel()
+	r.lc.RunRound(gone, "demo")
+	rv := r.review()
+	if rv.Status != domain.ReviewAwaitingReady || rv.Commit != "" || rv.Round != 2 {
+		t.Fatalf("review = %+v, want awaiting_ready (not stopped), round 2 kept", rv)
+	}
+
+	// review.ready counts the lost round again instead of starting a fresh loop.
+	if err := r.record("svc1", "review.ready", "ready again", nil); err != nil {
+		t.Fatal(err)
+	}
+	rv = r.review()
+	if rv.Status != domain.ReviewReviewing || rv.Round != 2 || len(rv.Rounds) != 2 || rv.Commit == "" || rv.CostAtStart != before.CostAtStart {
+		t.Fatalf("review = %+v, want round 2 of the same loop (cost at start %v)", rv, before.CostAtStart)
+	}
+}
+
+func TestACleanSyncWhoseRoundCannotStartTellsTheCoderAndWaits(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	r.commit("a.txt", "mine\n")
+	r.passRound(1)
+	r.repo.Commit("other.txt", "theirs\n", "main moves on")
+	// The coder reacts to the merge message by leaving work uncommitted, so the round
+	// cannot start (the reviewer sees commits only).
+	r.onDeliver = func(service, text string) {
+		if service == "svc1" && strings.Contains(text, "rig merged main") {
+			os.WriteFile(filepath.Join(r.coder, "wip.txt"), []byte("x\n"), 0o644)
+		}
+	}
+	res, err := r.lc.Sync(ctx, api.SyncParams{ID: "demo"})
+	if err != nil || res.ReviewStarted {
+		t.Fatalf("sync = %+v, %v", res, err)
+	}
+	r.lc.Wait()
+	if rv := r.review(); rv.Status != domain.ReviewAwaitingReady || rv.Commit != "" || rv.Round != 1 {
+		t.Fatalf("review = %+v, want awaiting_ready, round kept", rv)
+	}
+	if msg := r.last("svc1"); !strings.Contains(msg, "did not start") || !strings.Contains(msg, "uncommitted work") || !strings.Contains(msg, "review.ready") {
+		t.Errorf("the coder was told %q", msg)
+	}
+	// Committing and journaling review.ready then starts the round.
+	r.onDeliver = nil
+	r.commit("wip.txt", "x\n")
+	if err := r.record("svc1", "review.ready", "committed", nil); err != nil {
+		t.Fatal(err)
+	}
+	if rv := r.review(); rv.Status != domain.ReviewReviewing || rv.Commit == "" {
+		t.Fatalf("review = %+v", rv)
+	}
+	if rej := only(readTimeline(t, r.path), "record.rejected"); len(rej) != 0 {
+		t.Errorf("rejected records: %v", rej)
 	}
 }
