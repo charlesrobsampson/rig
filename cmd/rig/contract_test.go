@@ -54,16 +54,30 @@ func contractEnv(t *testing.T) (deps, *testkit.FakeTerminal, map[string]string) 
 	return d, term, panes
 }
 
-// typed waits for the asynchronous notice to reach a pane.
-func typed(term *testkit.FakeTerminal, pane string) string {
+// typed waits for the asynchronous notice containing every one of want to reach a pane
+// and returns it. Setup also notifies agents about the open proposals, so the notice
+// asked for is not necessarily the first input; if none arrives it returns everything
+// typed, for the failure message.
+func typed(term *testkit.FakeTerminal, pane string, want ...string) string {
+	var all []string
 	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if in := term.Input(terminal.PaneID(pane)); len(in) > 0 {
-			return in[0].Text
+	for {
+		all = all[:0]
+		for _, in := range term.Input(terminal.PaneID(pane)) {
+			all = append(all, in.Text)
+			match := true
+			for _, w := range want {
+				match = match && strings.Contains(in.Text, w)
+			}
+			if match {
+				return in.Text
+			}
+		}
+		if !time.Now().Before(deadline) {
+			return strings.Join(all, " | ")
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	return ""
 }
 
 func TestContractListShowsOpenProposalsAndAllWithTheFlag(t *testing.T) {
@@ -93,7 +107,7 @@ func TestAcceptingTellsEveryAgent(t *testing.T) {
 		t.Fatalf("code %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
 	for svc, pane := range panes {
-		if text := typed(term, pane); !strings.Contains(text, "P-svc1-1") || !strings.Contains(text, "accepted") {
+		if text := typed(term, pane, "P-svc1-1", "accepted"); !strings.Contains(text, "P-svc1-1") || !strings.Contains(text, "accepted") {
 			t.Errorf("%s was told %q", svc, text)
 		}
 	}
@@ -108,12 +122,14 @@ func TestRejectingTellsOnlyTheProposerWhy(t *testing.T) {
 	if code != 0 || !strings.Contains(stdout, "P-svc2-1 rejected") {
 		t.Fatalf("code %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
-	if text := typed(term, panes["svc2"]); !strings.Contains(text, "rejected: we still need it") {
+	if text := typed(term, panes["svc2"], "rejected: we still need it"); !strings.Contains(text, "rejected: we still need it") {
 		t.Errorf("proposer was told %q", text)
 	}
 	time.Sleep(100 * time.Millisecond)
-	if in := term.Input(terminal.PaneID(panes["svc1"])); len(in) != 0 {
-		t.Errorf("the other service was told too: %v", in)
+	for _, in := range term.Input(terminal.PaneID(panes["svc1"])) {
+		if strings.Contains(in.Text, "rejected") {
+			t.Errorf("the other service was told too: %q", in.Text)
+		}
 	}
 }
 
