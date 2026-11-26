@@ -50,10 +50,13 @@ type TicketSummary struct {
 	CostUSD *float64 `json:"cost_usd,omitempty"`
 	// CreatedAt and DoneAt bound the ticket's time (DoneAt once it moved to done).
 	// Base lists the services whose base branch has moved on since they branched.
-	Base      []BaseInfo `json:"base,omitempty"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
-	DoneAt    *time.Time `json:"done_at,omitempty"`
-	Error     string     `json:"error,omitempty"`
+	Base []BaseInfo `json:"base,omitempty"`
+	// Touched lists, per service, the files changed against its base (committed and
+	// uncommitted); absent for done tickets and services that cannot be measured.
+	Touched   []TouchedInfo `json:"touched,omitempty"`
+	CreatedAt *time.Time    `json:"created_at,omitempty"`
+	DoneAt    *time.Time    `json:"done_at,omitempty"`
+	Error     string        `json:"error,omitempty"`
 }
 
 type ServiceSummary struct {
@@ -802,6 +805,12 @@ type StatsTotals struct {
 type StatsResult struct {
 	Tickets []TicketStats `json:"tickets"`
 	Totals  StatsTotals   `json:"totals"`
+}
+
+// TouchedInfo is the files one service's checkout has changed against its base.
+type TouchedInfo struct {
+	Service string   `json:"service"`
+	Files   []string `json:"files"`
 }
 
 // BaseInfo is how one service's branch stands against its base branch.

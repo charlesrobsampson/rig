@@ -9,11 +9,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/charlesrobsampson/rig/internal/api"
+	"github.com/charlesrobsampson/rig/internal/client"
 	"github.com/charlesrobsampson/rig/internal/domain"
 )
 
 func newReviewCmd(a *app) *cobra.Command {
-	var stat, plain, move bool
+	var stat, plain, move, files bool
 	cmd := &cobra.Command{
 		Use:   "review <ticket-id> [service]",
 		Short: "Show what a ticket's services changed",
@@ -21,6 +22,8 @@ func newReviewCmd(a *app) *cobra.Command {
 base: commits, staged and unstaged edits and new files. The diff goes through delta
 (side by side) when it is installed, otherwise it is printed as a plain git diff.
 
+  --files  only the names of the files touched, no diff: what each service has changed
+           against its base, as ` + "`rig list`" + ` compares tickets for overlap
   --stat   only the list of changed files with their line counts
   --plain  never use delta
   --move   afterwards move the ticket into the review phase (gates still apply)`,
@@ -30,11 +33,20 @@ base: commits, staged and unstaged edits and new files. The diff goes through de
 			if len(args) == 2 {
 				p.Service = args[1]
 			}
+			if files && (stat || plain) {
+				return usageError(fmt.Errorf("--files cannot be combined with --stat or --plain"))
+			}
 			c, err := a.connect(cmd.Context(), true)
 			if err != nil {
 				return err
 			}
 			defer c.Close()
+			if files {
+				if err := a.showTouched(cmd, c, p); err != nil {
+					return err
+				}
+				return a.moveToReview(cmd, c, args[0], move)
+			}
 			var res api.ReviewDiffResult
 			if err := c.Call(cmd.Context(), api.MethodReviewDiff, p, &res); err != nil {
 				return err
@@ -48,22 +60,11 @@ base: commits, staged and unstaged edits and new files. The diff goes through de
 				return err
 			}
 
-			if move {
-				var moved api.TransitionResult
-				if err := c.Call(cmd.Context(), api.MethodPhaseSet, api.PhaseSetParams{ID: args[0], To: domain.PhaseReview}, &moved); err != nil {
-					return err
-				}
-				if !a.json {
-					fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s -> %s\n", args[0], moved.From, moved.To)
-					for _, w := range moved.Warnings {
-						fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)
-					}
-				}
-			}
-			return nil
+			return a.moveToReview(cmd, c, args[0], move)
 		},
 	}
 	f := cmd.Flags()
+	f.BoolVar(&files, "files", false, "list only the files touched, per service")
 	f.BoolVar(&stat, "stat", false, "show only the changed files and their line counts")
 	f.BoolVar(&plain, "plain", false, "print a plain git diff even if delta is installed")
 	f.BoolVar(&move, "move", false, "move the ticket into the review phase afterwards")
@@ -156,4 +157,64 @@ func runDelta(patch string, out io.Writer) (bool, error) {
 		return true, fmt.Errorf("delta: %w", err)
 	}
 	return true, nil
+}
+
+// moveToReview moves the ticket into the review phase when --move was given.
+func (a *app) moveToReview(cmd *cobra.Command, c *client.Client, id string, move bool) error {
+	if !move {
+		return nil
+	}
+	var moved api.TransitionResult
+	if err := c.Call(cmd.Context(), api.MethodPhaseSet, api.PhaseSetParams{ID: id, To: domain.PhaseReview}, &moved); err != nil {
+		return err
+	}
+	if !a.json {
+		fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s -> %s\n", id, moved.From, moved.To)
+		for _, w := range moved.Warnings {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)
+		}
+	}
+	return nil
+}
+
+// showTouched prints the files each service has changed against its base, without
+// building a diff. Services with no changes say so; a done ticket has nothing measured.
+func (a *app) showTouched(cmd *cobra.Command, c *client.Client, p api.ReviewDiffParams) error {
+	var res api.TicketGetResult
+	if err := c.Call(cmd.Context(), api.MethodTicketGet, api.TicketGetParams{ID: p.Ticket}, &res); err != nil {
+		return err
+	}
+	if res.Ticket == nil {
+		return fmt.Errorf("%s: %s", p.Ticket, res.Summary.Error)
+	}
+	var names []string
+	for _, svc := range res.Ticket.Services {
+		if p.Service == "" || p.Service == svc.Name {
+			names = append(names, svc.Name)
+		}
+	}
+	if len(names) == 0 {
+		return &api.Error{Code: api.CodeNotFound, Message: fmt.Sprintf("ticket %s has no service %q", p.Ticket, p.Service)}
+	}
+	touched := map[string][]string{}
+	for _, ti := range res.Summary.Touched {
+		touched[ti.Service] = ti.Files
+	}
+	out := cmd.OutOrStdout()
+	if a.json {
+		return printJSON(out, res) // the ticket.get payload; its summary carries touched
+	}
+	for i, name := range names {
+		if i > 0 {
+			fmt.Fprintln(out)
+		}
+		fmt.Fprintf(out, "== %s ==\n", name)
+		if len(touched[name]) == 0 {
+			fmt.Fprintln(out, "no changes")
+		}
+		for _, f := range touched[name] {
+			fmt.Fprintln(out, f)
+		}
+	}
+	return nil
 }

@@ -115,10 +115,11 @@ func writeTicketTable(w io.Writer, tickets []api.TicketSummary, now time.Time, w
 	header := []string{"ID", "PHASE", "SERVICES", "COST", "TIME", "PORTS", "TITLE"}
 	rows := make([][]string, len(tickets))
 	anyPorts := false
+	overlaps := overlapsOf(tickets)
 	for i, t := range tickets {
 		ports := portsCell(t.Services)
 		anyPorts = anyPorts || ports != "-"
-		rows[i] = []string{t.ID, phaseCell(t), serviceCell(t.Services), costCell(t.CostUSD), elapsedCell(t, now), ports, titleCell(t)}
+		rows[i] = []string{t.ID, phaseCell(t, overlaps[t.ID]), serviceCell(t.Services), costCell(t.CostUSD), elapsedCell(t, now), ports, titleCell(t)}
 	}
 	if width > 0 && !anyPorts {
 		header = slices.Delete(header, 5, 6)
@@ -130,7 +131,7 @@ func writeTicketTable(w io.Writer, tickets []api.TicketSummary, now time.Time, w
 }
 
 // phaseCell is the phase and what is going on in it, as short notes.
-func phaseCell(t api.TicketSummary) string {
+func phaseCell(t api.TicketSummary, overlaps []string) string {
 	notes := []string{string(t.Phase)}
 	if t.Phase == "" {
 		notes[0] = "-"
@@ -156,6 +157,9 @@ func phaseCell(t api.TicketSummary) string {
 			note += fmt.Sprintf(", conflicts %d", len(b.Conflicts))
 		}
 		notes = append(notes, note)
+	}
+	for _, o := range overlaps {
+		notes = append(notes, "overlaps "+o)
 	}
 	if len(t.Drift) > 0 {
 		notes = append(notes, fmt.Sprintf("drift %d", len(t.Drift)))
@@ -284,4 +288,40 @@ func titleCell(t api.TicketSummary) string {
 		return "! " + t.Error
 	}
 	return t.Title + "  ! " + t.Error
+}
+
+// overlapsOf finds, for each ticket, the other tickets in the list that have changed a
+// file it has changed too, so the conflict is seen before it happens. A file counts
+// when the same service name touches the same path (a vessel's services are its
+// repositories); tickets with nothing measured, done ones among them, take no part.
+func overlapsOf(tickets []api.TicketSummary) map[string][]string {
+	type key struct{ service, path string }
+	by := map[key][]string{}
+	for _, t := range tickets {
+		if t.Phase == domain.PhaseDone {
+			continue
+		}
+		for _, ti := range t.Touched {
+			for _, f := range ti.Files {
+				k := key{ti.Service, f}
+				if !slices.Contains(by[k], t.ID) {
+					by[k] = append(by[k], t.ID)
+				}
+			}
+		}
+	}
+	out := map[string][]string{}
+	for _, ids := range by {
+		for _, id := range ids {
+			for _, other := range ids {
+				if other != id && !slices.Contains(out[id], other) {
+					out[id] = append(out[id], other)
+				}
+			}
+		}
+	}
+	for id := range out {
+		slices.Sort(out[id])
+	}
+	return out
 }
