@@ -375,8 +375,9 @@ func TestSummariesCarryTheTouchedFilesWhenTheRegistryKnowsHowToFindThem(t *testi
 func TestALostReviewRoundIsListedAsAwaitingReady(t *testing.T) {
 	f := newFixture(t)
 	f.writeYAML("a", yaml("a", "Stuck", "api"))
-	f.writeState("a", state.State{Phase: domain.PhaseImplement, Review: &state.Review{Status: domain.ReviewReviewing, Round: 2}})
-	if got := f.list()[0].Review; got == nil || got.Status != domain.ReviewAwaitingReady || got.Round != 2 {
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	f.writeState("a", state.State{Phase: domain.PhaseImplement, Review: &state.Review{Status: domain.ReviewReviewing, Round: 2, At: at}})
+	if got := f.list()[0].Review; got == nil || got.Status != domain.ReviewAwaitingReady || got.Round != 2 || !got.At.Equal(at) {
 		t.Fatalf("review = %+v, want awaiting_ready, round 2", got)
 	}
 	f.reg.WithRoundPending(func(id string) bool { return id == "a" })

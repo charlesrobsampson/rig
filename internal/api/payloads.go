@@ -293,6 +293,8 @@ type ReviewSummary struct {
 	Status domain.ReviewStatus `json:"status"`
 	Round  int                 `json:"round"`
 	Reason string              `json:"reason,omitempty"`
+	// At is when the loop last changed: a round starting, or a pass, stop or other decision.
+	At time.Time `json:"at,omitzero"`
 	// Stale: the review passed one commit and the reviewed branch has moved past it.
 	Stale bool `json:"stale,omitempty"`
 }
