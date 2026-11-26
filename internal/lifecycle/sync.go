@@ -51,6 +51,35 @@ func (m *Manager) BaseStatus(ctx context.Context, t domain.Ticket, st state.Stat
 	return out
 }
 
+// Touched lists, per service, the files its checkout has changed against its base,
+// committed or not. Like BaseStatus it skips done tickets and anything it cannot
+// measure, and a service with no changes is not listed.
+func (m *Manager) Touched(ctx context.Context, t domain.Ticket, st state.State) []api.TouchedInfo {
+	if st.Phase == domain.PhaseDone {
+		return nil
+	}
+	var out []api.TouchedInfo
+	for _, svc := range t.Services {
+		rec := st.Services[svc.Name]
+		if rec.Checkout.Path == "" {
+			continue
+		}
+		if _, err := os.Stat(rec.Checkout.Path); err != nil {
+			continue
+		}
+		base, err := baseOf(ctx, svc, rec)
+		if err != nil {
+			continue
+		}
+		files, err := git.Touched(ctx, rec.Checkout.Path, base)
+		if err != nil || len(files) == 0 {
+			continue
+		}
+		out = append(out, api.TouchedInfo{Service: svc.Name, Files: files})
+	}
+	return out
+}
+
 // identity is who rig's merge commits are by: the person the main repository is set up
 // for, since they asked for the sync.
 func identity(ctx context.Context, repo string) (name, email string) {

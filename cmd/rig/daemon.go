@@ -187,6 +187,9 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	reg.WithBase(func(t domain.Ticket, st state.State) []api.BaseInfo {
 		return lc.BaseStatus(context.Background(), t, st)
 	})
+	reg.WithTouched(func(t domain.Ticket, st state.State) []api.TouchedInfo {
+		return lc.Touched(context.Background(), t, st)
+	})
 	daemon.RegisterLifecycleHandlers(srv, lc)
 	daemon.RegisterTimelineHandler(srv, g.TicketsDir())
 	summaries.SetInputs(summaryInputs{lc: lc, reg: reg})

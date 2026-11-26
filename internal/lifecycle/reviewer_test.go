@@ -505,3 +505,30 @@ func TestSyncingATicketInReviewSendsItBackToImplement(t *testing.T) {
 		t.Error("no review round on the merged work")
 	}
 }
+
+func TestTouchedListsCommittedAndUncommittedWorkAndSkipsDoneTickets(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	if got := r.lc.Touched(ctx, r.ticketDef(), r.state("demo")); len(got) != 0 {
+		t.Fatalf("a fresh ticket touched %+v", got)
+	}
+	r.commit("a.txt", "mine\n")
+	if err := os.WriteFile(filepath.Join(r.coder, "b.txt"), []byte("not committed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st := r.state("demo")
+	got := r.lc.Touched(ctx, r.ticketDef(), st)
+	if len(got) != 1 || got[0].Service != "svc1" || !slices.Equal(got[0].Files, []string{"a.txt", "b.txt"}) {
+		t.Fatalf("touched = %+v", got)
+	}
+	st.Phase = domain.PhaseDone
+	if got := r.lc.Touched(ctx, r.ticketDef(), st); len(got) != 0 {
+		t.Errorf("a done ticket touched %+v", got)
+	}
+	st.Phase = domain.PhaseImplement
+	svc := st.Services["svc1"]
+	svc.Checkout.Path = filepath.Join(r.path, "gone")
+	st.Services["svc1"] = svc
+	if got := r.lc.Touched(ctx, r.ticketDef(), st); len(got) != 0 {
+		t.Errorf("a missing checkout touched %+v", got)
+	}
+}

@@ -251,3 +251,40 @@ func TestTheListFitsTheTerminalAndWideShowsEverything(t *testing.T) {
 		t.Errorf("piped output was cut:\n%s", piped)
 	}
 }
+
+func TestListNotesTicketsThatTouchTheSameFile(t *testing.T) {
+	touch := func(service string, files ...string) []api.TouchedInfo {
+		return []api.TouchedInfo{{Service: service, Files: files}}
+	}
+	tickets := []api.TicketSummary{
+		{ID: "a", Phase: domain.PhaseImplement, Touched: touch("backend", "x.go", "a.go")},
+		{ID: "b", Phase: domain.PhaseImplement, Touched: touch("backend", "x.go")},
+		{ID: "c", Phase: domain.PhaseReview, Touched: touch("backend", "x.go")},
+		{ID: "d", Phase: domain.PhaseDone, Touched: touch("backend", "x.go")},
+		{ID: "e", Phase: domain.PhaseImplement, Touched: touch("web", "x.go")},
+		{ID: "f", Phase: domain.PhaseImplement, Touched: touch("backend", "other.go")},
+	}
+	var out strings.Builder
+	writeTicketTable(&out, tickets, time.Now(), 0)
+	lines := map[string]string{}
+	for _, l := range strings.Split(out.String(), "\n") {
+		if f := strings.Fields(l); len(f) > 0 {
+			lines[f[0]] = l
+		}
+	}
+	for id, want := range map[string]string{"a": "overlaps b · overlaps c", "b": "overlaps a · overlaps c", "c": "overlaps a · overlaps b"} {
+		if !strings.Contains(lines[id], want) {
+			t.Errorf("%s: %q lacks %q", id, lines[id], want)
+		}
+	}
+	for _, id := range []string{"d", "e", "f"} {
+		if strings.Contains(lines[id], "overlaps") {
+			t.Errorf("%s notes an overlap: %q", id, lines[id])
+		}
+	}
+	for _, id := range []string{"a", "b", "c"} {
+		if strings.Contains(lines[id], "overlaps d") || strings.Contains(lines[id], "overlaps e") {
+			t.Errorf("%s overlaps a done ticket or another service: %q", id, lines[id])
+		}
+	}
+}

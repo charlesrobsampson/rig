@@ -354,3 +354,20 @@ func TestSummariesCarryAnAgentsPhaseRequest(t *testing.T) {
 		t.Errorf("beta has no request, got %+v", got[1].PhaseRequest)
 	}
 }
+
+func TestSummariesCarryTheTouchedFilesWhenTheRegistryKnowsHowToFindThem(t *testing.T) {
+	f := newFixture(t)
+	f.writeYAML("alpha", yaml("alpha", "A", "api"))
+	f.writeState("alpha", state.State{Phase: domain.PhaseImplement})
+	f.writeYAML("broken", "id: [")
+	if got := f.list(); got[0].Touched != nil {
+		t.Errorf("without a finder: %+v", got[0].Touched)
+	}
+	f.reg.WithTouched(func(t domain.Ticket, s state.State) []api.TouchedInfo {
+		return []api.TouchedInfo{{Service: "api", Files: []string{"a.go"}}}
+	})
+	got := f.list()
+	if len(got[0].Touched) != 1 || got[0].Touched[0].Files[0] != "a.go" || got[1].Touched != nil {
+		t.Errorf("alpha %+v, broken %+v", got[0].Touched, got[1].Touched)
+	}
+}

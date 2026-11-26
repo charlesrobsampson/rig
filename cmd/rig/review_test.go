@@ -132,3 +132,32 @@ func TestReviewMoveAdvancesTheTicketIntoReview(t *testing.T) {
 		t.Error("moving a ticket already in review should fail")
 	}
 }
+
+func TestReviewFilesListsTheTouchedFilesWithoutADiff(t *testing.T) {
+	_, d, repo := newEnv(t)
+	home := ticketWithWork(t, &d, repo, testkit.NewRepo(t))
+	if err := os.WriteFile(filepath.Join(home, "tickets", "demo", "svc1", "second.txt"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, code := rig(t, d, "review", "demo", "svc1", "--files")
+	if code != 0 || stdout != "== svc1 ==\nsecond.txt\nwork.txt\n" {
+		t.Errorf("code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	stdout, _, code = rig(t, d, "review", "demo", "--files")
+	if code != 0 || !strings.Contains(stdout, "== svc2 ==\nwork.txt\n") || strings.Contains(stdout, "line one") {
+		t.Errorf("code %d, stdout %q", code, stdout)
+	}
+	stdout, _, code = rig(t, d, "review", "demo", "svc1", "--files", "--json")
+	var res api.TicketGetResult
+	if err := json.Unmarshal([]byte(stdout), &res); code != 0 || err != nil || len(res.Summary.Touched) != 2 || len(res.Summary.Touched[0].Files) != 2 {
+		t.Errorf("code %d, %v, %q", code, err, stdout)
+	}
+	for _, tt := range []struct {
+		args []string
+		code int
+	}{{[]string{"review", "demo", "--files", "--stat"}, 2}, {[]string{"review", "ghost", "--files"}, 5}, {[]string{"review", "demo", "nope", "--files"}, 5}} {
+		if _, _, code := rig(t, d, tt.args...); code != tt.code {
+			t.Errorf("%v: code %d, want %d", tt.args, code, tt.code)
+		}
+	}
+}
