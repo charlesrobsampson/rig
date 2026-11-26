@@ -44,7 +44,7 @@ func (s *Server) serveConn(ctx context.Context, conn net.Conn) {
 			enc.Write(api.Failure("", &api.Error{Code: api.CodeInvalid, Message: err.Error()}))
 			continue
 		}
-		s.inflight.Add(1)
+		s.inflight.Add()
 		requests.Add(1)
 		go func() {
 			defer s.inflight.Done()

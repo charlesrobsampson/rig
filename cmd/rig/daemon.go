@@ -59,6 +59,7 @@ func (a *app) connect(ctx context.Context, autostart bool) (*client.Client, erro
 	}
 	opts := client.Options{
 		SocketPath: g.SocketPath(),
+		PIDPath:    g.PIDPath(),
 		Version:    ver,
 		Clock:      a.deps.clock,
 		StartHint:  "see " + g.LogPath(),
