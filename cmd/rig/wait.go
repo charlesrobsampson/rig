@@ -117,6 +117,7 @@ vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passe
 			for _, v := range vessels {
 				go func(v *vessel) {
 					c, first := v.subC, true
+					defer func() { c.Close() }() // whichever connection is current when it ends
 					for {
 						err := c.Stream(ctx, api.MethodEventsSubscribe, api.EventsSubscribeParams{Tickets: v.ids}, func(raw json.RawMessage) error {
 							var ev api.Event
@@ -134,10 +135,15 @@ vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passe
 									default:
 									}
 								}
-							case api.EventTimelineEntry:
+							case api.EventTimelineEntry, api.EventReviewUpdated, api.EventPhaseChanged, api.EventPhaseRequested, api.EventAgentRecord:
+								// A timeline entry can come a moment before the state change it
+								// records (a round closes, then the status becomes fixing), and a
+								// failed timeline write makes none; the events published after the
+								// state is written wake the wait too. One wake-up already waiting
+								// is enough: the look reads everything.
 								select {
 								case wake <- struct{}{}:
-								default: // one wake-up is already waiting; the look reads everything
+								default:
 								}
 							}
 							return nil
@@ -155,12 +161,12 @@ vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passe
 						case <-clk.After(waitRetry):
 						}
 						// The daemon may have restarted: a new connection, and a look at the state.
+						c.Close()
 						var cerr error
 						if c, cerr = v.on.connect(ctx, true); cerr != nil {
 							failed <- cerr
 							return
 						}
-						defer c.Close()
 					}
 				}(v)
 			}

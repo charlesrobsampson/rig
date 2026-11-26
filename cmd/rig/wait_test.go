@@ -1,8 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/charlesrobsampson/rig/internal/api"
+	"github.com/charlesrobsampson/rig/internal/daemon"
+	"github.com/charlesrobsampson/rig/internal/domain"
+	"github.com/charlesrobsampson/rig/internal/events"
 	"github.com/charlesrobsampson/rig/internal/testkit"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -170,5 +176,60 @@ func TestWaitAnswersAtOnceFromStateAndStillTimesOutOnTheClock(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the wait did not time out when the clock reached the deadline")
+	}
+}
+
+// A timeline entry can reach the wait before the state change it records (the real
+// daemon notes review.round.closed, then sets the status). The wait must not end on the
+// entry while the state is old, and must end on the event published after the state
+// changed, even though no further timeline entry follows.
+func TestWaitEndsOnTheEventAfterTheStateChangedNotOnTheEntryBeforeIt(t *testing.T) {
+	home := rigEnv(t)
+	bus := events.NewBus(testkit.NewFakeClock(time.Now()), 0)
+	srv, err := daemon.Listen(daemon.Options{SocketPath: filepath.Join(home, "rigd.sock"), PIDPath: filepath.Join(home, "rigd.pid"), Version: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	phase := domain.PhasePlan
+	srv.Handle(api.MethodTicketGet, func(context.Context, json.RawMessage) (any, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return api.TicketGetResult{Summary: api.TicketSummary{ID: "demo", Phase: phase}}, nil
+	})
+	daemon.RegisterEventHandlers(srv, bus)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(ctx) }()
+	t.Cleanup(func() { cancel(); <-done })
+
+	clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())}
+	out := make(chan int, 1)
+	var stdout lockedBuffer
+	go func() {
+		out <- run(context.Background(), []string{"wait", "demo", "--phase", "implement", "--timeout", "1h"}, &stdout, &lockedBuffer{}, deps{clock: clk})
+	}()
+	waitFor(t, "the subscription", func() bool { return bus.Subscribers() == 1 })
+	waitFor(t, "the wait to hold its deadline", func() bool { return len(clk.asked()) > 0 })
+
+	// The entry first, the state still old: no match.
+	bus.Publish(api.EventTimelineEntry, "demo", "", api.TimelineEntryData{Ticket: "demo", Seq: 1})
+	select {
+	case code := <-out:
+		t.Fatalf("the wait ended (code %d) on an entry while the state was old", code)
+	case <-time.After(300 * time.Millisecond):
+	}
+	// Then the state changes and only a state event follows.
+	mu.Lock()
+	phase = domain.PhaseImplement
+	mu.Unlock()
+	bus.Publish(api.EventPhaseChanged, "demo", "", api.PhaseChangedData{From: domain.PhasePlan, To: domain.PhaseImplement})
+	select {
+	case code := <-out:
+		if code != 0 || !strings.Contains(stdout.String(), "phase is implement") {
+			t.Fatalf("code %d, %q", code, stdout.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the wait did not end on the event published after the state changed")
 	}
 }
