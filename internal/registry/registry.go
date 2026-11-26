@@ -32,6 +32,8 @@ type Registry struct {
 	pendingGate func(domain.Ticket, state.State) domain.Gate
 	// base, when set, says how each service's branch stands against its base.
 	base func(domain.Ticket, state.State) []api.BaseInfo
+	// touched, when set, lists the files each service has changed against its base.
+	touched func(domain.Ticket, state.State) []api.TouchedInfo
 	// aiSummary, when set, supplies a ticket's language-model summary.
 	aiSummary func(id string) *api.SummaryInfo
 	// drift, when set, supplies how a ticket's reality differs from its state.
@@ -41,6 +43,12 @@ type Registry struct {
 // WithBase makes summaries carry how each service's branch stands against its base.
 func (r *Registry) WithBase(f func(domain.Ticket, state.State) []api.BaseInfo) *Registry {
 	r.base = f
+	return r
+}
+
+// WithTouched makes summaries carry the files each service has changed.
+func (r *Registry) WithTouched(f func(domain.Ticket, state.State) []api.TouchedInfo) *Registry {
+	r.touched = f
 	return r
 }
 
@@ -202,6 +210,9 @@ func (r *Registry) load(id string) api.TicketGetResult {
 	}
 	if r.base != nil && res.Ticket != nil && res.State != nil {
 		res.Summary.Base = r.base(*res.Ticket, *res.State)
+	}
+	if r.touched != nil && res.Ticket != nil && res.State != nil {
+		res.Summary.Touched = r.touched(*res.Ticket, *res.State)
 	}
 	if r.drift != nil {
 		res.Summary.Drift = r.drift(id)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -120,4 +121,37 @@ func parseNumstat(out string) []FileChange {
 		files = append(files, fc)
 	}
 	return files
+}
+
+// Touched lists the files a checkout has changed since its branch left baseRef:
+// committed, staged and unstaged edits, and new files git does not ignore. A rename
+// counts both paths, since either may be what another ticket changes. Only names are
+// read, so it is cheap enough for every ticket summary; it runs through the hardened
+// runner like Diff, and never changes the checkout.
+func Touched(ctx context.Context, dir, baseRef string) ([]string, error) {
+	g := Hardened()
+	base, err := g.Run(ctx, dir, "merge-base", "HEAD", baseRef)
+	if err != nil {
+		return nil, fmt.Errorf("find where the branch left %s: %w", baseRef, err)
+	}
+	changed, err := g.Run(ctx, dir, "diff", "--name-only", "--no-renames", "-z", base)
+	if err != nil {
+		return nil, err
+	}
+	untracked, err := g.Run(ctx, dir, "ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, list := range []string{changed, untracked} {
+		for _, path := range strings.Split(list, "\x00") {
+			if path != "" && !seen[path] {
+				seen[path] = true
+				out = append(out, path)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out, nil
 }
