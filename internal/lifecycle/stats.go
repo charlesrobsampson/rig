@@ -10,6 +10,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/git"
+	"github.com/charlesrobsampson/rig/internal/timeline"
 	"github.com/charlesrobsampson/rig/internal/journal"
 	"github.com/charlesrobsampson/rig/internal/usage"
 )
@@ -151,8 +152,18 @@ func (m *Manager) ticketStats(ctx context.Context, l loaded) api.TicketStats {
 		after = a.At
 	}
 
+	// Rounds of every loop, as the timeline kept them (state.json holds only the current
+	// loop, R-024). A ticket older than its timeline, or a round whose start failed
+	// before it was recorded there, is still counted from state.
+	if entries, err := timeline.Read(l.dir, 0); err == nil {
+		for _, e := range entries {
+			if e.Kind == timeline.ReviewRoundStarted {
+				s.ReviewRounds++
+			}
+		}
+	}
 	if r := st.Review; r != nil {
-		s.ReviewRounds, s.ReviewStatus = len(r.Rounds), r.Status
+		s.ReviewRounds, s.ReviewStatus = max(s.ReviewRounds, len(r.Rounds)), r.Status
 	}
 
 	for _, svc := range l.ticket.Services {
