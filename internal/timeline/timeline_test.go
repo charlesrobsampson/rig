@@ -102,3 +102,29 @@ func TestExcerptCutsOnARuneBoundary(t *testing.T) {
 		t.Fatalf("len %d", len(got))
 	}
 }
+
+func TestOnAppendHearsEachWrittenEntryInSeqOrder(t *testing.T) {
+	dir := t.TempDir()
+	l := newLog(dir)
+	var got []int
+	l.OnAppend = func(d string, e Entry) {
+		if d != dir {
+			t.Errorf("dir %q", d)
+		}
+		got = append(got, e.Seq) // runs under the ticket lock, so no race
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 40; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); l.Append(dir, Entry{Kind: TicketStarted}) }()
+	}
+	wg.Wait()
+	for i, s := range got {
+		if s != i+1 {
+			t.Fatalf("heard %v", got)
+		}
+	}
+	if len(got) != 40 {
+		t.Fatalf("heard %d", len(got))
+	}
+}
