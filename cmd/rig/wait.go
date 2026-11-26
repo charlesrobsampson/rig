@@ -45,7 +45,8 @@ repeated or comma-separated: "--review passed,stopped" ends on either. States al
 true count at once, except a phase request or question with --new, which must be made
 after the wait starts (to wait for the next one after answering). --new also makes
 --review end only on a verdict reached after the wait started: a later round's, or a later
-decision on the same round, not the one already standing.
+decision on the same round, not the one already standing. A review that reads awaiting_ready
+because the daemon restarted keeps its old time, so --new does not end on it.
 
 Several tickets: it ends on the first that matches and names it. A ticket can name its
 vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passed.`,

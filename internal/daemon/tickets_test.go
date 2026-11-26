@@ -314,3 +314,15 @@ func TestPhaseHandlerErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestDaemonBusyIsServedWithAnEmptyListWhenIdle(t *testing.T) {
+	lc := lifecycle.New(lifecycle.Options{Dir: filepath.Join(testkit.RealTempDir(t), "tickets"), States: state.NewManager(testkit.NewFakeClock(epoch))})
+	h := start(t, func(s *daemon.Server) { daemon.RegisterLifecycleHandlers(s, lc) })
+	c := dial(t, h.opts.SocketPath)
+	c.hello(t)
+	resp := c.call(t, api.MethodDaemonBusy, nil)
+	var got api.DaemonBusyResult
+	if err := resp.Err(); err != nil || json.Unmarshal(resp.Result, &got) != nil || got.Tickets == nil || len(got.Tickets) != 0 {
+		t.Fatalf("daemon.busy = %s, %v; want an empty tickets list", resp.Result, resp.Err())
+	}
+}
