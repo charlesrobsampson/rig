@@ -665,18 +665,37 @@ func reviewTip(ctx context.Context, t domain.Ticket, st state.State) (string, bo
 	return tip, err == nil
 }
 
+// passedTip is the branch tip and true when the review passed a commit the branch
+// has since left; false when it has not passed, pinned no commit (older tickets), or
+// the tip cannot be read. The gate and the ticket summary both use it.
+func passedTip(ctx context.Context, t domain.Ticket, st state.State) (string, bool) {
+	r := st.Review
+	if r == nil || r.Status != domain.ReviewPassed || r.Commit == "" {
+		return "", false
+	}
+	tip, ok := reviewTip(ctx, t, st)
+	if !ok || tip == r.Commit {
+		return "", false
+	}
+	return tip, true
+}
+
+// ReviewStale says whether the ticket's review passed a commit the reviewed branch
+// has moved past, for the ticket summary.
+func (m *Manager) ReviewStale(ctx context.Context, t domain.Ticket, st state.State) bool {
+	_, stale := passedTip(ctx, t, st)
+	return stale
+}
+
 // reviewPin is why a passed review no longer lets the work go on: it passed one
 // commit and the branch has moved. Empty when the review has not passed, when the
 // pass pinned no commit (older tickets), or when the tip cannot be read.
 func (m *Manager) reviewPin(ctx context.Context, id string, t domain.Ticket, st state.State) string {
+	tip, stale := passedTip(ctx, t, st)
+	if !stale {
+		return ""
+	}
 	r := st.Review
-	if r == nil || r.Status != domain.ReviewPassed || r.Commit == "" {
-		return ""
-	}
-	tip, ok := reviewTip(ctx, t, st)
-	if !ok || tip == r.Commit {
-		return ""
-	}
 	return fmt.Sprintf("the review passed %s, but the branch is now at %s: journal review.ready for a round on the new work (or rig reviewer %s --start)", short(r.Commit), short(tip), id)
 }
 

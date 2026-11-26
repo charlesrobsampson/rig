@@ -293,6 +293,8 @@ type ReviewSummary struct {
 	Status domain.ReviewStatus `json:"status"`
 	Round  int                 `json:"round"`
 	Reason string              `json:"reason,omitempty"`
+	// Stale: the review passed one commit and the reviewed branch has moved past it.
+	Stale bool `json:"stale,omitempty"`
 }
 
 // ReviewerParams names a ticket with a review.

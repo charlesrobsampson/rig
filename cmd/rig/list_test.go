@@ -300,3 +300,15 @@ func TestListShowsAReviewThatWaitsForReady(t *testing.T) {
 		t.Errorf("list:\n%s", out.String())
 	}
 }
+
+func TestListShowsAPassTheBranchHasMovedPast(t *testing.T) {
+	tickets := []api.TicketSummary{
+		{ID: "a", Phase: domain.PhaseImplement, Review: &api.ReviewSummary{Status: domain.ReviewPassed, Round: 2, Stale: true}},
+		{ID: "b", Phase: domain.PhaseImplement, Review: &api.ReviewSummary{Status: domain.ReviewPassed, Round: 1}},
+	}
+	var out strings.Builder
+	writeTicketTable(&out, tickets, time.Now(), 0)
+	if !strings.Contains(out.String(), "review passed r2 (new commits)") || strings.Contains(out.String(), "review passed r1 (") {
+		t.Errorf("list:\n%s", out.String())
+	}
+}
