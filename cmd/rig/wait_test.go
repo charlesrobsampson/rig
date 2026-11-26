@@ -348,7 +348,7 @@ func TestACommandWarnsOnStderrWhenTheDaemonIsAnotherBuild(t *testing.T) {
 
 	d.version = "2.0.0"
 	stdout, stderr, code := rig(t, d, "list", "--json")
-	if code != 0 || strings.Count(stderr, "version 1.0.0 but this rig is 2.0.0") != 1 || !strings.Contains(stderr, "rig daemon stop") {
+	if code != 0 || strings.Count(stderr, "version 1.0.0 but this rig is 2.0.0") != 1 || !strings.Contains(stderr, "rig daemon restart") {
 		t.Errorf("code %d, stderr %q", code, stderr)
 	}
 	if strings.Contains(stderr, "-V") {
@@ -361,7 +361,7 @@ func TestACommandWarnsOnStderrWhenTheDaemonIsAnotherBuild(t *testing.T) {
 
 	// one line per process even though wait opens several connections
 	_, stderr, _ = rig(t, d, "wait", "demo", "--phase", "plan", "--timeout", "2s")
-	if n := strings.Count(stderr, "rig daemon stop"); n != 1 {
+	if n := strings.Count(stderr, "rig daemon restart"); n != 1 {
 		t.Errorf("wait warned %d times: %q", n, stderr)
 	}
 
@@ -382,12 +382,12 @@ func TestTheVersionWarningNamesTheVesselWhoseDaemonIsStale(t *testing.T) {
 	d := deps{version: "2.0.0"}
 
 	_, stderr, code := rig(t, d, "-V", "work", "daemon", "status")
-	if code != 0 || !strings.Contains(stderr, `run "rig -V work daemon stop"`) {
+	if code != 0 || !strings.Contains(stderr, `run "rig -V work daemon restart"`) {
 		t.Errorf("-V work: code %d, stderr %q", code, stderr)
 	}
 	t.Setenv("RIG_VESSEL", "work")
 	_, stderr, code = rig(t, d, "daemon", "status")
-	if code != 0 || !strings.Contains(stderr, `run "rig -V work daemon stop"`) {
+	if code != 0 || !strings.Contains(stderr, `run "rig -V work daemon restart"`) {
 		t.Errorf("RIG_VESSEL=work: code %d, stderr %q", code, stderr)
 	}
 }

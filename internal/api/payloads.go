@@ -297,6 +297,20 @@ type ReviewSummary struct {
 	At time.Time `json:"at,omitzero"`
 	// Stale: the review passed one commit and the reviewed branch has moved past it.
 	Stale bool `json:"stale,omitempty"`
+	// Stalled is set while the round is reviewing and a checker that still owes its
+	// result has had its agent idle for StalledAfter.
+	Stalled *ReviewStalled `json:"stalled,omitempty"`
+}
+
+// StalledAfter is how long a checker's agent may sit idle, owing its result, before the
+// round is shown as stalled.
+const StalledAfter = 5 * time.Minute
+
+// ReviewStalled names the checker (review or tester) a round is waiting on and since when
+// its agent has been idle.
+type ReviewStalled struct {
+	Service string    `json:"service"`
+	Since   time.Time `json:"since"`
 }
 
 // ReviewerParams names a ticket with a review.

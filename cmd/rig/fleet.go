@@ -162,7 +162,7 @@ type vesselInfo struct {
 func (a *app) inspectVessel(cmd *cobra.Command, h config.NamedVessel) (vesselInfo, []api.TicketSummary) {
 	info := vesselInfo{Name: h.Name, Config: h.Config}
 	sub := *a
-	sub.configPath, sub.vesselName = h.Config, ""
+	sub.configPath, sub.vesselName = h.Config, h.Name
 	g, err := sub.global()
 	if err != nil {
 		info.Error = err.Error()

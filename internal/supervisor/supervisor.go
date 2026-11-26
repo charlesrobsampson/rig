@@ -54,6 +54,9 @@ type Options struct {
 	// its own kinds (review.ready, review.result, review.reply, verdict) and ignores the
 	// rest. Its error is recorded as a record.rejected record.
 	Review func(ticket, service, kind, text string, data json.RawMessage) error
+	// Tell types a message from rig into an agent. It is used to tell the reviewer or
+	// tester why a record of theirs was rejected; nil tells no one.
+	Tell func(ticket, service, text string)
 }
 
 type Supervisor struct {
@@ -244,6 +247,11 @@ func (s *Supervisor) apply(statePath, ticket, service string, pane *terminal.Pan
 			return errNoChange
 		}
 		svc.Agent.State = next
+		if next == domain.AgentIdle {
+			svc.Agent.IdleSince = s.opts.Clock.Now().UTC()
+		} else {
+			svc.Agent.IdleSince = time.Time{}
+		}
 		st.Services[service] = svc
 		return nil
 	})
@@ -449,6 +457,10 @@ func (s *Supervisor) rejectRecord(ticketDir, ticket, service, line string, why e
 	}
 	data, _ := json.Marshal(map[string]string{"line": strings.ToValidUTF8(quote, "")})
 	s.appendRecord(ticketDir, ticket, service, api.JournalSourceRig, journal.Entry{Kind: "record.rejected", Text: why.Error(), Data: data})
+	// A reviewer or tester has no one else watching its journal: tell it, and only it.
+	if s.opts.Tell != nil && (service == domain.ReviewerService || service == domain.TesterService) {
+		s.opts.Tell(ticket, service, fmt.Sprintf("rig: your journal record was rejected: %s\nIt began: %s\nWrite the JSON to a file with a quoted heredoc (cat > /tmp/record.json <<'EOF' ... EOF), check it is one valid JSON object, and journal it again with: rig agent-event --file /tmp/record.json", why.Error(), strings.ToValidUTF8(quote, "")))
+	}
 }
 
 func (s *Supervisor) appendRecord(ticketDir, ticket, service string, source api.JournalSource, e journal.Entry) error {

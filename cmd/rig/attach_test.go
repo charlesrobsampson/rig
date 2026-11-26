@@ -188,7 +188,7 @@ func TestAttachReadSaysWhenTheScreenIsEmpty(t *testing.T) {
 	_, d, repo, _ := newEnvWithTerminal(t)
 	newTicket(t, d, "demo", repo)
 	rig(t, d, "start", "demo", "--sandbox", "host")
-	if _, stderr, code := rig(t, d, "attach", "demo", "--read"); code != 0 || !strings.Contains(stderr, "rig daemon stop") {
+	if _, stderr, code := rig(t, d, "attach", "demo", "--read"); code != 0 || !strings.Contains(stderr, "rig daemon restart") {
 		t.Errorf("code %d, stderr %q", code, stderr)
 	}
 }

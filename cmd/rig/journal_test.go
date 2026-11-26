@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -98,5 +100,36 @@ func TestRigJournalFiltersAndPrints(t *testing.T) {
 	}
 	if _, _, code := rig(t, d, "journal", "--limit", "-1"); code != 2 {
 		t.Errorf("negative limit exits %d, want 2", code)
+	}
+}
+
+func TestAgentEventFileJournalsTheFilesRecord(t *testing.T) {
+	_, d, repo := newEnv(t)
+	newTicket(t, d, "demo", repo)
+	t.Setenv("RIG_TICKET", "demo")
+	t.Setenv("RIG_SERVICE", "svc1")
+	path := filepath.Join(t.TempDir(), "record.json")
+	os.WriteFile(path, []byte("{\"kind\":\"note\",\"text\":\"it's \\\"quoted\\\"\"}\n"), 0o600)
+
+	stdout, stderr, code := rig(t, d, "agent-event", "--file", path)
+	if code != 0 || stdout != "" || stderr != "" {
+		t.Fatalf("code %d, stdout %q, stderr %q; want a silent success", code, stdout, stderr)
+	}
+	got := journalJSON(t, d, "demo")
+	if len(got) != 1 || got[0].Kind != "note" || got[0].Text != `it's "quoted"` {
+		t.Errorf("journal = %+v", got)
+	}
+	// a file together with an argument is a bad use: nothing is journaled
+	if _, stderr, code := rig(t, d, "agent-event", "--file", path, `{"kind":"other"}`); code != 0 || stderr != "" {
+		t.Errorf("file and argument: code %d, stderr %q", code, stderr)
+	}
+	// a missing or damaged file is silent and journals nothing more
+	for _, p := range []string{filepath.Join(t.TempDir(), "none.json"), path + ".x"} {
+		if _, stderr, code := rig(t, d, "agent-event", "--file", p); code != 0 || stderr != "" {
+			t.Errorf("%s: code %d, stderr %q", p, code, stderr)
+		}
+	}
+	if got := journalJSON(t, d, "demo"); len(got) != 1 {
+		t.Errorf("journal = %+v", got)
 	}
 }

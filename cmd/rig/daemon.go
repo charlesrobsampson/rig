@@ -183,7 +183,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	bus := events.NewBus(clk, 0)
 	daemon.RegisterEventHandlersWith(srv, bus, daemon.EventsOptions{TicketsDir: g.TicketsDir()})
 	states := state.NewManager(clk)
-	reg := registry.New(g.TicketsDir(), states).WithPendingGate(func(t domain.Ticket, st state.State) domain.Gate {
+	reg := registry.New(g.TicketsDir(), states).WithClock(clk.Now).WithPendingGate(func(t domain.Ticket, st state.State) domain.Gate {
 		gate, _ := gates.Awaiting(g, t, st)
 		return gate
 	})
@@ -228,6 +228,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		bus.Publish(api.EventTimelineEntry, ticket, e.Service, api.TimelineEntryData{Ticket: ticket, Seq: e.Seq, Entry: api.TimelineEntry(e)})
 	}
 	var lc *lifecycle.Manager // set below; the supervisor starts polling only after it is
+	var phaseNotifier *phasenotify.Notifier
 	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Timeline: tl, Logger: logger, Interval: time.Second,
 		PhaseRequest: func(ticket, service string, to domain.Phase, reason string) error {
 			return lc.AskForPhase(ticket, service, to, reason)
@@ -237,7 +238,8 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		},
 		Review: func(ticket, service, kind, text string, data json.RawMessage) error {
 			return lc.ReviewRecord(ticket, service, kind, text, data)
-		}})
+		},
+		Tell: func(ticket, service, text string) { phaseNotifier.Deliver(ticket, service, text) }})
 	injector := inject.New(inject.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Readiness: sup, Clock: clk, Timeline: tl,
 		Answered: func(ticket, service string) {
 			if err := lc.AnswerQuestion(ticket, service); err != nil {
@@ -245,7 +247,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 			}
 		}})
 	notifier := &contractnotify.Notifier{Dir: g.TicketsDir(), Sender: injector, Logger: logger}
-	phaseNotifier := phasenotify.New(phasenotify.Options{Sender: injector, Clock: clk, Logger: logger})
+	phaseNotifier = phasenotify.New(phasenotify.Options{Sender: injector, Clock: clk, Logger: logger})
 	defer phaseNotifier.Close()
 	lc = lifecycle.New(lifecycle.Options{
 		Dir: g.TicketsDir(), States: states, Global: g, Bus: bus, Clock: clk, Timeline: tl,

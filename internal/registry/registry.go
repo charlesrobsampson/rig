@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/config"
@@ -42,6 +43,43 @@ type Registry struct {
 	roundPending func(id string) bool
 	// reviewStale, when set, says whether a passed review is of a commit the branch has left.
 	reviewStale func(domain.Ticket, state.State) bool
+	// now is the clock for a stalled round (nil means the real time).
+	now func() time.Time
+}
+
+// WithClock sets the time a round counts as stalled against.
+func (r *Registry) WithClock(now func() time.Time) *Registry {
+	r.now = now
+	return r
+}
+
+// stalledChecker returns the checker a reviewing round waits on whose agent has been idle
+// for api.StalledAfter, if any.
+func (r *Registry) stalledChecker(t *domain.Ticket, st state.State, rv *state.Review) *api.ReviewStalled {
+	var round state.ReviewRound
+	for _, rr := range rv.Rounds {
+		if rr.Round == rv.Round {
+			round = rr
+		}
+	}
+	owing := []string{}
+	if !round.ReviewerDone {
+		owing = append(owing, domain.ReviewerService)
+	}
+	if t != nil && t.Review != nil && t.Review.Tester != nil && round.Tester == nil {
+		owing = append(owing, domain.TesterService)
+	}
+	now := time.Now()
+	if r.now != nil {
+		now = r.now()
+	}
+	for _, name := range owing {
+		ag := st.Services[name].Agent
+		if ag.State == domain.AgentIdle && !ag.IdleSince.IsZero() && now.Sub(ag.IdleSince) >= api.StalledAfter {
+			return &api.ReviewStalled{Service: name, Since: ag.IdleSince}
+		}
+	}
+	return nil
 }
 
 // WithReviewStale makes summaries mark a passed review whose commit the branch has moved past.
@@ -204,6 +242,9 @@ func (r *Registry) load(id string) api.TicketGetResult {
 				status = domain.ReviewAwaitingReady
 			}
 			res.Summary.Review = &api.ReviewSummary{Status: status, Round: rv.Round, Reason: rv.Reason, At: rv.At}
+			if status == domain.ReviewReviewing && rv.Commit != "" {
+				res.Summary.Review.Stalled = r.stalledChecker(res.Ticket, st, rv)
+			}
 			if rv.Status == domain.ReviewPassed && rv.Commit != "" && r.reviewStale != nil && res.Ticket != nil {
 				res.Summary.Review.Stale = r.reviewStale(*res.Ticket, st)
 			}

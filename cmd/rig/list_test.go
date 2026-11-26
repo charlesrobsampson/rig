@@ -312,3 +312,15 @@ func TestListShowsAPassTheBranchHasMovedPast(t *testing.T) {
 		t.Errorf("list:\n%s", out.String())
 	}
 }
+
+func TestListShowsAStalledChecker(t *testing.T) {
+	tickets := []api.TicketSummary{
+		{ID: "a", Phase: domain.PhaseImplement, Review: &api.ReviewSummary{Status: domain.ReviewReviewing, Round: 1, Stalled: &api.ReviewStalled{Service: domain.TesterService}}},
+		{ID: "b", Phase: domain.PhaseImplement, Review: &api.ReviewSummary{Status: domain.ReviewReviewing, Round: 1, Stalled: &api.ReviewStalled{Service: domain.ReviewerService}}},
+	}
+	var out strings.Builder
+	writeTicketTable(&out, tickets, time.Now(), 0)
+	if !strings.Contains(out.String(), "review stalled (tester idle)") || !strings.Contains(out.String(), "review stalled (reviewer idle)") {
+		t.Errorf("list:\n%s", out.String())
+	}
+}

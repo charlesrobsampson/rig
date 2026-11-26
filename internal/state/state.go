@@ -138,6 +138,8 @@ type Agent struct {
 	PaneID      string            `json:"pane_id"`
 	State       domain.AgentState `json:"state"`
 	ContainerID string            `json:"container_id"`
+	// IdleSince is when the agent last became idle; zero while it is not idle.
+	IdleSince time.Time `json:"idle_since,omitzero"`
 	// Cost is what the agent's harness last reported spending. It is absent (nil) when
 	// the harness does not report cost, never a made-up zero.
 	Cost *Cost `json:"cost,omitempty"`

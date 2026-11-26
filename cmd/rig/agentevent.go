@@ -23,8 +23,9 @@ const agentEventTimeout = 3 * time.Second
 // action", so every problem (no daemon, a bad argument, a missing variable) ends in
 // exit 0 and silence.
 func newAgentEventCmd(a *app) *cobra.Command {
-	return &cobra.Command{
-		Use:   "agent-event <ready|working|blocked|idle|exited|cost|'<record json>'>",
+	var file string
+	cmd := &cobra.Command{
+		Use:   "agent-event [--file <path>] <ready|working|blocked|idle|exited|cost|'<record json>'>",
 		Short: "Report an agent's state or journal a record (run by agent hooks and agents)",
 		Long: `Tell the daemon what the agent of $RIG_TICKET/$RIG_SERVICE is doing. Agent hooks run
 this; it always exits 0 and never starts the daemon, so a hook cannot break the agent.
@@ -34,11 +35,24 @@ reports its running cost (cost.total_cost_usd) when there is one, and prints the
 the status line.
 
 A JSON object ({"kind": "feedback", "text": "...", "data": {...}}) is a record for the
-ticket's journal (see "rig journal"); a badly written one is dropped, still with exit 0.`,
+ticket's journal (see "rig journal"); a badly written one is dropped, still with exit 0.
+
+--file <path> reads that one record from a file instead of the argument (give both and nothing is journaled): write the JSON
+with a quoted heredoc (<<'EOF'), so no shell quoting can spoil it, then journal it.`,
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ticket, service := os.Getenv("RIG_TICKET"), os.Getenv("RIG_SERVICE")
+			if file != "" {
+				if len(args) != 0 {
+					return nil // a file and an argument: a bad use, silent like any other
+				}
+				data, err := readRecordFile(file)
+				if err != nil {
+					return nil
+				}
+				args = []string{string(data)}
+			}
 			if len(args) != 1 || ticket == "" || service == "" {
 				return nil
 			}
@@ -61,6 +75,18 @@ ticket's journal (see "rig journal"); a badly written one is dropped, still with
 			return reportQuietly(cmd.Context(), a, api.MethodAgentEvent, p)
 		},
 	}
+	cmd.Flags().StringVar(&file, "file", "", "read the record's JSON from this file")
+	return cmd
+}
+
+// readRecordFile reads a record file, at most 1 MiB.
+func readRecordFile(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, 1<<20))
 }
 
 // reportQuietly sends a hook's report to a running daemon and ignores every failure.

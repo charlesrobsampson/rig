@@ -248,3 +248,44 @@ func TestTheJournalIsListedAcrossTicketsOrFiltered(t *testing.T) {
 		t.Errorf("negative limit: %v", err)
 	}
 }
+
+func TestARejectedCheckerRecordIsToldToThatCheckerAndNotTheCoder(t *testing.T) {
+	f := newFixture(t)
+	type told struct{ service, text string }
+	var got []told
+	f.sup = supervisor.New(supervisor.Options{
+		Dir: f.dir, States: f.states, Backend: f.term, Bus: f.bus, Clock: f.clock,
+		Interval: time.Second, HookTTL: time.Minute, MaxBackoff: 8 * time.Second,
+		Tell: func(ticket, service, text string) { got = append(got, told{service, text}) },
+	})
+	for _, svc := range []string{"api", "review", "tester"} {
+		f.launch("demo", svc)
+		appendTo(t, f.eventsFile("demo", svc), "{broken "+svc+"\n")
+	}
+	f.poll()
+	if len(got) != 2 || got[0].service == "api" || got[1].service == "api" {
+		t.Fatalf("told %+v; want the reviewer and the tester only", got)
+	}
+	for _, g := range got {
+		for _, want := range []string{"rejected", "{broken " + g.service, "quoted heredoc", "rig agent-event --file"} {
+			if !strings.Contains(g.text, want) {
+				t.Errorf("%s was told %q; want %q in it", g.service, g.text, want)
+			}
+		}
+	}
+}
+
+func TestAnIdleAgentRecordsSinceWhenAndClearsItWhenItWorks(t *testing.T) {
+	f := newFixture(t)
+	f.launch("demo", "review")
+	f.mustReport("demo", "review", "idle")
+	st, _ := f.states.Load(filepath.Join(f.dir, "demo", "state.json"))
+	if got := st.Services["review"].Agent.IdleSince; !got.Equal(f.clock.Now()) {
+		t.Errorf("idle_since = %v, want %v", got, f.clock.Now())
+	}
+	f.mustReport("demo", "review", "working")
+	st, _ = f.states.Load(filepath.Join(f.dir, "demo", "state.json"))
+	if got := st.Services["review"].Agent.IdleSince; !got.IsZero() {
+		t.Errorf("idle_since = %v while working", got)
+	}
+}
