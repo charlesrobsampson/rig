@@ -326,6 +326,7 @@ type ReviewerStatus struct {
 	SpentUSD    float64             `json:"spent_usd"`
 	CoderUSD    float64             `json:"coder_usd"`
 	ReviewerUSD float64             `json:"reviewer_usd"`
+	TesterUSD   float64             `json:"tester_usd,omitempty"`
 	Rounds      []ReviewerRound     `json:"rounds,omitempty"`
 }
 
@@ -335,18 +336,29 @@ type ReviewerRound struct {
 	At       time.Time       `json:"at"`
 	Verdict  string          `json:"verdict,omitempty"`
 	Findings []ReviewFinding `json:"findings,omitempty"`
+	// Tester is the round's tester line, when the ticket has a tester.
+	Tester *TesterResult `json:"tester,omitempty"`
+}
+
+// TesterResult is a round's test.result record; its findings are numbered T1.. and
+// carry the coder's replies like the reviewer's.
+type TesterResult struct {
+	Outcome  string          `json:"outcome,omitempty"`
+	Findings []ReviewFinding `json:"findings,omitempty"`
 }
 
 // ReviewFinding is a reviewer's review.result record, with the coder's answer to it.
 type ReviewFinding struct {
-	ID       string       `json:"id"`
-	Severity string       `json:"severity"`
-	File     string       `json:"file,omitempty"`
-	Line     int          `json:"line,omitempty"`
-	What     string       `json:"what"`
-	Scenario string       `json:"scenario,omitempty"`
-	Fix      string       `json:"fix,omitempty"`
-	Reply    *ReviewReply `json:"reply,omitempty"`
+	ID       string `json:"id"`
+	Severity string `json:"severity"`
+	File     string `json:"file,omitempty"`
+	Line     int    `json:"line,omitempty"`
+	What     string `json:"what"`
+	Scenario string `json:"scenario,omitempty"`
+	Fix      string `json:"fix,omitempty"`
+	// Source is "tester" for a finding from the tester; empty for the reviewer's.
+	Source string       `json:"source,omitempty"`
+	Reply  *ReviewReply `json:"reply,omitempty"`
 }
 
 // ReviewReply is the coder's review.reply record for one finding.
@@ -743,7 +755,7 @@ type TokenCount struct {
 // AgentStats is one agent of a ticket: the coder of a service, or the reviewer.
 type AgentStats struct {
 	Service string     `json:"service"`
-	Role    string     `json:"role"` // coder or reviewer
+	Role    string     `json:"role"` // coder, reviewer or tester
 	CostUSD float64    `json:"cost_usd"`
 	Tokens  TokenCount `json:"tokens"`
 	// Requests is how many model requests its transcripts hold; 0 with Tokens empty

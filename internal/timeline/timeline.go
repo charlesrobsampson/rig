@@ -32,6 +32,7 @@ const (
 	MessageSent        = "message.sent"
 	ReviewRoundStarted = "review.round.started"
 	ReviewRoundClosed  = "review.round.closed"
+	TestResult         = "test.result"
 	ReviewDecided      = "review.decided"
 	ReviewLoopEnded    = "review.loop.ended"
 	SyncDone           = "sync.done"
@@ -79,6 +80,13 @@ type ReviewRoundStartedData struct {
 type ReviewRoundClosedData struct {
 	Round     int    `json:"round"`
 	Verdict   string `json:"verdict"`
+	Blocking  int    `json:"blocking"`
+	ShouldFix int    `json:"should_fix"`
+	Nit       int    `json:"nit"`
+}
+type TestResultData struct {
+	Round     int    `json:"round"`
+	Outcome   string `json:"outcome"`
 	Blocking  int    `json:"blocking"`
 	ShouldFix int    `json:"should_fix"`
 	Nit       int    `json:"nit"`

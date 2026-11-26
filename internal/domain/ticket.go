@@ -45,6 +45,21 @@ type Review struct {
 	MaxRounds int      `json:"max_rounds,omitempty" yaml:"max_rounds,omitempty"`
 	// BudgetUSD caps what the coder and reviewer may spend in one review loop; 0 is no cap.
 	BudgetUSD float64 `json:"budget_usd,omitempty" yaml:"budget_usd,omitempty"`
+	// Tester adds an agent that uses the built product beside each round's reviewer.
+	Tester *Tester `json:"tester,omitempty" yaml:"tester,omitempty"`
+}
+
+// TesterService is the name the tester's agent goes by in state, events and commands;
+// no service of a ticket with a tester may use it.
+const TesterService = "tester"
+
+// Tester is the review's second checker: it runs the code as a user would, on the same
+// pinned commit as the reviewer, and never edits it.
+type Tester struct {
+	AgentConfig []string `json:"agent_config,omitempty" yaml:"agent_config,omitempty"`
+	Model       string   `json:"model,omitempty" yaml:"model,omitempty"`
+	// Brief is a file whose text heads the tester's prompt, in place of rig's default.
+	Brief string `json:"brief,omitempty" yaml:"brief,omitempty"`
 }
 
 type Source struct {

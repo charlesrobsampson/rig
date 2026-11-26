@@ -203,3 +203,23 @@ func TestConcurrentEnsuresBuildOnce(t *testing.T) {
 		}
 	}
 }
+
+func TestTheTmuxImageIsALayerOverTheAgentImageAndLeavesItAlone(t *testing.T) {
+	d := fake(t)
+	b := agentimage.New(d, "", nil)
+	agent, _ := ensure(t, b, "golang:1.24")
+	tag, err := b.EnsureWithTmux(ctx, "golang:1.24")
+	if err != nil || !strings.HasPrefix(tag, "rig-agent-tmux:") {
+		t.Fatalf("tag = %q, %v", tag, err)
+	}
+	builds := d.Builds()
+	if len(builds) != 2 || builds[1].Args["BASE"] != agent {
+		t.Fatalf("builds = %+v, want the tmux layer on %s", builds, agent)
+	}
+	if again, err := b.EnsureWithTmux(ctx, "golang:1.24"); err != nil || again != tag || len(d.Builds()) != 2 {
+		t.Errorf("second call = %q, %v, %d builds; want it cached", again, err, len(d.Builds()))
+	}
+	if same, built := ensure(t, b, "golang:1.24"); built || same != agent {
+		t.Errorf("the agent image changed: %q built %v", same, built)
+	}
+}

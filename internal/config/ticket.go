@@ -244,6 +244,9 @@ func validateReview(t *domain.Ticket) []string {
 	found := false
 	for _, s := range t.Services {
 		found = found || s.Name == r.Of
+		if s.Name == domain.TesterService && r.Tester != nil {
+			problems = append(problems, fmt.Sprintf("services: %q is the tester's name in a ticket with a review.tester; rename the service", s.Name))
+		}
 		if s.Name == domain.ReviewerService {
 			problems = append(problems, fmt.Sprintf("services: %q is the reviewer's name in a ticket with a review; rename the service", s.Name))
 		}
@@ -266,6 +269,16 @@ func validateReview(t *domain.Ticket) []string {
 			add("copy[%d]: %q must be a relative path that stays inside the checkout", i, p)
 		case clean == ".git" || strings.HasPrefix(clean, ".git/"):
 			add("copy[%d]: %q is inside .git", i, p)
+		}
+	}
+	if r.Tester != nil {
+		for i, p := range r.Tester.AgentConfig {
+			if !filepath.IsAbs(p) {
+				add("tester.agent_config[%d]: %s must be an absolute path", i, p)
+			}
+		}
+		if r.Tester.Brief != "" && !filepath.IsAbs(r.Tester.Brief) {
+			add("tester.brief: %s must be an absolute path", r.Tester.Brief)
 		}
 	}
 	if r.MaxRounds == 0 {

@@ -84,8 +84,11 @@ func (m *Manager) ticketStats(ctx context.Context, l loaded) api.TicketStats {
 	names = append(names, others...)
 	for _, name := range names {
 		a := api.AgentStats{Service: name, Role: "coder"}
-		if name == domain.ReviewerService {
+		switch name {
+		case domain.ReviewerService:
 			a.Role = "reviewer"
+		case domain.TesterService:
+			a.Role = "tester"
 		}
 		svc := domain.Service{Name: name}
 		if c := st.Services[svc.Name].Agent.Cost; c != nil {

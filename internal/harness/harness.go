@@ -40,6 +40,9 @@ type Request struct {
 	Model string
 	// ReviewOf names the service this agent reviews: it gets a reviewer's prompt.
 	ReviewOf string
+	// TestOf names the service this agent tests: it gets a tester's prompt, headed by
+	// TestBrief (the brief file's text) or rig's default brief when that is empty.
+	TestOf, TestBrief string
 	// Reviewed says a reviewer checks this agent's work, which changes how it finishes.
 	Reviewed bool
 }
