@@ -403,7 +403,7 @@ func (m *Manager) closeRound(id string, data json.RawMessage) error {
 		}
 	}
 	var open, nits []api.ReviewFinding
-	closed := timeline.ReviewRoundClosedData{Round: r.Round, Verdict: verdict}
+	closed := timeline.ReviewRoundClosedData{Round: r.Round, Verdict: timeline.Excerpt(verdict)}
 	for _, f := range findings {
 		switch f.Severity {
 		case "nit":

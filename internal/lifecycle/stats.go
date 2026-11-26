@@ -10,8 +10,8 @@ import (
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/git"
-	"github.com/charlesrobsampson/rig/internal/timeline"
 	"github.com/charlesrobsampson/rig/internal/journal"
+	"github.com/charlesrobsampson/rig/internal/timeline"
 	"github.com/charlesrobsampson/rig/internal/usage"
 )
 

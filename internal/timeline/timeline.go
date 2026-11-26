@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -131,6 +132,10 @@ func Excerpt(s string) string {
 // Log appends entries. A nil *Log appends nothing, so callers need no check.
 type Log struct {
 	now func() time.Time
+	// Logger, when set, hears of an append that failed (the change itself went ahead).
+	Logger *slog.Logger
+	// write puts one line into the file; tests replace it to fail part way.
+	write func(f *os.File, line []byte) error
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex
@@ -149,6 +154,18 @@ func (l *Log) Append(ticketDir string, e Entry) (Entry, error) {
 	if l == nil {
 		return Entry{}, nil
 	}
+	e, err := l.append(ticketDir, e)
+	if err != nil {
+		logger := l.Logger
+		if logger == nil {
+			logger = slog.Default()
+		}
+		logger.Warn("append to the ticket timeline", "dir", ticketDir, "kind", e.Kind, "err", err)
+	}
+	return e, err
+}
+
+func (l *Log) append(ticketDir string, e Entry) (Entry, error) {
 	l.mu.Lock()
 	lock := l.locks[ticketDir]
 	if lock == nil {
@@ -164,7 +181,7 @@ func (l *Log) Append(ticketDir string, e Entry) (Entry, error) {
 	if !known {
 		var err error
 		if last, err = lastInFile(path); err != nil {
-			return Entry{}, err
+			return Entry{Kind: e.Kind}, err
 		}
 	}
 	e.Seq, e.At = last+1, l.now().UTC()
@@ -173,19 +190,27 @@ func (l *Log) Append(ticketDir string, e Entry) (Entry, error) {
 	}
 	line, err := json.Marshal(e)
 	if err != nil {
-		return Entry{}, fmt.Errorf("encode timeline entry: %w", err)
+		return Entry{Kind: e.Kind}, fmt.Errorf("encode timeline entry: %w", err)
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
-		return Entry{}, fmt.Errorf("open timeline: %w", err)
+		return Entry{Kind: e.Kind}, fmt.Errorf("open timeline: %w", err)
 	}
-	// One write per line, so a crash leaves a whole line or a torn last one.
-	if _, err := f.Write(append(line, '\n')); err != nil {
+	// One write per line, so a crash leaves a whole line or a torn last one. After a
+	// failed write the file may end in a fragment: forget the cached seq so the next
+	// append reads the file again and cuts the fragment first.
+	write := l.write
+	if write == nil {
+		write = func(f *os.File, b []byte) error { _, err := f.Write(b); return err }
+	}
+	if err := write(f, append(line, '\n')); err != nil {
 		f.Close()
-		return Entry{}, fmt.Errorf("append to timeline: %w", err)
+		l.forget(ticketDir)
+		return Entry{Kind: e.Kind}, fmt.Errorf("append to timeline: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		return Entry{}, err
+		l.forget(ticketDir)
+		return Entry{Kind: e.Kind}, err
 	}
 	l.setLast(ticketDir, e.Seq)
 	return e, nil
@@ -196,6 +221,12 @@ func (l *Log) lastSeq(dir string) (int, bool) {
 	defer l.mu.Unlock()
 	n, ok := l.last[dir]
 	return n, ok
+}
+
+func (l *Log) forget(dir string) {
+	l.mu.Lock()
+	delete(l.last, dir)
+	l.mu.Unlock()
 }
 
 func (l *Log) setLast(dir string, n int) {

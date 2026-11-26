@@ -180,3 +180,37 @@ func TestAPersonsReviewDecisionAndARigStopAreRecorded(t *testing.T) {
 		}
 	}
 }
+
+func TestAPersonStartingANewLoopOverAStoppedOneKeepsTheOldRounds(t *testing.T) {
+	r := newReviewRig(t, "{max_rounds: 1}")
+	r.commit("a.txt", "first\n")
+	r.record("svc1", "review.ready", "", nil)
+	r.record("review", "review.result", "", finding("F1", "blocking", "crashes"))
+	r.record("review", "verdict", "Blocking findings: 1", map[string]int{"round": 1})
+	r.commit("b.txt", "more\n")
+	r.record("svc1", "review.ready", "", nil) // over the cap: rig stops loop 1
+	if n := len(only(readTimeline(t, r.path), "review.loop.ended")); n != 0 {
+		t.Fatalf("a stopped loop was reported as ended before anyone replaced it")
+	}
+
+	if res, err := r.lc.ReviewerStart(ctx, api.ReviewerParams{Ticket: "demo"}); err != nil || res.Round != 1 {
+		t.Fatalf("restart = %+v, %v", res, err)
+	}
+	got := readTimeline(t, r.path)
+	ended := only(got, "review.loop.ended")
+	if len(ended) != 1 || ended[0]["rounds"] != 1.0 || ended[0]["status"] != "stopped" {
+		t.Fatalf("review.loop.ended = %v", ended)
+	}
+	for _, e := range got {
+		if e.Kind == "review.loop.ended" && e.By != "human" {
+			t.Errorf("review.loop.ended by %q, want human", e.By)
+		}
+	}
+	if n := len(only(got, "review.round.started")); n != 2 {
+		t.Fatalf("round starts = %d, want 1 per loop", n)
+	}
+	stats, err := r.lc.Stats(ctx, api.StatsParams{IDs: []string{"demo"}})
+	if err != nil || stats.Tickets[0].ReviewRounds != 2 {
+		t.Fatalf("stats = %+v, %v; want both loops' rounds", stats, err)
+	}
+}

@@ -308,7 +308,7 @@ A ticket's journal is what its agents chose to record: feedback about rig or the
 | `journal.recorded` | `{kind, text?}` | every record added to `journal.jsonl`, rig's own `record.rejected` included; `text` is cut to 200 bytes (the full text is in the journal) |
 | `message.sent` | `{service, from, delivered}` | a message to an agent, delivered or not (the text is in `messages.jsonl`) |
 | `review.round.started` | `{round, commit}` | a round's reviewer copy was made from `commit` |
-| `review.round.closed` | `{round, verdict, blocking, should_fix, nit}` | the reviewer's verdict was taken; counts are of the round's findings |
+| `review.round.closed` | `{round, verdict, blocking, should_fix, nit}` | the reviewer's verdict was taken; `verdict` is cut to 200 bytes; counts are of the round's findings |
 | `review.decided` | `{outcome, reason}` | the loop passed (`pass`, by the reviewer or a person) or stopped (`stop`, by rig at a cap or a failed round, or by a person) |
 | `review.loop.ended` | `{rounds, status}` | the loop in `state.json` was dropped: a move back to implement (a sync's included) or a person starting a new loop over a stopped one. Its rounds stay in the timeline |
 | `sync.done` | `{service, behind, merged?, conflicts?}` | a sync looked at a service |

@@ -158,7 +158,8 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		agentEnv["RIG_CONFIG"] = a.configPath
 	}
 	tl := timeline.New(clk.Now) // the one writer of every ticket's timeline.jsonl
-	var lc *lifecycle.Manager   // set below; the supervisor starts polling only after it is
+	tl.Logger = logger
+	var lc *lifecycle.Manager // set below; the supervisor starts polling only after it is
 	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Timeline: tl, Logger: logger, Interval: time.Second,
 		PhaseRequest: func(ticket, service string, to domain.Phase, reason string) error {
 			return lc.AskForPhase(ticket, service, to, reason)
