@@ -37,6 +37,7 @@ type FakeDocker struct {
 	execs  map[string][]docker.ExecSpec
 
 	healthImages map[string]bool
+	onStart      map[string]func(c *fakeCtr) // by container name; runs when it starts, lock held
 	builds       map[string]int
 	lastBuild    docker.BuildSpec
 	buildHook    func(docker.BuildSpec) error
@@ -60,7 +61,7 @@ type fakeCtr struct {
 func NewFakeDocker() *FakeDocker {
 	return &FakeDocker{
 		nets: map[string]*fakeNet{}, ctrs: map[string]*fakeCtr{}, images: map[string]bool{},
-		nextPort: 40000, changed: make(chan struct{}), execs: map[string][]docker.ExecSpec{}, healthImages: map[string]bool{}, builds: map[string]int{},
+		nextPort: 40000, changed: make(chan struct{}), execs: map[string][]docker.ExecSpec{}, healthImages: map[string]bool{}, onStart: map[string]func(*fakeCtr){}, builds: map[string]int{},
 	}
 }
 
@@ -522,8 +523,36 @@ func (f *FakeDocker) StartContainer(ctx context.Context, nameOrID string) error 
 	if c.spec.Healthcheck != nil || f.healthImages[c.spec.Image] {
 		c.info.Health = docker.HealthStarting
 	}
+	if hook := f.onStart[c.info.Name]; hook != nil {
+		hook(c)
+	}
 	f.broadcast()
 	return nil
+}
+
+// ExitOnStart makes the named container's process print text and exit with code as
+// soon as it is started, so a test need not race a goroutine against the start.
+func (f *FakeDocker) ExitOnStart(name, text string, code int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onStart[name] = func(c *fakeCtr) {
+		for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+			c.logs = append(c.logs, line)
+		}
+		f.stop(c, code)
+	}
+}
+
+// HealthOnStart moves the named container to h as soon as it is started (it must have
+// a healthcheck, as with SetHealth).
+func (f *FakeDocker) HealthOnStart(name string, h docker.Health) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onStart[name] = func(c *fakeCtr) {
+		if c.info.Health != docker.HealthNone {
+			c.info.Health = h
+		}
+	}
 }
 
 func (f *FakeDocker) stop(c *fakeCtr, code int) {

@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/docker"
@@ -79,16 +78,7 @@ func TestADependencyThatCannotStartAbortsTheStartAndCleansUp(t *testing.T) {
 	}{
 		{"the image is missing", func(*testkit.FakeDocker) {}, "postgres:16"},
 		{"it exits at once", func(dk *testkit.FakeDocker) {
-			go func() {
-				for i := 0; i < 2000; i++ {
-					if _, err := dk.InspectContainer(ctx, "rig-demo-dep-db"); err == nil {
-						dk.Print("rig-demo-dep-db", "FATAL: data directory has wrong ownership")
-						dk.Exit("rig-demo-dep-db", 1)
-						return
-					}
-					time.Sleep(time.Millisecond)
-				}
-			}()
+			dk.ExitOnStart("rig-demo-dep-db", "FATAL: data directory has wrong ownership", 1)
 		}, "data directory has wrong ownership"},
 	}
 	for _, tt := range tests {
@@ -134,15 +124,7 @@ func TestAnUnhealthyDependencyIsAnError(t *testing.T) {
 	repo := testkit.NewRepo(t)
 	path := f.create("demo", repo)
 	addDeps(t, path, dbDeps)
-	go func() {
-		for i := 0; i < 2000; i++ {
-			if _, err := dk.InspectContainer(ctx, "rig-demo-dep-db"); err == nil {
-				dk.SetHealth("rig-demo-dep-db", docker.HealthUnhealthy)
-				return
-			}
-			time.Sleep(time.Millisecond)
-		}
-	}()
+	dk.HealthOnStart("rig-demo-dep-db", docker.HealthUnhealthy)
 	// the image's own healthcheck makes the fake container report health
 	dk.SetImageHealthcheck("postgres:16")
 	_, err := f.start("demo", domain.SandboxContainer)

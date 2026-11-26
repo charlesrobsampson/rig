@@ -364,21 +364,6 @@ func TestTheBackendIsNotAskedWhenNothingIsLaunched(t *testing.T) {
 	}
 }
 
-// step advances the fake clock in small steps until the backend has been polled n
-// times, giving the polling goroutine a moment to re-arm its timer after each poll.
-func (f *fixture) stepUntilPolls(n int) {
-	f.t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for len(f.term.polls()) < n {
-		if time.Now().After(deadline) {
-			f.t.Fatalf("timed out waiting for poll %d (have %d)", n, len(f.term.polls()))
-		}
-		f.clock.Advance(100 * time.Millisecond)
-		time.Sleep(2 * time.Millisecond)
-	}
-	time.Sleep(10 * time.Millisecond)
-}
-
 func TestRunPollsBacksOffWhenTheBackendFailsAndRecovers(t *testing.T) {
 	f := newFixture(t)
 	pane := f.launch("demo", "api")
@@ -390,17 +375,29 @@ func TestRunPollsBacksOffWhenTheBackendFailsAndRecovers(t *testing.T) {
 	go func() { f.sup.Run(runCtx); close(done) }()
 	defer func() { cancel(); <-done }()
 
-	f.stepUntilPolls(5)
-	f.term.Up()
-	f.stepUntilPolls(7)
-
-	times := f.term.polls()
 	// Failures double the wait up to the cap; the first success returns to the interval.
-	wantGaps := []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second, 8 * time.Second, 8 * time.Second, 1 * time.Second}
-	for i, want := range wantGaps {
-		if gap := times[i+1].Sub(times[i]); gap < want || gap > want+900*time.Millisecond {
-			t.Errorf("gap %d = %s, want about %s", i, gap, want)
+	want := []time.Duration{1 * time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 8 * time.Second, 8 * time.Second, 1 * time.Second}
+	var waits []time.Duration
+	for i := range want {
+		f.clock.BlockUntil(t, 1)
+		wait, _ := f.clock.NextWait()
+		waits = append(waits, wait)
+		if i == len(want)-1 {
+			break
 		}
+		if i == 5 { // five polls have failed; the sixth finds the backend back
+			f.term.Up()
+		}
+		f.clock.Advance(wait)
+	}
+	for i := range want {
+		if waits[i] != want[i] {
+			t.Errorf("waits = %v, want %v", waits, want)
+			break
+		}
+	}
+	if n := len(f.term.polls()); n != 6 {
+		t.Errorf("polls = %d, want 6", n)
 	}
 	if got := f.agentState("demo", "api"); got != domain.AgentWorking {
 		t.Errorf("state after recovery = %s, want working", got)
