@@ -30,6 +30,9 @@ type Error struct {
 	Args   []string
 	Dir    string
 	Stderr string
+	// Stdout is kept for commands that answer on stdout and signal with their exit
+	// code (merge-tree lists conflicts and exits 1).
+	Stdout string
 	Err    error
 }
 
@@ -63,7 +66,7 @@ func execGit(ctx context.Context, dir string, env []string, args []string) (stri
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		return "", &Error{Args: gitArgsForDisplay(args), Dir: dir, Stderr: stderr.String(), Err: err}
+		return "", &Error{Args: gitArgsForDisplay(args), Dir: dir, Stderr: stderr.String(), Stdout: stdout.String(), Err: err}
 	}
 	return strings.TrimRight(stdout.String(), "\r\n"), nil
 }
@@ -214,7 +217,7 @@ func (r Runner) RunAllowing(ctx context.Context, dir string, allowed []int, args
 		if errors.As(err, &exitErr) && slices.Contains(allowed, exitErr.ExitCode()) {
 			return strings.TrimRight(stdout.String(), "\r\n"), nil
 		}
-		return "", &Error{Args: gitArgsForDisplay(args), Dir: dir, Stderr: stderr.String(), Err: err}
+		return "", &Error{Args: gitArgsForDisplay(args), Dir: dir, Stderr: stderr.String(), Stdout: stdout.String(), Err: err}
 	}
 	return strings.TrimRight(stdout.String(), "\r\n"), nil
 }

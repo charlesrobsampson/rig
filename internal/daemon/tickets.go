@@ -108,6 +108,13 @@ func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 		return m.Start(ctx, p)
 	})
 	registerStop(s, m)
+	s.Handle(api.MethodTicketSync, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.SyncParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "ticket.sync needs params like {\"id\": \"ticket-1\"}"}
+		}
+		return m.Sync(ctx, p)
+	})
 	s.Handle(api.MethodTicketStats, func(ctx context.Context, params json.RawMessage) (any, error) {
 		var p api.StatsParams
 		if len(params) > 0 && string(params) != "null" {

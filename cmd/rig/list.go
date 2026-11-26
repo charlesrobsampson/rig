@@ -147,6 +147,13 @@ func phaseCell(t api.TicketSummary) string {
 	if t.ContractViolation {
 		notes = append(notes, "contract edited outside rig")
 	}
+	for _, b := range t.Base {
+		note := fmt.Sprintf("behind %s %d", b.Base, b.Behind)
+		if len(b.Conflicts) > 0 {
+			note += fmt.Sprintf(", conflicts %d", len(b.Conflicts))
+		}
+		notes = append(notes, note)
+	}
 	if len(t.Drift) > 0 {
 		notes = append(notes, fmt.Sprintf("drift %d", len(t.Drift)))
 	}

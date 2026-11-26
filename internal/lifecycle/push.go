@@ -127,6 +127,13 @@ func (m *Manager) pushService(ctx context.Context, l loaded, svc domain.Service)
 			return fail("%v", err)
 		}
 	}
+	var behindNote string
+	if bs, err := git.CompareBase(ctx, svc.Repo, rec.Checkout.Path, base); err == nil && bs.Behind > 0 {
+		if len(bs.Conflicts) > 0 {
+			return fail("%s has %d commits this branch lacks, and merging them conflicts in %s: bring them in with rig sync %s, then push", base, bs.Behind, strings.Join(bs.Conflicts, ", "), l.id)
+		}
+		behindNote = fmt.Sprintf("%s has moved on by %d commits; they merge without conflicts", base, bs.Behind)
+	}
 	opts := git.PushOptions{Repo: svc.Repo, Branch: svc.Branch, Base: base, MergeCommit: eff.MergeCommit}
 
 	var result git.PushResult
@@ -150,6 +157,9 @@ func (m *Manager) pushService(ctx context.Context, l loaded, svc domain.Service)
 		result, err = git.Push(ctx, eff.PushMode, opts)
 	}
 	out.Pushed, out.Ref, out.Sha, out.PRURL, out.Note = result.Pushed, result.Ref, result.Sha, result.PRURL, result.Note
+	if behindNote != "" {
+		out.Note = strings.TrimPrefix(out.Note+"; "+behindNote, "; ")
+	}
 	if err != nil {
 		return fail("%v", err)
 	}

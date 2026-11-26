@@ -30,10 +30,18 @@ type Registry struct {
 	// pendingGate, when set, names the approval a ticket is waiting for (it needs the
 	// global policy, which the registry does not know).
 	pendingGate func(domain.Ticket, state.State) domain.Gate
+	// base, when set, says how each service's branch stands against its base.
+	base func(domain.Ticket, state.State) []api.BaseInfo
 	// aiSummary, when set, supplies a ticket's language-model summary.
 	aiSummary func(id string) *api.SummaryInfo
 	// drift, when set, supplies how a ticket's reality differs from its state.
 	drift func(id string) []string
+}
+
+// WithBase makes summaries carry how each service's branch stands against its base.
+func (r *Registry) WithBase(f func(domain.Ticket, state.State) []api.BaseInfo) *Registry {
+	r.base = f
+	return r
 }
 
 // WithDrift makes summaries carry the drift last found for each ticket.
@@ -191,6 +199,9 @@ func (r *Registry) load(id string) api.TicketGetResult {
 	}
 	if r.aiSummary != nil {
 		res.Summary.AISummary = r.aiSummary(id)
+	}
+	if r.base != nil && res.Ticket != nil && res.State != nil {
+		res.Summary.Base = r.base(*res.Ticket, *res.State)
 	}
 	if r.drift != nil {
 		res.Summary.Drift = r.drift(id)
