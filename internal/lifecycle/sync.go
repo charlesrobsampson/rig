@@ -67,23 +67,24 @@ func identity(ctx context.Context, repo string) (name, email string) {
 // review.ready starts a new loop with its own rounds. A loop whose round is running is
 // left, because the round's verdict still has to land. A move back to implement has
 // cleared the loop already, and then there is nothing to end.
-func (m *Manager) endLoopAfterSync(id string) {
+func (m *Manager) endLoopAfterSync(id string) error {
 	l, unlock, err := m.begin(id)
 	if err != nil {
-		return
+		return err
 	}
 	defer unlock()
 	ended := l.state.Review
 	if ended == nil || ended.Status == domain.ReviewReviewing {
-		return
+		return nil
 	}
 	if err := m.opts.States.Update(l.statePath, func(s *state.State) error {
 		s.Review = nil
 		return nil
 	}); err != nil {
-		return
+		return err
 	}
 	m.note(l.dir, timeline.ReviewLoopEnded, "human", "", timeline.ReviewLoopEndedData{Rounds: len(ended.Rounds), Status: string(ended.Status)})
+	return nil
 }
 
 // Sync brings each service's base into its branch. A clean merge is committed, the
@@ -170,12 +171,16 @@ func (m *Manager) Sync(ctx context.Context, p api.SyncParams) (api.SyncResult, e
 		}
 		res.Phase = domain.PhaseImplement
 	}
-	if reviewed {
-		if target, _, ok := reviewers(l.ticket); ok {
-			for _, s := range res.Services {
-				if s.Service == target.Name && (s.Merged != "" || len(s.Conflicts) > 0) {
-					m.endLoopAfterSync(p.ID)
-				}
+	if target, _, ok := reviewers(l.ticket); ok {
+		var branchChanged bool
+		for _, s := range res.Services {
+			branchChanged = branchChanged || s.Service == target.Name && (s.Merged != "" || len(s.Conflicts) > 0)
+		}
+		// If the old loop cannot be ended, no round is started on it: it would go on at
+		// the old round count, which is what ending it is for.
+		if branchChanged {
+			if err := m.endLoopAfterSync(p.ID); err != nil {
+				return res, &api.Error{Code: api.CodeInternal, Message: fmt.Sprintf("the branch was merged, but the review loop could not be ended (journal review.ready after resolving, or run rig reviewer %s --start): %v", p.ID, err)}
 			}
 		}
 	}

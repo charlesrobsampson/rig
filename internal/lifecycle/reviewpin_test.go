@@ -1,12 +1,14 @@
 package lifecycle_test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/git"
+	"github.com/charlesrobsampson/rig/internal/state"
 )
 
 // passRound runs a round on the coder's current commit and has the reviewer pass it.
@@ -68,6 +70,29 @@ func TestACommitAfterAPassBlocksThePush(t *testing.T) {
 	got := res.Services[0]
 	if got.Status != domain.PushFailed || !strings.Contains(got.Error, passed[:12]) || !strings.Contains(got.Error, later[:12]) {
 		t.Errorf("push result = %+v, want a refusal naming %s and %s", got, passed[:12], later[:12])
+	}
+}
+
+func TestAPassWithNoRecordedCommitIsNotChecked(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	r.commit("a.txt", "first\n")
+	r.passRound(1)
+	// State as an older rig wrote it: passed, with no commit.
+	if err := r.states.Update(filepath.Join(r.path, "state.json"), func(s *state.State) error { s.Review.Commit = ""; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	r.commit("b.txt", "after\n")
+	if _, err := r.setPhase("demo", domain.PhaseTest, ""); err != nil {
+		t.Fatalf("leaving implement: %v", err)
+	}
+	r.mustSet("demo", domain.PhaseReview, "")
+	if r.requires("demo", domain.GateReviewApproval) {
+		r.mustApprove("demo", domain.GateReviewApproval, "")
+	}
+	r.mustSet("demo", domain.PhasePush, "")
+	res, err := r.lc.Push(ctx, api.PushRunParams{ID: "demo"})
+	if err != nil || len(res.Services) != 1 || strings.Contains(res.Services[0].Error, "the review passed") {
+		t.Errorf("push = %+v, %v; the pin was applied", res, err)
 	}
 }
 
