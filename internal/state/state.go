@@ -86,6 +86,15 @@ type ReviewRound struct {
 	At     time.Time `json:"at"`
 	// Verdict is the reviewer's closing line for the round, once it has one.
 	Verdict string `json:"verdict,omitempty"`
+	// ReviewerDone says the reviewer's verdict is in, and Tester is the tester's
+	// outcome once it has one; a round with a tester settles when both are.
+	ReviewerDone bool         `json:"reviewer_done,omitempty"`
+	Tester       *TesterRound `json:"tester,omitempty"`
+}
+
+type TesterRound struct {
+	Outcome string    `json:"outcome"`
+	At      time.Time `json:"at"`
 }
 
 // Transition.By is "human" or "agent:<service>"; Reason is required for backward moves.

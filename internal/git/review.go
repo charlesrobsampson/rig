@@ -32,23 +32,33 @@ func SnapshotForReview(ctx context.Context, repo, coderPath, branch, ticket, des
 	if err != nil {
 		return "", err
 	}
-	if err := emptyDir(dest); err != nil {
-		return "", err
-	}
-	source, err := filepath.EvalSymlinks(repo)
-	if err != nil {
-		return "", fmt.Errorf("resolve repository %s: %w", repo, err)
-	}
-	if _, err := Trusted().Run(ctx, repo, "clone", "-q", "--shared", "--no-checkout", "--no-tags", source, dest); err != nil {
-		return "", err
-	}
-	if err := inheritExcludes(ctx, repo, dest); err != nil {
-		return "", err
-	}
-	if _, err := Hardened().Run(ctx, dest, "checkout", "-q", "--detach", sha); err != nil {
+	if err := CloneAt(ctx, repo, sha, dest); err != nil {
 		return "", err
 	}
 	return sha, nil
+}
+
+// CloneAt makes dest an empty, fresh clone of the main repository checked out detached
+// at sha: a copy pinned to one commit, which whoever works in it cannot use to reach
+// the coder. dest itself is kept, because a running container has it mounted.
+func CloneAt(ctx context.Context, repo, sha, dest string) error {
+	if err := emptyDir(dest); err != nil {
+		return err
+	}
+	source, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		return fmt.Errorf("resolve repository %s: %w", repo, err)
+	}
+	if _, err := Trusted().Run(ctx, repo, "clone", "-q", "--shared", "--no-checkout", "--no-tags", source, dest); err != nil {
+		return err
+	}
+	if err := inheritExcludes(ctx, repo, dest); err != nil {
+		return err
+	}
+	if _, err := Hardened().Run(ctx, dest, "checkout", "-q", "--detach", sha); err != nil {
+		return err
+	}
+	return nil
 }
 
 // RemoveReview drops a ticket's review ref and its reviewer's copy.
@@ -59,6 +69,11 @@ func RemoveReview(ctx context.Context, repo, ticket, dest string) error {
 			return err
 		}
 	}
+	return RemoveCopy(dest)
+}
+
+// RemoveCopy removes a clone made by CloneAt.
+func RemoveCopy(dest string) error {
 	if info, err := os.Lstat(dest); err == nil && info.Mode()&fs.ModeSymlink != 0 {
 		return os.Remove(dest) // the link only, never what it points to
 	}

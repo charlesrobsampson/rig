@@ -124,3 +124,53 @@ func TestReviewerErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestTheTesterIsShownPerRoundThroughTheCLI(t *testing.T) {
+	home, d, repo, _, _ := newEnvFull(t)
+	newTicket(t, d, "demo", repo)
+	yaml := filepath.Join(home, "tickets", "demo", "ticket.yaml")
+	raw, _ := os.ReadFile(yaml)
+	os.WriteFile(yaml, append(raw, []byte("review: {tester: {}}\n")...), 0o600)
+	if _, stderr, code := rig(t, d, "start", "demo"); code != 0 {
+		t.Fatalf("start: %s", stderr)
+	}
+	rig(t, d, "approve", "demo", "plan_approval")
+	rig(t, d, "phase", "demo", "implement")
+	coder := filepath.Join(home, "tickets", "demo", "svc1")
+	os.WriteFile(filepath.Join(coder, "a.txt"), []byte("work\n"), 0o644)
+	for _, args := range [][]string{{"add", "a.txt"}, {"-c", "user.name=c", "-c", "user.email=c@example.com", "commit", "-q", "-m", "work"}} {
+		if _, err := git.Hardened().Run(ctx, coder, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	status := func() api.ReviewerStatus {
+		stdout, _, _ := rig(t, d, "reviewer", "demo", "--json")
+		var s api.ReviewerStatus
+		json.Unmarshal([]byte(stdout), &s)
+		return s
+	}
+	t.Setenv("RIG_TICKET", "demo")
+	t.Setenv("RIG_SERVICE", "svc1")
+	rig(t, d, "agent-event", `{"kind":"review.ready","text":"done"}`)
+	waitFor(t, "round 1 to start", func() bool { s := status(); return s.Status == domain.ReviewReviewing && s.Commit != "" })
+
+	t.Setenv("RIG_SERVICE", "review")
+	rig(t, d, "agent-event", `{"kind":"verdict","text":"No blocking findings","data":{"round":1}}`)
+	if stdout, _, _ := rig(t, d, "reviewer", "demo"); !strings.Contains(stdout, "tester: no result yet") {
+		t.Errorf("before the tester answers:\n%s", stdout)
+	}
+	t.Setenv("RIG_SERVICE", "tester")
+	rig(t, d, "agent-event", `{"kind":"test.result","text":"broke","data":{"outcome":"fail","findings":[{"severity":"blocking","text":"crash on empty input"}]}}`)
+	stdout, _, _ := rig(t, d, "reviewer", "demo")
+	for _, want := range []string{"fixing, round 1", "tester: fail, 1 findings", "T1 blocking", "crash on empty input"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("rig reviewer lacks %q:\n%s", want, stdout)
+		}
+	}
+	if s := status(); s.Rounds[0].Tester == nil || s.Rounds[0].Tester.Outcome != "fail" {
+		t.Errorf("--json status = %+v", s.Rounds)
+	}
+	if stdout, _, _ := rig(t, d, "timeline", "demo"); !strings.Contains(stdout, "test.result") {
+		t.Errorf("timeline:\n%s", stdout)
+	}
+}

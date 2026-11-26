@@ -28,6 +28,7 @@ const (
 	ReviewResultKind = "review.result"
 	ReviewReplyKind  = "review.reply"
 	VerdictKind      = "verdict"
+	TestResultKind   = "test.result"
 )
 
 var severities = []string{"blocking", "should-fix", "nit"}
@@ -56,16 +57,34 @@ func reviewers(t domain.Ticket) (target, reviewer domain.Service, ok bool) {
 	return target, reviewer, true
 }
 
-// agentServices are the services that may have an agent: the ticket's own, and its
-// reviewer.
-func agentServices(t domain.Ticket) []domain.Service {
-	if _, reviewer, ok := reviewers(t); ok {
-		return append(append([]domain.Service(nil), t.Services...), reviewer)
+// testers returns the tester as a service its agent can be launched as: the reviewer's
+// setup with the tester's own role, configuration and copy.
+func testers(t domain.Ticket) (domain.Service, bool) {
+	_, reviewer, ok := reviewers(t)
+	if !ok || t.Review.Tester == nil {
+		return domain.Service{}, false
 	}
-	return t.Services
+	reviewer.Name, reviewer.Path = domain.TesterService, "./"+domain.TesterService
+	reviewer.AgentConfig, reviewer.Model = t.Review.Tester.AgentConfig, t.Review.Tester.Model
+	return reviewer, true
+}
+
+// agentServices are the services that may have an agent: the ticket's own, its
+// reviewer and its tester.
+func agentServices(t domain.Ticket) []domain.Service {
+	_, reviewer, ok := reviewers(t)
+	if !ok {
+		return t.Services
+	}
+	out := append(append([]domain.Service(nil), t.Services...), reviewer)
+	if tester, ok := testers(t); ok {
+		out = append(out, tester)
+	}
+	return out
 }
 
 func reviewerDir(ticketDir string) string { return filepath.Join(ticketDir, domain.ReviewerService) }
+func testerDir(ticketDir string) string   { return filepath.Join(ticketDir, domain.TesterService) }
 
 // Wait blocks until the review rounds started in the background have finished.
 func (m *Manager) Wait() { m.bg.Wait() }
@@ -85,7 +104,7 @@ func (m *Manager) deliver(ticket, service, text string) {
 // ReviewRecord acts on the review records agents leave (the supervisor hands them on).
 // An error makes the record rejected; when the agent must know, it is also told.
 func (m *Manager) ReviewRecord(ticket, service, kind, text string, data json.RawMessage) error {
-	if kind != ReviewReadyKind && kind != ReviewResultKind && kind != ReviewReplyKind && kind != VerdictKind {
+	if kind != ReviewReadyKind && kind != ReviewResultKind && kind != ReviewReplyKind && kind != VerdictKind && kind != TestResultKind {
 		return nil
 	}
 	l, err := m.load(ticket)
@@ -120,8 +139,17 @@ func (m *Manager) ReviewRecord(ticket, service, kind, text string, data json.Raw
 	case kind == ReviewReplyKind && fromCoder:
 		_, err := parseReply(data)
 		return err
+	case kind == TestResultKind && service == domain.TesterService:
+		return m.recordTest(ticket, data)
 	}
-	return fmt.Errorf("a %s record comes from the %s agent, not %s", kind, map[bool]string{true: "reviewer's", false: target.Name + " service's"}[kind == VerdictKind || kind == ReviewResultKind], service)
+	who := target.Name + " service's"
+	switch kind {
+	case VerdictKind, ReviewResultKind:
+		who = "reviewer's"
+	case TestResultKind:
+		who = "tester's"
+	}
+	return fmt.Errorf("a %s record comes from the %s agent, not %s", kind, who, service)
 }
 
 func parseFinding(data json.RawMessage) (api.ReviewFinding, error) {
@@ -241,6 +269,10 @@ func (m *Manager) stopReason(l loaded, coder string, r state.Review, spent float
 	records, _ := journal.Read(l.dir)
 	since := r.Rounds[len(r.Rounds)-1].At
 	findings, replies := roundRecords(records, coder, since, time.Time{})
+	if _, ok := testers(l.ticket); ok {
+		tr, _ := testerRound(records, since, time.Time{})
+		findings = append(findings, tr.Findings...)
+	}
 	for _, f := range findings {
 		if rep, ok := replies[f.ID]; ok && f.Severity == "blocking" && rep.Status == "disagree" {
 			return fmt.Sprintf("the coder disagrees with blocking finding %s (%s): %s", f.ID, f.What, rep.Reason)
@@ -288,9 +320,29 @@ func (m *Manager) runRound(ctx context.Context, id string) {
 			return
 		}
 	}
-	if err := m.ensureReviewer(ctx, l, reviewer); err != nil {
+	if err := m.ensureReviewer(ctx, l, reviewer, dir); err != nil {
 		fail(fmt.Errorf("start the reviewer: %w", err))
 		return
+	}
+	tester, hasTester := testers(l.ticket)
+	if hasTester {
+		// The tester's copy is made from the commit the reviewer got, not the coder's
+		// working tree, which may already have moved on.
+		tdir := testerDir(l.dir)
+		if err := git.CloneAt(ctx, target.Repo, sha, tdir); err != nil {
+			fail(fmt.Errorf("copy the commit for the tester: %w", err))
+			return
+		}
+		for _, rel := range l.ticket.Review.Copy {
+			if err := copyIgnored(ctx, coderPath, tdir, rel); err != nil {
+				fail(fmt.Errorf("copy %s for the tester: %w", rel, err))
+				return
+			}
+		}
+		if err := m.ensureReviewer(ctx, l, tester, tdir); err != nil {
+			fail(fmt.Errorf("start the tester: %w", err))
+			return
+		}
 	}
 	m.setReview(l, func(r *state.Review) {
 		r.Commit, r.Base = sha, base
@@ -298,6 +350,9 @@ func (m *Manager) runRound(ctx context.Context, id string) {
 	})
 	m.note(l.dir, timeline.ReviewRoundStarted, "rig", "", timeline.ReviewRoundStartedData{Round: r.Round, Commit: sha})
 	m.deliver(id, domain.ReviewerService, m.roundBrief(l, *r, sha, base, target.Name))
+	if hasTester {
+		m.deliver(id, domain.TesterService, m.testerBrief(l, *r, sha, target))
+	}
 	m.deliver(id, target.Name, fmt.Sprintf("Review round %d started on your commit %s. Wait for the findings; what you commit meanwhile is reviewed next round.", r.Round, short(sha)))
 }
 
@@ -411,7 +466,7 @@ func (m *Manager) closeRound(id string, data json.RawMessage) error {
 	target, _, _ := reviewers(l.ticket)
 	r := l.state.Review
 	switch {
-	case r == nil || r.Status != domain.ReviewReviewing:
+	case r == nil || r.Status != domain.ReviewReviewing || r.Rounds[len(r.Rounds)-1].ReviewerDone:
 		return errors.New("no review round is waiting for a verdict")
 	case d.Round != 0 && d.Round != r.Round:
 		return fmt.Errorf("this is round %d, not %d", r.Round, d.Round)
@@ -425,53 +480,216 @@ func (m *Manager) closeRound(id string, data json.RawMessage) error {
 			break
 		}
 	}
-	var open, nits []api.ReviewFinding
 	closed := timeline.ReviewRoundClosedData{Round: r.Round, Verdict: timeline.Excerpt(verdict)}
-	for _, f := range findings {
+	closed.Blocking, closed.ShouldFix, closed.Nit = countSeverities(findings)
+	m.note(l.dir, timeline.ReviewRoundClosed, "agent:"+domain.ReviewerService, domain.ReviewerService, closed)
+	m.setReview(l, func(r *state.Review) {
+		last := &r.Rounds[len(r.Rounds)-1]
+		last.Verdict, last.ReviewerDone = verdict, true
+	})
+	m.settleRound(l, target.Name)
+	return nil
+}
+
+func countSeverities(fs []api.ReviewFinding) (blocking, shouldFix, nit int) {
+	for _, f := range fs {
 		switch f.Severity {
 		case "nit":
-			nits = append(nits, f)
-			closed.Nit++
+			nit++
 		case "should-fix":
-			open = append(open, f)
-			closed.ShouldFix++
+			shouldFix++
 		default:
-			open = append(open, f)
-			closed.Blocking++
+			blocking++
 		}
 	}
-	m.note(l.dir, timeline.ReviewRoundClosed, "agent:"+domain.ReviewerService, domain.ReviewerService, closed)
+	return
+}
+
+// testResult is the data of a tester's test.result record.
+type testResult struct {
+	Outcome  string `json:"outcome"`
+	Findings []struct {
+		Severity string `json:"severity"`
+		Text     string `json:"text"`
+	} `json:"findings"`
+}
+
+func parseTestResult(data json.RawMessage) (testResult, error) {
+	var t testResult
+	usage := errors.New(`a test.result needs data like {"outcome": "pass" | "fail", "findings": [{"severity": "blocking", "text": "..."}]}`)
+	if err := json.Unmarshal(data, &t); err != nil || (t.Outcome != "pass" && t.Outcome != "fail") {
+		return t, usage
+	}
+	for _, f := range t.Findings {
+		if f.Text == "" {
+			return t, usage
+		}
+		if !contains(severities, f.Severity) {
+			return t, fmt.Errorf("severity %q is not one of %s", f.Severity, strings.Join(severities, ", "))
+		}
+	}
+	return t, nil
+}
+
+// recordTest takes the tester's result for the round. The round settles when the
+// reviewer's verdict is in too.
+func (m *Manager) recordTest(id string, data json.RawMessage) error {
+	res, err := parseTestResult(data)
+	if err != nil {
+		return err
+	}
+	l, unlock, err := m.begin(id)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	target, _, _ := reviewers(l.ticket)
+	r := l.state.Review
+	switch {
+	case l.ticket.Review == nil || l.ticket.Review.Tester == nil:
+		return errors.New("this ticket has no tester")
+	case r == nil || r.Status != domain.ReviewReviewing || len(r.Rounds) == 0:
+		return errors.New("no review round is waiting for a test result")
+	case r.Rounds[len(r.Rounds)-1].Tester != nil:
+		return fmt.Errorf("round %d already has a test result", r.Round)
+	}
+	done := timeline.TestResultData{Round: r.Round, Outcome: res.Outcome}
+	for _, f := range res.Findings {
+		switch f.Severity {
+		case "nit":
+			done.Nit++
+		case "should-fix":
+			done.ShouldFix++
+		default:
+			done.Blocking++
+		}
+	}
+	m.note(l.dir, timeline.TestResult, "agent:"+domain.TesterService, domain.TesterService, done)
+	m.setReview(l, func(r *state.Review) {
+		r.Rounds[len(r.Rounds)-1].Tester = &state.TesterRound{Outcome: res.Outcome, At: m.opts.Clock.Now().UTC()}
+	})
+	m.settleRound(l, target.Name)
+	return nil
+}
+
+// settleRound ends the round once everyone who checks it has answered: the reviewer, and
+// the tester when the ticket has one. Any blocking or should-fix finding of either goes
+// to the coder; none, and a tester that did not fail, passes it.
+func (m *Manager) settleRound(l loaded, coder string) {
+	// setReview wrote state.json; l is the copy read before it.
+	st, err := m.opts.States.Load(l.statePath)
+	if err != nil {
+		return
+	}
+	l.state = st
+	r := l.state.Review
+	round := r.Rounds[len(r.Rounds)-1]
+	_, hasTester := testers(l.ticket)
+	if !round.ReviewerDone || (hasTester && round.Tester == nil) {
+		return
+	}
+	records, _ := journal.Read(l.dir)
+	findings, _ := roundRecords(records, coder, round.At, time.Time{})
+	if hasTester {
+		tr, _ := testerRound(records, round.At, time.Time{})
+		findings = append(findings, tr.Findings...)
+	}
+	var open, nits []api.ReviewFinding
+	for _, f := range findings {
+		if f.Severity == "nit" {
+			nits = append(nits, f)
+		} else {
+			open = append(open, f)
+		}
+	}
 	if len(open) == 0 {
 		reason := fmt.Sprintf("round %d: no blocking or should-fix findings", r.Round)
-		m.setReview(l, func(r *state.Review) {
-			r.Status, r.Reason, r.By = domain.ReviewPassed, reason, domain.ReviewerService
-			r.Rounds[len(r.Rounds)-1].Verdict = verdict
-		})
+		if hasTester {
+			reason = fmt.Sprintf("round %d: the reviewer and the tester found nothing to fix", r.Round)
+		}
+		m.setReview(l, func(r *state.Review) { r.Status, r.Reason, r.By = domain.ReviewPassed, reason, domain.ReviewerService })
 		m.note(l.dir, timeline.ReviewDecided, "agent:"+domain.ReviewerService, domain.ReviewerService, timeline.ReviewDecidedData{Outcome: "pass", Reason: reason})
 		text := fmt.Sprintf("The review passed in round %d. Nothing more to do for it; wait to be moved on.", r.Round)
 		if len(nits) > 0 {
 			text += "\n\nNits, for your judgement only:" + listFindings(nits)
 		}
-		m.deliver(id, target.Name, text)
-		return nil
+		m.deliver(l.id, coder, text)
+		return
 	}
-	m.setReview(l, func(r *state.Review) {
-		r.Status = domain.ReviewFixing
-		r.Rounds[len(r.Rounds)-1].Verdict = verdict
-	})
+	m.setReview(l, func(r *state.Review) { r.Status = domain.ReviewFixing })
 	text := fmt.Sprintf("Review round %d of at most %d found %d to fix:%s", r.Round, l.ticket.Review.MaxRounds, len(open), listFindings(open))
 	if len(nits) > 0 {
 		text += "\n\nNits, for your judgement only:" + listFindings(nits)
 	}
 	text += "\n\nFix each, or disagree with your reason. Answer each with a review.reply record, commit, then leave review.ready."
-	m.deliver(id, target.Name, text)
-	return nil
+	m.deliver(l.id, coder, text)
+}
+
+// testerRound is the tester's latest test.result journaled in [from, until), its
+// findings numbered T1.. A failure with nothing to fix in it is made one blocking
+// finding, so a failed test never passes a round by saying nothing.
+func testerRound(records []api.JournalRecord, from, until time.Time) (api.TesterResult, bool) {
+	var res api.TesterResult
+	var raw testResult
+	found := false
+	for _, rec := range records {
+		if rec.Kind != TestResultKind || rec.Service != domain.TesterService || rec.At.Before(from) || (!until.IsZero() && !rec.At.Before(until)) {
+			continue
+		}
+		if t, err := parseTestResult(rec.Data); err == nil {
+			raw, found = t, true
+		}
+	}
+	if !found {
+		return res, false
+	}
+	res.Outcome = raw.Outcome
+	open := 0
+	for i, f := range raw.Findings {
+		res.Findings = append(res.Findings, api.ReviewFinding{ID: fmt.Sprintf("T%d", i+1), Severity: f.Severity, What: f.Text, Source: "tester"})
+		if f.Severity != "nit" {
+			open++
+		}
+	}
+	if raw.Outcome == "fail" && open == 0 {
+		res.Findings = append(res.Findings, api.ReviewFinding{ID: "T0", Severity: "blocking", What: "the tester reported a failure without a blocking or should-fix finding; see its report in the journal", Source: "tester"})
+	}
+	return res, true
+}
+
+// testerBrief is what the tester is typed at the start of a round.
+func (m *Manager) testerBrief(l loaded, r state.Review, sha string, target domain.Service) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Test round %d of at most %d. Your working directory (%s) now holds the coder's commit %s, a copy of your own. Check it against the plan in plan.md.", r.Round, l.ticket.Review.MaxRounds, agentWorkDir, sha)
+	b.WriteString("\n\nHow to build and run it, from the ticket:")
+	hints := 0
+	for _, h := range [][2]string{{"build with the Dockerfile", target.Build.Dockerfile}, {"start", target.Start}, {"unit tests", target.Test}, {"health check", target.Healthcheck}} {
+		if h[1] != "" {
+			fmt.Fprintf(&b, "\n- %s: %s", h[0], h[1])
+			hints++
+		}
+	}
+	if target.InternalPort > 0 {
+		fmt.Fprintf(&b, "\n- it listens on port %d", target.InternalPort)
+		hints++
+	}
+	if hints == 0 {
+		b.WriteString("\n- the ticket gives none: read the repository's README and build files.")
+	}
+	if r.Round > 1 {
+		b.WriteString("\n\nThe coder has answered the last round's findings (the ones numbered T are yours); check each again by running it, not by reading the answer.")
+	}
+	b.WriteString("\n\nJournal one test.result for this round, then wait.")
+	return b.String()
 }
 
 func listFindings(fs []api.ReviewFinding) string {
 	var b strings.Builder
 	for _, f := range fs {
 		fmt.Fprintf(&b, "\n- %s [%s]", f.ID, f.Severity)
+		if f.Source != "" {
+			fmt.Fprintf(&b, " (%s)", f.Source)
+		}
 		if f.File != "" {
 			fmt.Fprintf(&b, " %s", f.File)
 			if f.Line > 0 {
@@ -520,8 +738,9 @@ func roundRecords(records []api.JournalRecord, coder string, from, until time.Ti
 	return findings, replies
 }
 
-// ensureReviewer launches the reviewer's agent unless it is already running.
-func (m *Manager) ensureReviewer(ctx context.Context, l loaded, reviewer domain.Service) error {
+// ensureReviewer launches the reviewer's or tester's agent in its copy at dir, unless it
+// is already running.
+func (m *Manager) ensureReviewer(ctx context.Context, l loaded, reviewer domain.Service, dir string) error {
 	if m.opts.Backend == nil || m.opts.Docker == nil {
 		return errors.New("a reviewer runs in a container, which needs Docker and a terminal backend")
 	}
@@ -552,13 +771,13 @@ func (m *Manager) ensureReviewer(ctx context.Context, l loaded, reviewer domain.
 		return err
 	}
 	if net == nil {
-		return errors.New("the ticket has no network for the reviewer's container")
+		return errors.New("the ticket has no network for the agent's container")
 	}
 	proxyEnv, err := m.startProxy(ctx, l, net)
 	if err != nil {
 		return err
 	}
-	al, err := m.prepareContainerAgent(ctx, l, reviewer, eff, api.CheckoutInfo{Service: reviewer.Name, Kind: domain.CheckoutClone, Path: reviewerDir(l.dir)}, net, proxyEnv)
+	al, err := m.prepareContainerAgent(ctx, l, reviewer, eff, api.CheckoutInfo{Service: reviewer.Name, Kind: domain.CheckoutClone, Path: dir}, net, proxyEnv)
 	if err != nil {
 		return err
 	}
@@ -764,6 +983,10 @@ func (m *Manager) ReviewerStatus(_ context.Context, p api.ReviewerParams) (api.R
 	if c := l.state.Services[domain.ReviewerService].Agent.Cost; c != nil {
 		res.ReviewerUSD = c.USD
 	}
+	if c := l.state.Services[domain.TesterService].Agent.Cost; c != nil {
+		res.TesterUSD = c.USD
+	}
+	_, hasTester := testers(l.ticket)
 	r := l.state.Review
 	if r == nil {
 		return res, nil
@@ -782,7 +1005,17 @@ func (m *Manager) ReviewerStatus(_ context.Context, p api.ReviewerParams) (api.R
 				findings[j].Reply = &rep
 			}
 		}
-		res.Rounds = append(res.Rounds, api.ReviewerRound{Round: round.Round, Commit: round.Commit, At: round.At, Verdict: round.Verdict, Findings: findings})
+		out := api.ReviewerRound{Round: round.Round, Commit: round.Commit, At: round.At, Verdict: round.Verdict, Findings: findings}
+		if hasTester {
+			tr, _ := testerRound(records, round.At, until)
+			for j := range tr.Findings {
+				if rep, ok := replies[tr.Findings[j].ID]; ok {
+					tr.Findings[j].Reply = &rep
+				}
+			}
+			out.Tester = &tr
+		}
+		res.Rounds = append(res.Rounds, out)
 	}
 	return res, nil
 }
@@ -795,6 +1028,9 @@ func (m *Manager) removeReviewer(ctx context.Context, l loaded) error {
 	}
 	if err := git.RemoveReview(ctx, target.Repo, l.id, reviewerDir(l.dir)); err != nil {
 		return fmt.Errorf("remove the reviewer's copy: %w", err)
+	}
+	if err := git.RemoveCopy(testerDir(l.dir)); err != nil {
+		return fmt.Errorf("remove the tester's copy: %w", err)
 	}
 	return nil
 }

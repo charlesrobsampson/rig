@@ -62,7 +62,7 @@ func (c ClaudeCode) Command(r Request) (Launch, error) {
 			svc = &r.Ticket.Services[i]
 		}
 	}
-	if svc == nil && r.ReviewOf == "" {
+	if svc == nil && r.ReviewOf == "" && r.TestOf == "" {
 		return Launch{}, fmt.Errorf("ticket %s has no service %q", r.Ticket.ID, r.Service)
 	}
 	r.HookCommand = hookCommandOf(r)
@@ -179,6 +179,9 @@ func (ClaudeCode) AuthEnv(p config.AuthProfile, secrets map[string]string) (map[
 func Prompt(r Request) (string, error) {
 	if r.ReviewOf != "" {
 		return reviewerPrompt(r)
+	}
+	if r.TestOf != "" {
+		return testerPrompt(r)
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are the agent for service %q of rig ticket %s: %s.\n", r.Service, r.Ticket.ID, r.Ticket.Title)
@@ -370,6 +373,42 @@ func reviewerPrompt(r Request) (string, error) {
 		"Keep a finding's id when you check it again in a later round; number new ones after the last.",
 		"pr.md is the pull request description rig will publish as written. Check that it says truly what changed and how it was tested, and that it leaks nothing private (local paths, the ticket directory, links to plan.md or other private files): a leak is blocking.",
 		"You have no phase to ask for and no gate to approve. Your own instructions set the review standards.",
+	} {
+		b.WriteString("- " + rule + "\n")
+	}
+	b.WriteString("\n## Journal\n")
+	for _, rule := range journalRules(hookCommandOf(r)) {
+		b.WriteString("- " + rule + "\n")
+	}
+	for _, name := range []string{"plan.md", "tasks.md", "pr.md"} {
+		content, err := os.ReadFile(filepath.Join(r.TicketDir, name))
+		switch {
+		case os.IsNotExist(err):
+			continue
+		case err != nil:
+			return "", fmt.Errorf("read %s: %w", name, err)
+		}
+		fmt.Fprintf(&b, "\n## %s (the coder's)\n\n%s\n", name, indent(string(content)))
+	}
+	b.WriteString("\nWait for the first round; it is typed to you.\n")
+	return b.String(), nil
+}
+
+// DefaultTesterBrief heads a tester's prompt unless the ticket names a brief file.
+const DefaultTesterBrief = "Use the built product as a user would: run it, drive it through its real interface (a terminal program under tmux, a service over its port) and try what the plan says it now does, and what a user would try next. Never edit code and never use git to change anything. Report each step with what you did and what you saw, and PASS or FAIL against the plan. List what cannot be checked here (no browser, no real credentials) rather than guessing."
+
+// testerPrompt seeds a tester: the brief, then what is fixed (its copy, the report it
+// leaves, the ticket's plan) which the brief cannot change.
+func testerPrompt(r Request) (string, error) {
+	var b strings.Builder
+	b.WriteString(firstNonEmpty(strings.TrimSpace(r.TestBrief), DefaultTesterBrief))
+	fmt.Fprintf(&b, "\n\nYou are the tester of service %q of rig ticket %s: %s. Another agent, the coder, made the change; a reviewer reads its code. You check what the code does.\n\n## Rules\n", r.TestOf, r.Ticket.ID, r.Ticket.Title)
+	for _, rule := range []string{
+		"Each round, rig puts the coder's commit in your working directory: a copy of your own, made again at the start of every round, with tmux installed. Build and run it there; nothing you do reaches the coder. Never commit.",
+		"The ticket directory (" + firstNonEmpty(r.AgentTicketDir, r.TicketDir) + ") holds the coder's plan.md and tasks.md, which you cannot change: what the change was meant to do. Its work log is a claim to check.",
+		"Report only through journal records (see Journal): one of kind \"test.result\" per round, with data {\"outcome\": \"pass\" | \"fail\", \"findings\": [{\"severity\": \"blocking\" | \"should-fix\" | \"nit\", \"text\": \"the step, what you did and saw, and what was expected\"}]}. Text says what you did and saw in each step. The outcome is pass only when every step you could run passed and you have no blocking or should-fix finding. Then stop and wait: the next round is typed to you.",
+		"blocking: the product does the wrong thing or does not work. should-fix: a real gap a user would hit. nit: taste; a nit never sends the work back.",
+		"You have no phase to ask for and no gate to approve.",
 	} {
 		b.WriteString("- " + rule + "\n")
 	}

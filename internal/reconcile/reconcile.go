@@ -296,8 +296,8 @@ func orphanReason(tickets map[string]facts, ticket string, labels map[string]str
 }
 
 func hasService(t domain.Ticket, name string) bool {
-	if t.Review != nil && name == domain.ReviewerService {
-		return true // the reviewer runs as a service of the ticket
+	if t.Review != nil && (name == domain.ReviewerService || (name == domain.TesterService && t.Review.Tester != nil)) {
+		return true // the reviewer and the tester run as services of the ticket
 	}
 	for _, s := range t.Services {
 		if s.Name == name {

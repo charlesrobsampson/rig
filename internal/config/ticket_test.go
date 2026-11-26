@@ -292,3 +292,33 @@ func TestAReviewDefaultsToTheOnlyServiceAndThreeRounds(t *testing.T) {
 		t.Errorf("review = %+v", r)
 	}
 }
+
+func TestAReviewTesterIsParsedAndItsPathsMustBeAbsolute(t *testing.T) {
+	opts := config.TicketOptions{RepoCheck: func(string) error { return nil }}
+	tk, err := config.ParseTicket([]byte(minimal+"review: {tester: {agent_config: [/cfg/t.json], model: sonnet, brief: /briefs/t.md}}\n"), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tt := tk.Review.Tester; tt == nil || tt.Model != "sonnet" || tt.Brief != "/briefs/t.md" || tt.AgentConfig[0] != "/cfg/t.json" {
+		t.Errorf("tester = %+v", tk.Review.Tester)
+	}
+	for _, y := range []string{"{agent_config: [rel.json]}", "{brief: brief.md}"} {
+		if _, err := config.ParseTicket([]byte(minimal+"review: {tester: "+y+"}\n"), opts); err == nil || !strings.Contains(err.Error(), "absolute") {
+			t.Errorf("tester %s: err = %v, want an absolute-path problem", y, err)
+		}
+	}
+	tk, err = config.ParseTicket([]byte(minimal+"review: {}\n"), opts)
+	if err != nil || tk.Review.Tester != nil {
+		t.Errorf("no tester block: %+v, %v", tk.Review.Tester, err)
+	}
+}
+
+func TestAServiceMayNotBeNamedTesterOnlyWhenThereIsATester(t *testing.T) {
+	doc := "id: demo\ntitle: Demo\nservices:\n  - {name: tester, repo: /repos/api, branch: feat/x}\n"
+	if _, err := parse(t, doc+"review: {tester: {}}\n"); err == nil || !strings.Contains(err.Error(), "tester's name") {
+		t.Errorf("err = %v", err)
+	}
+	if _, err := parse(t, doc+"review: {}\n"); err != nil {
+		t.Errorf("without a tester block: %v", err)
+	}
+}

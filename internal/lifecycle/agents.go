@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charlesrobsampson/rig/internal/api"
@@ -104,6 +105,16 @@ func (m *Manager) agentRequest(l loaded, svc domain.Service, eff policy.Effectiv
 	if target, _, ok := reviewers(l.ticket); ok {
 		req.ReviewOf = map[bool]string{true: target.Name}[svc.Name == domain.ReviewerService]
 		req.Reviewed = svc.Name == target.Name
+		if svc.Name == domain.TesterService {
+			req.TestOf = target.Name
+			if brief := l.ticket.Review.Tester.Brief; brief != "" {
+				text, err := os.ReadFile(brief)
+				if err != nil {
+					return nil, req, fmt.Errorf("read the tester's brief: %w", err)
+				}
+				req.TestBrief = string(text)
+			}
+		}
 	}
 	names := append([]string(nil), l.ticket.Secrets...)
 	if eff.Auth != "" {

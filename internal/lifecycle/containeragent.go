@@ -59,12 +59,17 @@ func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domai
 	}
 	if runsInDocker(svc) {
 		toolchain := svc.Name
-		if svc.Name == domain.ReviewerService && l.ticket.Review != nil {
+		if (svc.Name == domain.ReviewerService || svc.Name == domain.TesterService) && l.ticket.Review != nil {
 			toolchain = l.ticket.Review.Of // the reviewer uses the reviewed service's image
 		}
 		base = m.imageTag(l.id, toolchain) // the service's own toolchain
 	}
-	image, _, err := m.agentImages.Ensure(ctx, base)
+	var image string
+	if svc.Name == domain.TesterService && l.ticket.Review != nil {
+		image, err = m.agentImages.EnsureWithTmux(ctx, base)
+	} else {
+		image, _, err = m.agentImages.Ensure(ctx, base)
+	}
 	if err != nil {
 		return agentLaunch{}, err
 	}
@@ -87,8 +92,8 @@ func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domai
 	}
 	for _, name := range ticketFiles {
 		if info, err := os.Stat(filepath.Join(l.dir, name)); err == nil && info.Mode().IsRegular() {
-			// The reviewer reads the coder's ticket files; only the coder writes them.
-			readOnly := svc.Name == domain.ReviewerService && l.ticket.Review != nil
+			// The reviewer and the tester read the coder's ticket files; only the coder writes them.
+			readOnly := (svc.Name == domain.ReviewerService || svc.Name == domain.TesterService) && l.ticket.Review != nil
 			mounts = append(mounts, docker.Mount{Source: filepath.Join(l.dir, name), Target: agentTicketDir + "/" + name, ReadOnly: readOnly})
 		}
 	}

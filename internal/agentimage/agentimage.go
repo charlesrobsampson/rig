@@ -21,6 +21,9 @@ import (
 //go:embed Dockerfile
 var dockerfile []byte
 
+//go:embed Dockerfile.tmux
+var tmuxDockerfile []byte
+
 type Builder struct {
 	d             docker.Docker
 	claudeVersion string
@@ -112,4 +115,40 @@ func (b *Builder) Ensure(ctx context.Context, base string) (tag string, built bo
 		return "", false, fmt.Errorf("build the agent image on %s: %w%s", base, err, hint)
 	}
 	return tag, true, nil
+}
+
+// EnsureWithTmux is Ensure plus tmux, the image a tester runs in. It is a layer over
+// the agent image, tagged by that image and its own recipe.
+func (b *Builder) EnsureWithTmux(ctx context.Context, base string) (string, error) {
+	agent, _, err := b.Ensure(ctx, base)
+	if err != nil {
+		return "", err
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	h := sha256.New()
+	h.Write([]byte(agent))
+	h.Write(tmuxDockerfile)
+	tag := "rig-agent-tmux:" + hex.EncodeToString(h.Sum(nil))[:12]
+	if ok, err := b.d.ImageExists(ctx, tag); err != nil {
+		return "", err
+	} else if ok {
+		return tag, nil
+	}
+	dir, err := os.MkdirTemp("", "rig-agent-image")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(dir)
+	if err := os.WriteFile(filepath.Join(dir, "Dockerfile"), tmuxDockerfile, 0o600); err != nil {
+		return "", err
+	}
+	err = b.d.BuildImage(ctx, docker.BuildSpec{
+		Tag: tag, ContextDir: dir, Args: map[string]string{"BASE": agent},
+		Labels: map[string]string{docker.LabelRole: docker.RoleAgent, "rig.agent-image": "1"},
+	})
+	if err != nil {
+		return "", fmt.Errorf("add tmux to the agent image %s: %w", agent, err)
+	}
+	return tag, nil
 }
