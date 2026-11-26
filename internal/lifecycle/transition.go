@@ -115,6 +115,10 @@ func (m *Manager) moveLocked(l loaded, id, by string, to domain.Phase, reason, s
 	}
 
 	reason = strings.TrimSpace(reason)
+	var pinRefusal string
+	if l.ticket.Review != nil && l.state.Phase == domain.PhaseImplement && !state.IsBackward(l.state.Phase, to) {
+		pinRefusal = m.reviewPin(context.Background(), l.id, l.ticket, l.state)
+	}
 	var made state.Transition
 	var endedLoop *state.Review
 	err := m.opts.States.Update(l.statePath, func(s *state.State) error {
@@ -122,6 +126,9 @@ func (m *Manager) moveLocked(l loaded, id, by string, to domain.Phase, reason, s
 		// write cannot be separated by another move.
 		if e := m.decide(id, l.ticket, *s, to, reason); e != nil {
 			return e
+		}
+		if pinRefusal != "" && s.Review != nil && s.Review.Status == domain.ReviewPassed {
+			return &api.Error{Code: api.CodeBlocked, Message: pinRefusal}
 		}
 		made = state.Transition{From: s.Phase, To: to, By: by, Reason: reason, At: m.opts.Clock.Now().UTC()}
 		if state.IsBackward(s.Phase, to) {

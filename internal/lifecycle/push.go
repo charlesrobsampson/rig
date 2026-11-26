@@ -99,6 +99,11 @@ func (m *Manager) pushService(ctx context.Context, l loaded, svc domain.Service)
 		out.Error = fmt.Sprintf(format, args...)
 		return out
 	}
+	if target, _, ok := reviewers(l.ticket); ok && target.Name == svc.Name {
+		if msg := m.reviewPin(ctx, l.id, l.ticket, l.state); msg != "" {
+			return fail("%s", msg)
+		}
+	}
 	if eff.PushMode == "" {
 		return fail("no push mode is configured for this service (set push.mode to none, push-branch, merge or pr)")
 	}
