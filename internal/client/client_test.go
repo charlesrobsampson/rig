@@ -199,7 +199,7 @@ func TestAutoStartWaitsForASlowDaemon(t *testing.T) {
 		}()
 		return nil
 	}
-	c, err := connect(t, p, client.Options{Spawner: spawner, StartupTimeout: 5 * time.Second, PollInterval: 20 * time.Millisecond})
+	c, err := connect(t, p, client.Options{Spawner: spawner, StartupTimeout: testkit.WaitLimit, PollInterval: 20 * time.Millisecond})
 	if err != nil {
 		t.Fatalf("a daemon that takes a moment to bind should still be found: %v", err)
 	}
@@ -373,12 +373,12 @@ func TestACallOnALostConnectionFailsClearly(t *testing.T) {
 	srv := startDaemon(t, p, nil)
 	c := mustConnect(t, p)
 	srv.Stop()
-	time.Sleep(200 * time.Millisecond)
-	err := c.Call(context.Background(), api.MethodStatus, nil, nil)
+	var err error
 	var apiErr *api.Error
-	if !errors.As(err, &apiErr) || apiErr.Code != api.CodeNotRunning {
-		t.Fatalf("error = %v, want not_running", err)
-	}
+	testkit.Eventually(t, "the call to fail as not running", func() bool { // the client notices the lost connection in its own time
+		err = c.Call(context.Background(), api.MethodStatus, nil, nil)
+		return errors.As(err, &apiErr) && apiErr.Code == api.CodeNotRunning
+	})
 }
 
 func TestACallHonorsTheContextDeadline(t *testing.T) {

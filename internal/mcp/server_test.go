@@ -449,7 +449,7 @@ func TestCancellingARequestStopsItsDaemonCall(t *testing.T) {
 	d := &fakeDaemon{block: map[string]chan struct{}{"agent.message": make(chan struct{})}}
 	s := newSession(t, d)
 	s.send(`{"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"rig_send_message","arguments":{"ticket":"t","service":"api","text":"hi"}}}`)
-	time.Sleep(50 * time.Millisecond)
+	testkit.Eventually(t, "the daemon call to start", func() bool { d.mu.Lock(); defer d.mu.Unlock(); return len(d.calls) > 0 })
 	s.send(`{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":41}}`)
 	text, isErr := toolText(t, s.recv())
 	if !isErr || !strings.Contains(text, "context canceled") {

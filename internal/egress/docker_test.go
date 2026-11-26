@@ -4,6 +4,7 @@ package egress_test
 
 import (
 	"context"
+	"github.com/charlesrobsampson/rig/internal/testkit"
 	"os"
 	"strings"
 	"testing"
@@ -68,7 +69,10 @@ func TestAnInternalNetworkContainerReachesOnlyWhatTheProxyAllows(t *testing.T) {
 	run(docker.ContainerSpec{Name: service, Image: agentImage, Network: internal, Command: []string{"node", "-e", "require('http').createServer((q,r)=>r.end('svc-ok')).listen(8080)"}})
 	agent := "rigt-egress-agent-" + itoa(suffix)
 	run(docker.ContainerSpec{Name: agent, Image: agentImage, Network: internal, Command: []string{"sleep", "300"}})
-	time.Sleep(2 * time.Second)
+	testkit.Eventually(t, "the service to answer the agent", func() bool {
+		res, err := dk.Exec(bg, agent, docker.ExecSpec{Command: []string{"curl", "-s", "-m", "2", "http://" + service + ":8080"}})
+		return err == nil && strings.TrimSpace(res.Output) == "svc-ok"
+	})
 
 	curl := func(env map[string]string, args ...string) string {
 		t.Helper()

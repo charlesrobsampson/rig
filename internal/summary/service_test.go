@@ -315,7 +315,7 @@ func TestNoneNeverGathersAnythingOrPublishes(t *testing.T) {
 	go func() { none.Run(context.Background()); close(done) }()
 	select {
 	case <-done:
-	case <-time.After(time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("Run did not return for the none provider")
 	}
 }

@@ -405,14 +405,13 @@ func TestAStreamThatDiesAtOnceDoesNotSpinThePump(t *testing.T) {
 	done := make(chan struct{})
 	closing := &closingSub{inner: sub}
 	go func() { Pump(ctx, closing, out.send, 30*time.Millisecond); close(done) }()
-	time.Sleep(200 * time.Millisecond)
+	testkit.Eventually(t, "the pump to keep trying", func() bool { return sub.count() >= 3 })
 	cancel()
 	<-done
-	if n := sub.count(); n > 10 {
-		t.Errorf("%d subscriptions in 200ms; the pump is spinning", n)
-	}
-	if n := sub.count(); n < 2 {
-		t.Errorf("only %d subscriptions; it should keep trying", n)
+	// Spinning would make thousands of attempts while the test waits for three; the
+	// retry delay is only slept, so a loaded machine can only make fewer.
+	if n := sub.count(); n > 50 {
+		t.Errorf("%d subscriptions; the pump is spinning", n)
 	}
 }
 
