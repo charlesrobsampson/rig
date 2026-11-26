@@ -49,6 +49,38 @@ func (a *app) chooseVessel(fromFlag bool) error {
 	return usageError(fmt.Errorf("no vessel named %q; known vessels: %s (rig fleet)", name, strings.Join(known, ", ")))
 }
 
+// visibleVessels is the fleet as listed and picked from: every vessel, except the default
+// config when it holds no tickets (it is the machine layer first, a vessel only if used).
+// Choosing it by name still works. Tickets are counted on disk, so no daemon is needed.
+func visibleVessels(fleet config.Fleet, user string) []config.NamedVessel {
+	var out []config.NamedVessel
+	for _, h := range fleet.All(user) {
+		if h.Name == config.DefaultVessel && !hasTickets(h) {
+			continue
+		}
+		out = append(out, h)
+	}
+	return out
+}
+
+// hasTickets reports whether the vessel's home has a ticket directory.
+func hasTickets(h config.NamedVessel) bool {
+	g, err := config.LoadGlobal(config.GlobalOptions{Path: h.Config})
+	if err != nil {
+		return true // a config that does not load is worth showing, with its error
+	}
+	entries, err := os.ReadDir(g.TicketsDir())
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if _, err := os.Stat(filepath.Join(g.TicketsDir(), e.Name(), "ticket.yaml")); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 func loadFleet() (config.Fleet, string, error) {
 	user, err := os.UserHomeDir()
 	if err != nil {
@@ -173,7 +205,7 @@ per product. No daemon is started to find out. The default config is the vessel 
 				return err
 			}
 			var infos []vesselInfo
-			for _, h := range fleet.All(user) {
+			for _, h := range visibleVessels(fleet, user) {
 				info, _ := a.inspectVessel(cmd, h)
 				infos = append(infos, info)
 			}
@@ -271,7 +303,7 @@ func (a *app) listAll(cmd *cobra.Command) error {
 		return err
 	}
 	var all []vesselTickets
-	for _, h := range fleet.All(user) {
+	for _, h := range visibleVessels(fleet, user) {
 		info, tickets := a.inspectVessel(cmd, h)
 		all = append(all, vesselTickets{Vessel: h.Name, Running: info.Running, Tickets: tickets, Error: info.Error})
 	}
