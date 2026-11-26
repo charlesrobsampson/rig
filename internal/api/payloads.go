@@ -34,6 +34,8 @@ type TicketSummary struct {
 	PendingGate domain.Gate `json:"pending_gate,omitempty"`
 	// PhaseRequest is an agent's open request to move the ticket, waiting for a human.
 	PhaseRequest *PhaseRequestSummary `json:"phase_request,omitempty"`
+	// Question is an agent's open question to a person, until a message to that service answers it.
+	Question *QuestionSummary `json:"question,omitempty"`
 	// Review is where the ticket's review loop stands, once it has begun.
 	Review *ReviewSummary `json:"review,omitempty"`
 	// AISummary is the language model's note on the ticket, when a summarizer is
@@ -357,6 +359,22 @@ type ReviewUpdatedData struct {
 	Round  int                 `json:"round"`
 	Commit string              `json:"commit,omitempty"`
 	Reason string              `json:"reason,omitempty"`
+}
+
+// QuestionSummary is a question an agent asked a person and who asked.
+type QuestionSummary struct {
+	Service string    `json:"service"`
+	Text    string    `json:"text"`
+	At      time.Time `json:"at"`
+}
+
+// ReworkParams is a person sending a ticket in test, review or push back to implement
+// with something the review missed. Lens names the kind of reviewer that should have
+// caught it.
+type ReworkParams struct {
+	ID      string `json:"id"`
+	Finding string `json:"finding"`
+	Lens    string `json:"lens,omitempty"`
 }
 
 // PhaseRequestSummary is the move an agent asked for and who asked.

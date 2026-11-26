@@ -169,10 +169,18 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		PhaseRequest: func(ticket, service string, to domain.Phase, reason string) error {
 			return lc.AskForPhase(ticket, service, to, reason)
 		},
+		Question: func(ticket, service, text string) error {
+			return lc.AskQuestion(ticket, service, text)
+		},
 		Review: func(ticket, service, kind, text string, data json.RawMessage) error {
 			return lc.ReviewRecord(ticket, service, kind, text, data)
 		}})
-	injector := inject.New(inject.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Readiness: sup, Clock: clk, Timeline: tl})
+	injector := inject.New(inject.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Readiness: sup, Clock: clk, Timeline: tl,
+		Answered: func(ticket, service string) {
+			if err := lc.AnswerQuestion(ticket, service); err != nil {
+				logger.Warn("close an answered question", "ticket", ticket, "service", service, "err", err)
+			}
+		}})
 	notifier := &contractnotify.Notifier{Dir: g.TicketsDir(), Sender: injector, Logger: logger}
 	phaseNotifier := phasenotify.New(phasenotify.Options{Sender: injector, Clock: clk, Logger: logger})
 	defer phaseNotifier.Close()

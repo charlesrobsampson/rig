@@ -136,6 +136,9 @@ func phaseCell(t api.TicketSummary, overlaps []string) string {
 	if t.Phase == "" {
 		notes[0] = "-"
 	}
+	if q := t.Question; q != nil {
+		notes = append(notes, fmt.Sprintf("%s asks you", q.Service))
+	}
 	if r := t.PhaseRequest; r != nil {
 		notes = append(notes, fmt.Sprintf("%s asks for %s", r.Service, r.To))
 	}

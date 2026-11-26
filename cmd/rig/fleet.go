@@ -120,7 +120,7 @@ func standing(tickets []api.TicketSummary) string {
 	var needYou, running, done int
 	for _, t := range tickets {
 		switch {
-		case t.PhaseRequest != nil || len(t.Drift) > 0 || t.Error != "",
+		case t.PhaseRequest != nil || t.Question != nil || len(t.Drift) > 0 || t.Error != "",
 			t.Review != nil && (t.Review.Status == domain.ReviewStopped || t.Review.Status == domain.ReviewPassed && t.Phase != domain.PhaseDone):
 			needYou++
 		case t.Phase == domain.PhaseDone:

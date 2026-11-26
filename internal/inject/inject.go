@@ -38,6 +38,8 @@ type Options struct {
 	Clock     clock.Clock // nil means the real clock
 	// Timeline, when set, gets a message.sent entry for every message, delivered or not.
 	Timeline *timeline.Log
+	// Answered, when set, hears of each message a person sent that was delivered.
+	Answered func(ticket, service string)
 	// Pause is the wait between typing the text and pressing Enter, so the agent's
 	// interface registers the text first (default 400ms).
 	Pause time.Duration
@@ -111,6 +113,9 @@ func (i *Injector) Send(ctx context.Context, p api.AgentMessageParams, from stri
 	i.record(p, from, err)
 	if err != nil {
 		return api.AgentMessageResult{}, err
+	}
+	if from == "human" && i.opts.Answered != nil {
+		i.opts.Answered(p.Ticket, p.Service)
 	}
 	return api.AgentMessageResult{Service: p.Service, Sent: sent}, nil
 }
