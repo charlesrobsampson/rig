@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -14,8 +16,8 @@ import (
 	"github.com/charlesrobsampson/rig/internal/domain"
 )
 
-// waitPoll is how often rig wait asks the daemon again.
-const waitPoll = 500 * time.Millisecond
+// waitRetry is how long rig wait lets a broken event stream rest before it subscribes again.
+const waitRetry = time.Second
 
 type waitResult struct {
 	// Ticket is the ticket that matched, as it was named ("t1" or "osmo/t1").
@@ -59,16 +61,23 @@ vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passe
 					return usageError(fmt.Errorf("%q is not a review status (reviewing, fixing, passed or stopped)", r))
 				}
 			}
-			// Each ticket may be on its own vessel; one connection per vessel.
+			// Each ticket may be on its own vessel; one connection per vessel for questions
+			// and one more for its event stream.
 			type target struct {
 				label, id string
 				c         *client.Client
 			}
+			type vessel struct {
+				on      *app
+				ids     []string
+				c, subC *client.Client
+			}
 			var targets []target
-			conns := map[string]*client.Client{}
+			vessels := map[string]*vessel{}
 			defer func() {
-				for _, c := range conns {
-					c.Close()
+				for _, v := range vessels {
+					v.c.Close()
+					v.subC.Close()
 				}
 			}()
 			for _, arg := range args {
@@ -76,14 +85,19 @@ vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passe
 				if err != nil {
 					return err
 				}
-				c, ok := conns[on.configPath]
+				v, ok := vessels[on.configPath]
 				if !ok {
-					if c, err = on.connect(cmd.Context(), true); err != nil {
+					v = &vessel{on: on}
+					if v.c, err = on.connect(cmd.Context(), true); err != nil {
 						return err
 					}
-					conns[on.configPath] = c
+					vessels[on.configPath] = v
+					if v.subC, err = on.connect(cmd.Context(), true); err != nil {
+						return err
+					}
 				}
-				targets = append(targets, target{label: arg, id: id, c: c})
+				v.ids = append(v.ids, id)
+				targets = append(targets, target{label: arg, id: id, c: v.c})
 			}
 			clk := a.deps.clock
 			if clk == nil {
@@ -91,6 +105,74 @@ vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passe
 			}
 			since := clk.Now()
 			deadline := clk.After(timeout)
+
+			// Subscribe before the first look, so a change between the look and the wait
+			// cannot be missed: whatever happens after the subscription is an event, and
+			// whatever happened before it is in the state the look reads.
+			ctx, cancel := context.WithCancel(cmd.Context())
+			defer cancel()
+			wake := make(chan struct{}, 1)
+			failed := make(chan error, len(vessels))
+			ready := make(chan struct{}, len(vessels))
+			for _, v := range vessels {
+				go func(v *vessel) {
+					c, first := v.subC, true
+					for {
+						err := c.Stream(ctx, api.MethodEventsSubscribe, api.EventsSubscribeParams{Tickets: v.ids}, func(raw json.RawMessage) error {
+							var ev api.Event
+							if err := json.Unmarshal(raw, &ev); err != nil {
+								return err
+							}
+							switch ev.Type {
+							case api.EventSubscribed:
+								if first {
+									first = false
+									ready <- struct{}{}
+								} else {
+									select { // anything may have happened while it was down
+									case wake <- struct{}{}:
+									default:
+									}
+								}
+							case api.EventTimelineEntry:
+								select {
+								case wake <- struct{}{}:
+								default: // one wake-up is already waiting; the look reads everything
+								}
+							}
+							return nil
+						})
+						if ctx.Err() != nil {
+							return
+						}
+						if first {
+							failed <- err // never became live
+							return
+						}
+						select {
+						case <-ctx.Done():
+							return
+						case <-clk.After(waitRetry):
+						}
+						// The daemon may have restarted: a new connection, and a look at the state.
+						var cerr error
+						if c, cerr = v.on.connect(ctx, true); cerr != nil {
+							failed <- cerr
+							return
+						}
+						defer c.Close()
+					}
+				}(v)
+			}
+			for range vessels {
+				select {
+				case <-ready:
+				case err := <-failed:
+					return err
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
 			for {
 				var res waitResult
 				for _, tg := range targets {
@@ -150,7 +232,9 @@ vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passe
 					return cmd.Context().Err()
 				case <-deadline:
 					return fmt.Errorf("timed out after %s", timeout)
-				case <-clk.After(waitPoll):
+				case err := <-failed:
+					return err
+				case <-wake: // something happened to a watched ticket: look again
 				}
 			}
 		},

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/charlesrobsampson/rig/internal/testkit"
 	"strings"
 	"sync"
 	"testing"
@@ -91,5 +92,83 @@ func TestWaitNewIgnoresARequestMadeBeforeTheWait(t *testing.T) {
 	}
 	if _, _, code := rig(t, d, "wait", "demo", "--phase-request", "--new", "--timeout", "1s"); code != 1 {
 		t.Errorf("--new with only an older request: exit %d, want the timeout", code)
+	}
+}
+
+// afterClock is a fake clock that never advances and remembers every After it was asked for.
+type afterClock struct {
+	*testkit.FakeClock
+	mu     sync.Mutex
+	afters []time.Duration
+}
+
+func (c *afterClock) After(d time.Duration) <-chan time.Time {
+	c.mu.Lock()
+	c.afters = append(c.afters, d)
+	c.mu.Unlock()
+	return c.FakeClock.After(d)
+}
+
+func (c *afterClock) asked() []time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]time.Duration(nil), c.afters...)
+}
+
+func TestWaitEndsOnAnEventWithoutAPollInterval(t *testing.T) {
+	_, d, repo, _ := newEnvWithTerminal(t)
+	newTicket(t, d, "demo", repo)
+	rig(t, d, "start", "demo", "--sandbox", "host")
+	clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())}
+	d.clock = clk
+
+	var wg sync.WaitGroup
+	var stdout string
+	var code int
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		stdout, _, code = rig(t, d, "wait", "demo", "--record", "note", "--timeout", "1h", "--json")
+	}()
+	// The fake clock does not move; the wait must end because the record's timeline
+	// entry reached it.
+	waitFor(t, "the wait to hold its deadline", func() bool { return len(clk.asked()) > 0 })
+	t.Setenv("RIG_TICKET", "demo")
+	t.Setenv("RIG_SERVICE", "svc1")
+	rig(t, d, "agent-event", `{"kind":"note","text":"hello"}`)
+	wg.Wait()
+	if code != 0 || !strings.Contains(stdout, `"hello"`) {
+		t.Fatalf("code %d, %q", code, stdout)
+	}
+	for _, a := range clk.asked() {
+		if a != time.Hour {
+			t.Errorf("wait asked the clock for %s; only the timeout is a timer", a)
+		}
+	}
+}
+
+func TestWaitAnswersAtOnceFromStateAndStillTimesOutOnTheClock(t *testing.T) {
+	_, d, repo, _ := newEnvWithTerminal(t)
+	newTicket(t, d, "demo", repo)
+	rig(t, d, "start", "demo", "--sandbox", "host")
+	clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())}
+	d.clock = clk
+	if stdout, _, code := rig(t, d, "wait", "demo", "--phase", "plan"); code != 0 || !strings.Contains(stdout, "phase is plan") {
+		t.Errorf("code %d, %q", code, stdout)
+	}
+	done := make(chan int, 1)
+	go func() {
+		_, _, code := rig(t, d, "wait", "demo", "--phase-request", "--timeout", "10m")
+		done <- code
+	}()
+	waitFor(t, "the second wait's deadline", func() bool { return len(clk.asked()) > 1 })
+	clk.Advance(10 * time.Minute)
+	select {
+	case code := <-done:
+		if code != 1 {
+			t.Errorf("code %d, want 1", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the wait did not time out when the clock reached the deadline")
 	}
 }
