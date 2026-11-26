@@ -443,3 +443,38 @@ func TestASyncAfterALostRoundStartsANewLoopAtRound1(t *testing.T) {
 		t.Fatalf("review = %+v, want round 1 of a new loop on the merge", rv)
 	}
 }
+
+func TestReviewStaleSaysWhenThePassedCommitIsBehindTheBranch(t *testing.T) {
+	r := newReviewRig(t, "{}")
+	r.commit("a.txt", "first\n")
+	r.passRound(1)
+	stale := func() bool { return r.lc.ReviewStale(ctx, r.ticketDef(), r.state("demo")) }
+	if stale() {
+		t.Fatal("a pass on the branch tip is stale")
+	}
+	later := r.commit("b.txt", "after the pass\n")
+	if !stale() {
+		t.Fatal("a commit after the pass is not stale")
+	}
+
+	// A new round clears it.
+	if err := r.record("svc1", "review.ready", "the later commit", nil); err != nil {
+		t.Fatal(err)
+	}
+	if rv := r.review(); rv.Commit != later || stale() {
+		t.Fatalf("review = %+v, stale = %v while round 2 runs", rv, stale())
+	}
+	r.record("review", "verdict", "No blocking findings", map[string]int{"round": 2})
+	if stale() {
+		t.Error("the new pass is stale")
+	}
+
+	// A pass with no recorded commit (older tickets) is never marked.
+	r.commit("c.txt", "more\n")
+	if err := r.states.Update(filepath.Join(r.path, "state.json"), func(s *state.State) error { s.Review.Commit = ""; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if stale() {
+		t.Error("a pass with no commit is stale")
+	}
+}

@@ -40,6 +40,14 @@ type Registry struct {
 	drift func(id string) []string
 	// roundPending, when set, says whether a review round is being started for a ticket.
 	roundPending func(id string) bool
+	// reviewStale, when set, says whether a passed review is of a commit the branch has left.
+	reviewStale func(domain.Ticket, state.State) bool
+}
+
+// WithReviewStale makes summaries mark a passed review whose commit the branch has moved past.
+func (r *Registry) WithReviewStale(f func(domain.Ticket, state.State) bool) *Registry {
+	r.reviewStale = f
+	return r
 }
 
 // WithRoundPending makes summaries tell a round that is only starting (reviewing, no
@@ -196,6 +204,9 @@ func (r *Registry) load(id string) api.TicketGetResult {
 				status = domain.ReviewAwaitingReady
 			}
 			res.Summary.Review = &api.ReviewSummary{Status: status, Round: rv.Round, Reason: rv.Reason}
+			if rv.Status == domain.ReviewPassed && rv.Commit != "" && r.reviewStale != nil && res.Ticket != nil {
+				res.Summary.Review.Stale = r.reviewStale(*res.Ticket, st)
+			}
 		}
 		if q := st.Question; q != nil {
 			res.Summary.Question = &api.QuestionSummary{Service: q.Service, Text: q.Text, At: q.At}
