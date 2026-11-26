@@ -161,12 +161,13 @@ vessel, so one wait can watch several: rig wait osmo/t14 jybe/j02 --review passe
 						case <-clk.After(waitRetry):
 						}
 						// The daemon may have restarted: a new connection, and a look at the state.
-						c.Close()
-						var cerr error
-						if c, cerr = v.on.connect(ctx, true); cerr != nil {
+						c.Close() // c stays the closed one if the connect fails; Close twice is harmless
+						next, cerr := v.on.connect(ctx, true)
+						if cerr != nil {
 							failed <- cerr
 							return
 						}
+						c = next
 					}
 				}(v)
 			}

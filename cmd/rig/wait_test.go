@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/daemon"
 	"github.com/charlesrobsampson/rig/internal/domain"
@@ -231,5 +232,42 @@ func TestWaitEndsOnTheEventAfterTheStateChangedNotOnTheEntryBeforeIt(t *testing.
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the wait did not end on the event published after the state changed")
+	}
+}
+
+func TestWaitReturnsTheConnectErrorWhenTheStreamCannotBeReestablished(t *testing.T) {
+	home := rigEnv(t)
+	bus := events.NewBus(testkit.NewFakeClock(time.Now()), 0)
+	srv, err := daemon.Listen(daemon.Options{SocketPath: filepath.Join(home, "rigd.sock"), PIDPath: filepath.Join(home, "rigd.pid"), Version: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.Handle(api.MethodTicketGet, func(context.Context, json.RawMessage) (any, error) {
+		return api.TicketGetResult{Summary: api.TicketSummary{ID: "demo", Phase: domain.PhasePlan}}, nil
+	})
+	daemon.RegisterEventHandlers(srv, bus)
+	served := make(chan struct{})
+	go func() { srv.Serve(context.Background()); close(served) }()
+
+	clk := &afterClock{FakeClock: testkit.NewFakeClock(time.Now())}
+	failing := func(context.Context) error { return errors.New("no such binary") }
+	out := make(chan int, 1)
+	var stderr lockedBuffer
+	go func() {
+		out <- run(context.Background(), []string{"wait", "demo", "--phase", "implement", "--timeout", "1h"}, &lockedBuffer{}, &stderr, deps{clock: clk, spawner: failing})
+	}()
+	waitFor(t, "the subscription", func() bool { return bus.Subscribers() == 1 })
+	waitFor(t, "the wait to hold its deadline", func() bool { return len(clk.asked()) > 0 })
+	srv.Stop() // the daemon goes away and stays away
+	<-served
+	waitFor(t, "the wait to rest before resubscribing", func() bool { return len(clk.asked()) > 1 })
+	clk.Advance(waitRetry)
+	select {
+	case code := <-out:
+		if code == 0 || !strings.Contains(stderr.String(), "no such binary") {
+			t.Fatalf("code %d, stderr %q; want the connect error", code, stderr.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the wait did not end when it could not reconnect")
 	}
 }
