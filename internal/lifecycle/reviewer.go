@@ -627,6 +627,36 @@ func short(sha string) string {
 	return sha
 }
 
+// reviewTip is the reviewed service's branch tip in its checkout; false when it
+// cannot be read (no checkout, a ticket without a review).
+func reviewTip(ctx context.Context, t domain.Ticket, st state.State) (string, bool) {
+	target, _, ok := reviewers(t)
+	if !ok {
+		return "", false
+	}
+	rec := st.Services[target.Name].Checkout
+	if rec.Path == "" {
+		return "", false
+	}
+	tip, err := git.BranchTip(ctx, rec.Path, target.Branch)
+	return tip, err == nil
+}
+
+// reviewPin is why a passed review no longer lets the work go on: it passed one
+// commit and the branch has moved. Empty when the review has not passed, when the
+// pass pinned no commit (older tickets), or when the tip cannot be read.
+func (m *Manager) reviewPin(ctx context.Context, id string, t domain.Ticket, st state.State) string {
+	r := st.Review
+	if r == nil || r.Status != domain.ReviewPassed || r.Commit == "" {
+		return ""
+	}
+	tip, ok := reviewTip(ctx, t, st)
+	if !ok || tip == r.Commit {
+		return ""
+	}
+	return fmt.Sprintf("the review passed %s, but the branch is now at %s: journal review.ready for a round on the new work (or rig reviewer %s --start)", short(r.Commit), short(tip), id)
+}
+
 // ReviewerStart starts a round on a person's say-so; after a stop it starts a new loop.
 func (m *Manager) ReviewerStart(ctx context.Context, p api.ReviewerParams) (api.ReviewerStatus, error) {
 	if err := m.beginRound(p.Ticket, "human"); err != nil {
@@ -656,7 +686,15 @@ func (m *Manager) ReviewerDecide(ctx context.Context, p api.ReviewerDecideParams
 		unlock()
 		return api.ReviewerStatus{}, invalid("ticket %q has no review in its ticket.yaml", p.Ticket)
 	}
-	m.setReview(l, func(r *state.Review) { r.Status, r.Reason, r.By = outcome, reason, "human" })
+	// A person's pass is bound to the commit the branch is at now, as a reviewer's is
+	// to the round's commit, so work committed after it is looked at again.
+	tip, haveTip := reviewTip(ctx, l.ticket, l.state)
+	m.setReview(l, func(r *state.Review) {
+		r.Status, r.Reason, r.By = outcome, reason, "human"
+		if outcome == domain.ReviewPassed && haveTip {
+			r.Commit = tip
+		}
+	})
 	m.note(l.dir, timeline.ReviewDecided, "human", "", timeline.ReviewDecidedData{Outcome: p.Outcome, Reason: reason})
 	unlock()
 	if outcome == domain.ReviewPassed {

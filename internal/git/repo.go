@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"sort"
 	"strings"
@@ -33,6 +34,16 @@ func Branches(ctx context.Context, repo string) ([]string, error) {
 	}
 	sort.Strings(names)
 	return names, nil
+}
+
+// BranchTip is the commit a checkout's branch points at now. The checkout is
+// agent-written, so it is read through the hardened runner.
+func BranchTip(ctx context.Context, checkout, branch string) (string, error) {
+	tip, err := Hardened().Run(ctx, checkout, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
+	if err != nil {
+		return "", fmt.Errorf("branch %s no longer exists in %s", branch, checkout)
+	}
+	return tip, nil
 }
 
 func CurrentCommit(ctx context.Context, dir string) (string, error) {

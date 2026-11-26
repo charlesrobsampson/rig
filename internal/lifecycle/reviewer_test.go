@@ -54,6 +54,7 @@ func newReviewRig(t *testing.T, review string) *reviewRig {
 	res := r.mustStart("demo", domain.SandboxContainer)
 	r.coder = res.Checkouts[0].Path
 	r.advanceTo("demo", domain.PhaseImplement)
+	t.Cleanup(r.lc.Wait) // rounds started in the background end before the directories go
 	return r
 }
 

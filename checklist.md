@@ -1550,7 +1550,7 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Manual check: `rig watch jybe/j05` shows a running card's entries live.
 
 ### 122 · A verdict belongs to one commit
-- [ ] Done
+- [x] Done
 - Session: _(the rigdev vessel)_
 - Branch: rig's ticket branch · Depends: 118, 120
 - Read: `internal/lifecycle/reviewer.go`, `internal/lifecycle/sync.go`, `internal/lifecycle/transition.go` (the leave-implement gate), `internal/lifecycle/push.go`; `docs/formats.md` §4 (`review`)
@@ -1558,3 +1558,4 @@ Conventions: module `github.com/charlesrobsampson/rig`; packages per manifest §
 - Build: the pass records the commit it passed (it already pins each round's commit). Leaving implement, and `rig push`, require the service's branch tip to be that commit; otherwise they are refused with "the review passed <sha>, but the branch is now at <sha>: journal review.ready for a round on the new work (or rig reviewer <id> --start)". A sync that changes a reviewed service's branch ends the current loop (timeline `review.loop.ended`, as a move back to implement does), so the next `review.ready` starts a new loop with its own rounds; a clean sync then starts that loop's first round itself, as it does today.
 - Tests: a commit after a pass blocks leaving implement and push, naming both commits; `review.ready` then starts a round and a new pass lets it go; a conflicting sync on a passed review ends the loop and the coder's `review.ready` after resolving starts a new loop at round 1 (not a cap stop); a clean sync on a passed review starts a new loop's round 1.
 - Manual check: the next jybe card that commits after its pass is held at landing until it is reviewed again.
+- Notes (as built): `git.BranchTip(ctx, checkout, branch)`. `reviewTip`/`reviewPin` in `reviewer.go` give the refusal text; `moveLocked` reads the tip under the ticket lock and refuses (`blocked`) inside the state update only if the review is still `passed`; `pushService` checks before the mode check, so a moved branch is reported first. A person's `--pass` now sets `review.commit` to the tip. `Sync` calls `endLoopAfterSync` (state review cleared, `review.loop.ended` by `human`) for the reviewed service after the phase move, so a move back plus a sync logs one end; a loop with a running round is left. Found and fixed on the way: a clean sync called `beginRound` only, so the round it marked never ran (no reviewer copy or brief, `review.ready` refused as still running); it now runs the round in the background as `review.ready` does. Tests: `reviewpin_test.go`; `newReviewRig` waits for background rounds at cleanup. Manual check left for the mate: the jybe card that commits after its pass is held at landing.

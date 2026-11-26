@@ -62,6 +62,31 @@ func identity(ctx context.Context, repo string) (name, email string) {
 	return name, email
 }
 
+// endLoopAfterSync drops the review loop of a reviewed service whose branch a sync
+// changed: what it passed or found is not what the branch holds now, so the next
+// review.ready starts a new loop with its own rounds. A loop whose round is running is
+// left, because the round's verdict still has to land. A move back to implement has
+// cleared the loop already, and then there is nothing to end.
+func (m *Manager) endLoopAfterSync(id string) error {
+	l, unlock, err := m.begin(id)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	ended := l.state.Review
+	if ended == nil || ended.Status == domain.ReviewReviewing {
+		return nil
+	}
+	if err := m.opts.States.Update(l.statePath, func(s *state.State) error {
+		s.Review = nil
+		return nil
+	}); err != nil {
+		return err
+	}
+	m.note(l.dir, timeline.ReviewLoopEnded, "human", "", timeline.ReviewLoopEndedData{Rounds: len(ended.Rounds), Status: string(ended.Status)})
+	return nil
+}
+
 // Sync brings each service's base into its branch. A clean merge is committed, the
 // coder is told, and a reviewed ticket starts a new review round on it; a conflict is
 // left in the checkout for the coder to resolve, with the files named. A ticket past
@@ -133,10 +158,10 @@ func (m *Manager) Sync(ctx context.Context, p api.SyncParams) (api.SyncResult, e
 		switch {
 		case len(s.Conflicts) > 0:
 			changed = true
-			m.deliver(p.ID, s.Service, fmt.Sprintf("rig merged %s (%d new commits) into your branch, and these files conflict: %s. Resolve them so that your change and the work on %s both keep working (this merge is the one exception to never fetching or merging), commit the merge, run the tests, then carry on as your rules say.", s.Base, s.Behind, strings.Join(s.Conflicts, ", "), s.Base))
+			m.deliver(p.ID, s.Service, fmt.Sprintf("rig merged %s (%d new commits) into your branch, and these files conflict: %s. Resolve them so that your change and the work on %s both keep working (this merge is the one exception to never fetching or merging), commit the merge, run the tests, then journal review.ready: the earlier review no longer covers the merged branch, so it starts again from round 1.", s.Base, s.Behind, strings.Join(s.Conflicts, ", "), s.Base))
 		case s.Merged != "":
 			changed = true
-			m.deliver(p.ID, s.Service, fmt.Sprintf("rig merged %s (%d new commits) into your branch as %s, so your work now sits on the current %s. Run the tests and fix anything the merge broke; a review round checks the merged work.", s.Base, s.Behind, short(s.Merged), s.Base))
+			m.deliver(p.ID, s.Service, fmt.Sprintf("rig merged %s (%d new commits) into your branch as %s, so your work now sits on the current %s. Run the tests and fix anything the merge broke; a new review (round 1) checks the merged work.", s.Base, s.Behind, short(s.Merged), s.Base))
 		}
 	}
 	res.Phase = phase
@@ -146,6 +171,19 @@ func (m *Manager) Sync(ctx context.Context, p api.SyncParams) (api.SyncResult, e
 		}
 		res.Phase = domain.PhaseImplement
 	}
+	if target, _, ok := reviewers(l.ticket); ok {
+		var branchChanged bool
+		for _, s := range res.Services {
+			branchChanged = branchChanged || s.Service == target.Name && (s.Merged != "" || len(s.Conflicts) > 0)
+		}
+		// If the old loop cannot be ended, no round is started on it: it would go on at
+		// the old round count, which is what ending it is for.
+		if branchChanged {
+			if err := m.endLoopAfterSync(p.ID); err != nil {
+				return res, &api.Error{Code: api.CodeInternal, Message: fmt.Sprintf("the branch was merged, but the review loop could not be ended (journal review.ready after resolving, or run rig reviewer %s --start): %v", p.ID, err)}
+			}
+		}
+	}
 	clean := changed
 	for _, s := range res.Services {
 		clean = clean && len(s.Conflicts) == 0
@@ -153,6 +191,13 @@ func (m *Manager) Sync(ctx context.Context, p api.SyncParams) (api.SyncResult, e
 	if clean && reviewed && res.Phase == domain.PhaseImplement {
 		if err := m.beginRound(p.ID, "rig sync"); err == nil {
 			res.ReviewStarted = true
+			// beginRound only marks the round; the reviewer's copy and brief are made
+			// here, as for a review.ready, or the loop would wait on a round nobody runs.
+			m.bg.Add(1)
+			go func() {
+				defer m.bg.Done()
+				m.runRound(m.bgCtx, p.ID)
+			}()
 		}
 	}
 	return res, nil
