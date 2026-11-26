@@ -145,6 +145,8 @@ func phaseCell(t api.TicketSummary, overlaps []string) string {
 	if r := t.Review; r != nil {
 		if r.Status == domain.ReviewAwaitingReady {
 			notes = append(notes, fmt.Sprintf("review waits for ready r%d", r.Round))
+		} else if r.Stale {
+			notes = append(notes, fmt.Sprintf("review %s r%d (new commits)", r.Status, r.Round))
 		} else {
 			notes = append(notes, fmt.Sprintf("review %s r%d", r.Status, r.Round))
 		}

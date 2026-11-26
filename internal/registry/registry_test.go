@@ -384,3 +384,21 @@ func TestALostReviewRoundIsListedAsAwaitingReady(t *testing.T) {
 		t.Errorf("a round that is starting is shown as %s", got.Status)
 	}
 }
+
+func TestAPassedReviewIsMarkedStaleOnlyWhenItHasACommitAndTheHookSaysSo(t *testing.T) {
+	f := newFixture(t)
+	f.writeYAML("a", yaml("a", "A", "api"))
+	f.writeYAML("b", yaml("b", "B", "api"))
+	f.writeYAML("c", yaml("c", "C", "api"))
+	f.writeState("a", state.State{Phase: domain.PhaseImplement, Review: &state.Review{Status: domain.ReviewPassed, Round: 2, Commit: "abc"}})
+	f.writeState("b", state.State{Phase: domain.PhaseImplement, Review: &state.Review{Status: domain.ReviewFixing, Round: 2, Commit: "abc"}})
+	f.writeState("c", state.State{Phase: domain.PhaseImplement, Review: &state.Review{Status: domain.ReviewPassed, Round: 1}})
+	if got := f.list()[0].Review; got.Stale {
+		t.Error("stale without a hook")
+	}
+	f.reg.WithReviewStale(func(domain.Ticket, state.State) bool { return true })
+	got := f.list()
+	if !got[0].Review.Stale || got[1].Review.Stale || got[2].Review.Stale {
+		t.Errorf("stale: a=%v b=%v c=%v, want true false false", got[0].Review.Stale, got[1].Review.Stale, got[2].Review.Stale)
+	}
+}
