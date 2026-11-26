@@ -384,3 +384,51 @@ func TestTheFleetShowsWhereEachVesselsTicketsStand(t *testing.T) {
 		t.Error("rig events no longer works")
 	}
 }
+
+func TestTheDefaultVesselIsLeftOutUntilItHoldsTickets(t *testing.T) {
+	work, _ := twoVessels(t)
+	user := os.Getenv("HOME")
+	machine := filepath.Join(user, ".config", "rig", "config.json")
+	os.MkdirAll(filepath.Dir(machine), 0o700)
+	defHome := filepath.Join(user, "defhome")
+	os.WriteFile(machine, []byte(fmt.Sprintf(`{"paths": {"home": %q}}`, defHome)), 0o600)
+	_ = work
+
+	out, stderr, code := rig(t, noSpawn(t), "fleet")
+	if code != 0 || strings.Contains(out, "default") || !strings.Contains(out, "work") {
+		t.Fatalf("fleet without tickets: %d %q %q", code, out, stderr)
+	}
+	if _, stderr, code := rig(t, noSpawn(t), "--vessel", "default", "config", "show"); code != 0 {
+		t.Errorf("default is still choosable by name: %s", stderr)
+	}
+	dir := filepath.Join(defHome, "tickets", "t1")
+	os.MkdirAll(dir, 0o700)
+	os.WriteFile(filepath.Join(dir, "ticket.yaml"), []byte("id: t1\n"), 0o600)
+	out, _, _ = rig(t, noSpawn(t), "fleet")
+	if !strings.Contains(out, "default") {
+		t.Errorf("fleet with a ticket: %q", out)
+	}
+}
+
+func TestAnEmptyDefaultVesselIsNoReasonForAPicker(t *testing.T) {
+	work, _ := twoVessels(t)
+	if _, stderr, code := rig(t, deps{}, "fleet", "remove", "home"); code != 0 {
+		t.Fatal(stderr)
+	}
+	machine := filepath.Join(os.Getenv("HOME"), ".config", "rig", "config.json")
+	os.MkdirAll(filepath.Dir(machine), 0o700)
+	os.WriteFile(machine, []byte(fmt.Sprintf(`{"paths": {"home": %q}}`, filepath.Join(os.Getenv("HOME"), "defhome"))), 0o600)
+	startDaemon(t, work)
+
+	r := &tuiRecord{}
+	if _, stderr, code := rig(t, r.deps(t)); code != 0 {
+		t.Fatalf("rig: %d %s", code, stderr)
+	}
+	if len(r.picks) != 0 || len(r.opts) != 1 || r.opts[0].Vessel != "work" || r.opts[0].CanSwitch {
+		t.Errorf("picks %d, runs %+v; want no picker, work, no switching", len(r.picks), r.opts)
+	}
+	r = &tuiRecord{}
+	if _, stderr, code := rig(t, r.deps(t), "-V", "work"); code != 0 || len(r.opts) != 1 || r.opts[0].CanSwitch {
+		t.Errorf("-V work: %d %s %+v", code, stderr, r.opts)
+	}
+}

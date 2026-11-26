@@ -70,3 +70,40 @@ func TestConfigShowExplainsABrokenConfig(t *testing.T) {
 		t.Fatal("a config with max_active_tickets 0 should fail")
 	}
 }
+
+func TestConfigShowResolvedSaysWhereEachKeyCameFrom(t *testing.T) {
+	user := t.TempDir()
+	t.Setenv("HOME", user)
+	t.Setenv("RIG_HOME", "")
+	t.Setenv("RIG_CONFIG", "")
+	machine := filepath.Join(user, ".config", "rig", "config.json")
+	os.MkdirAll(filepath.Dir(machine), 0o700)
+	os.WriteFile(machine, []byte(`{"limits":{"max_active_tickets":3},"docker":{"agent_base":"m:1"}}`), 0o600)
+	vessel := filepath.Join(t.TempDir(), "v.json")
+	os.WriteFile(vessel, []byte(`{"docker":{"agent_base":"v:1"}}`), 0o600)
+
+	for _, args := range [][]string{{"config", "show", "--resolved", "--config", vessel}, {"config", "--resolved", "--config", vessel}} {
+		out, err := runRig(t, args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got struct {
+			Config struct {
+				Limits struct {
+					Max int `json:"max_active_tickets"`
+				} `json:"limits"`
+			} `json:"config"`
+			Sources struct {
+				Files map[string]string `json:"files"`
+				Keys  map[string]string `json:"keys"`
+			} `json:"sources"`
+		}
+		if err := json.Unmarshal([]byte(out), &got); err != nil {
+			t.Fatal(err, out)
+		}
+		if got.Config.Limits.Max != 3 || got.Sources.Keys["limits.max_active_tickets"] != "machine" ||
+			got.Sources.Keys["docker.agent_base"] != "vessel" || got.Sources.Files["machine"] != machine {
+			t.Errorf("%v: %s", args, out)
+		}
+	}
+}

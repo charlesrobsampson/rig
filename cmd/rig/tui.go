@@ -55,7 +55,7 @@ func (a *app) rootRun(cmd *cobra.Command, ticket, tab string) error {
 			if err != nil {
 				return err
 			}
-			opts.CanSwitch = len(fleet.All(user)) > 1
+			opts.CanSwitch = len(visibleVessels(fleet, user)) > 1
 		} else {
 			name, many, err := a.pickVessel(cmd)
 			if err != nil || name == "" && many {
@@ -81,7 +81,7 @@ func (a *app) pickVessel(cmd *cobra.Command) (name string, many bool, err error)
 	if err != nil {
 		return "", false, err
 	}
-	all := fleet.All(user)
+	all := visibleVessels(fleet, user)
 	switch len(all) {
 	case 0:
 		return "", false, nil
