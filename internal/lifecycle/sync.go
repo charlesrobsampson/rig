@@ -104,7 +104,22 @@ func (m *Manager) endLoopAfterSync(id string) error {
 	}
 	defer unlock()
 	ended := l.state.Review
-	if ended == nil || ended.Status == domain.ReviewReviewing || ended.Status == domain.ReviewAwaitingReady {
+	if ended == nil || ended.Status == domain.ReviewReviewing {
+		return nil
+	}
+	if ended.Status == domain.ReviewAwaitingReady {
+		// Already waiting. A lost round (never pinned) would continue its loop, but the
+		// merged branch is not what any earlier round saw: drop it so the next round
+		// starts a new loop. After an earlier sync every round has a commit; nothing to do.
+		if n := len(ended.Rounds); n > 0 && ended.Rounds[n-1].Commit == "" {
+			m.setReview(l, func(r *state.Review) {
+				r.Rounds, r.Round = r.Rounds[:n-1], r.Round-1
+			})
+			if now, err := m.opts.States.Load(l.statePath); err != nil || now.Review == nil || len(now.Review.Rounds) != n-1 {
+				return errors.New("the lost review round could not be dropped")
+			}
+			m.note(l.dir, timeline.ReviewLoopEnded, "human", "", timeline.ReviewLoopEndedData{Rounds: n - 1, Status: string(ended.Status)})
+		}
 		return nil
 	}
 	// The loop is over, but the next round must still be startable: the review waits

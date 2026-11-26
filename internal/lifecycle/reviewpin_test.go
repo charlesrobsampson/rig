@@ -415,3 +415,31 @@ func TestACleanSyncWhoseRoundCannotStartTellsTheCoderAndWaits(t *testing.T) {
 		t.Errorf("rejected records: %v", rej)
 	}
 }
+
+func TestASyncAfterALostRoundStartsANewLoopAtRound1(t *testing.T) {
+	r := newReviewRig(t, `{max_rounds: 3}`)
+	r.commit("a.txt", "mine\n")
+	r.record("svc1", "review.ready", "ready", nil)
+	r.record("review", "review.result", "x", map[string]string{"id": "F1", "severity": "blocking", "what": "w"})
+	r.record("review", "verdict", "Blocking findings: 1", map[string]int{"round": 1})
+	r.commit("b.txt", "fix\n")
+	if err := r.lc.BeginRound("demo", "agent:svc1"); err != nil { // round 2, then rig goes away
+		t.Fatal(err)
+	}
+	gone, cancel := context.WithCancel(ctx)
+	cancel()
+	r.lc.RunRound(gone, "demo")
+	if rv := r.review(); rv.Status != domain.ReviewAwaitingReady || rv.Round != 2 {
+		t.Fatalf("review = %+v, want a lost round 2", rv)
+	}
+	r.repo.Commit("other.txt", "theirs\n", "main moves on")
+	res, err := r.lc.Sync(ctx, api.SyncParams{ID: "demo"})
+	if err != nil || !res.ReviewStarted {
+		t.Fatalf("sync = %+v, %v", res, err)
+	}
+	r.lc.Wait()
+	rv := r.review()
+	if rv.Status != domain.ReviewReviewing || rv.Round != 1 || len(rv.Rounds) != 1 || rv.Commit != res.Services[0].Merged {
+		t.Fatalf("review = %+v, want round 1 of a new loop on the merge", rv)
+	}
+}
