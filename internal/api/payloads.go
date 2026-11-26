@@ -835,3 +835,22 @@ type TimelineEntry struct {
 type TimelineListResult struct {
 	Entries []TimelineEntry `json:"entries"`
 }
+
+// EventsSubscribeParams narrows events.subscribe (docs/formats.md §8). Both fields are
+// optional: no params streams every event from now on.
+type EventsSubscribeParams struct {
+	// Tickets limits the stream to these tickets' events (an event with no ticket, such
+	// as the subscribed ack, always passes). Empty means every ticket.
+	Tickets []string `json:"tickets,omitempty"`
+	// Since asks for a replay: for each ticket, every timeline entry after that seq is
+	// sent first, then the live stream follows without a gap or a repeat. 0 replays
+	// the whole timeline. A ticket named here is also watched, as if in Tickets.
+	Since map[string]int `json:"since,omitempty"`
+}
+
+// TimelineEntryData is the data of a timeline.entry event.
+type TimelineEntryData struct {
+	Ticket string        `json:"ticket"`
+	Seq    int           `json:"seq"`
+	Entry  TimelineEntry `json:"entry"`
+}

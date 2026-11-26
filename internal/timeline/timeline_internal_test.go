@@ -50,3 +50,18 @@ func TestAnUnwritableTimelineFailsTheAppendAndIsLogged(t *testing.T) {
 		t.Errorf("log = %q", logged.String())
 	}
 }
+
+func TestOnAppendIsNotCalledForAFailedWrite(t *testing.T) {
+	dir := t.TempDir()
+	l := New(func() time.Time { return time.Date(2026, 11, 26, 10, 0, 0, 0, time.UTC) })
+	l.Logger = slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
+	heard := 0
+	l.OnAppend = func(string, Entry) { heard++ }
+	l.write = func(f *os.File, b []byte) error { return errors.New("disk full") }
+	if _, err := l.Append(dir, Entry{Kind: TicketStarted}); err == nil {
+		t.Fatal("want an error")
+	}
+	if heard != 0 {
+		t.Fatalf("heard %d", heard)
+	}
+}

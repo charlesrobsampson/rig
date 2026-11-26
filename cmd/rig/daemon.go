@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
@@ -117,7 +118,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		return api.EmptyData{}, nil
 	})
 	bus := events.NewBus(clk, 0)
-	daemon.RegisterEventHandlers(srv, bus)
+	daemon.RegisterEventHandlersWith(srv, bus, daemon.EventsOptions{TicketsDir: g.TicketsDir()})
 	states := state.NewManager(clk)
 	reg := registry.New(g.TicketsDir(), states).WithPendingGate(func(t domain.Ticket, st state.State) domain.Gate {
 		gate, _ := gates.Awaiting(g, t, st)
@@ -159,6 +160,10 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	}
 	tl := timeline.New(clk.Now) // the one writer of every ticket's timeline.jsonl
 	tl.Logger = logger
+	tl.OnAppend = func(dir string, e timeline.Entry) {
+		ticket := filepath.Base(dir)
+		bus.Publish(api.EventTimelineEntry, ticket, e.Service, api.TimelineEntryData{Ticket: ticket, Seq: e.Seq, Entry: api.TimelineEntry(e)})
+	}
 	var lc *lifecycle.Manager // set below; the supervisor starts polling only after it is
 	sup := supervisor.New(supervisor.Options{Dir: g.TicketsDir(), States: states, Backend: backend, Bus: bus, Clock: clk, Timeline: tl, Logger: logger, Interval: time.Second,
 		PhaseRequest: func(ticket, service string, to domain.Phase, reason string) error {

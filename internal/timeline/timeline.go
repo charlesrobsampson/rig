@@ -136,6 +136,10 @@ type Log struct {
 	Logger *slog.Logger
 	// write puts one line into the file; tests replace it to fail part way.
 	write func(f *os.File, line []byte) error
+	// OnAppend, when set, hears of each entry once it is in the file. It runs while the
+	// ticket's append lock is held, so one ticket's entries arrive in seq order; it must
+	// not block or append.
+	OnAppend func(ticketDir string, e Entry)
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex
@@ -213,6 +217,9 @@ func (l *Log) append(ticketDir string, e Entry) (Entry, error) {
 		return Entry{Kind: e.Kind}, err
 	}
 	l.setLast(ticketDir, e.Seq)
+	if l.OnAppend != nil {
+		l.OnAppend(ticketDir, e)
+	}
 	return e, nil
 }
 

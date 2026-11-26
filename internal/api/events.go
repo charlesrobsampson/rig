@@ -29,6 +29,8 @@ const (
 	EventSummaryUpdated    EventType = "summary.updated"
 	EventReconciled        EventType = "reconcile.done"
 	EventError             EventType = "error"
+	// EventTimelineEntry carries one appended timeline entry (docs/formats.md §15).
+	EventTimelineEntry EventType = "timeline.entry"
 	// EventSubscribed is the first item of every events.subscribe stream: the
 	// subscription is live, so nothing published after it can be missed.
 	EventSubscribed EventType = "subscribed"
