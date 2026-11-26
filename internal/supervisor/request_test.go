@@ -107,3 +107,31 @@ func TestOtherRecordsGoToTheReviewLoopAndItsRefusalIsRecorded(t *testing.T) {
 		t.Errorf("journal = %s", k)
 	}
 }
+
+func TestAQuestionRecordIsHandedOnWithItsText(t *testing.T) {
+	f := newFixture(t)
+	var got []string
+	f.sup = supervisor.New(supervisor.Options{
+		Dir: f.dir, States: f.states, Backend: f.term, Bus: f.bus, Clock: f.clock,
+		Interval: time.Second, HookTTL: time.Minute, MaxBackoff: 8 * time.Second,
+		Question: func(ticket, service, text string) error {
+			got = append(got, ticket+"/"+service+"/"+text)
+			if text == "" {
+				return errors.New("a question needs text")
+			}
+			return nil
+		},
+	})
+	f.launch("demo", "api")
+	appendTo(t, f.eventsFile("demo", "api"), `{"kind":"question","text":"Keep the flag?"}`+"\n")
+	f.poll()
+	if err := f.sup.Record(ctx, api.AgentRecordParams{Ticket: "demo", Service: "api", Kind: "question"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != "demo/api/Keep the flag?" {
+		t.Errorf("got = %q", got)
+	}
+	if k := kinds(f.journal("demo")); k != "question,question,record.rejected" {
+		t.Errorf("journal = %s", k)
+	}
+}

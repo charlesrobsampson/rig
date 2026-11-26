@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/inject"
 	"github.com/charlesrobsampson/rig/internal/timeline"
@@ -30,5 +31,33 @@ func TestEveryMessageIsOneTimelineEntryWithoutItsText(t *testing.T) {
 		if strings.Contains(string(e.Data), "secret") {
 			t.Errorf("the text of a message is in the timeline: %s", e.Data)
 		}
+	}
+}
+
+func TestOnlyADeliveredMessageFromAPersonIsAnAnswer(t *testing.T) {
+	f := newFixture(t, domain.AgentIdle)
+	var answered []string
+	f.in = inject.New(inject.Options{Dir: f.dir, States: f.states, Backend: f.term, Readiness: f.ready, Clock: f.clock,
+		Answered: func(ticket, service string) { answered = append(answered, ticket+"/"+service) }})
+	f.setAgentState(domain.AgentBlocked)
+	f.send("refused")
+	if len(answered) != 0 {
+		t.Fatalf("an undelivered message answered: %v", answered)
+	}
+	f.setAgentState(domain.AgentIdle)
+	f.send("go ahead")
+	if len(answered) != 1 || answered[0] != "demo/api" {
+		t.Fatalf("answered = %v", answered)
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		res, err := f.in.Send(ctx, api.AgentMessageParams{Ticket: "demo", Service: "api", Text: "notice"}, "rig")
+		done <- outcome{res, err}
+	}()
+	if got := f.finish(done); got.err != nil {
+		t.Fatal(got.err)
+	}
+	if len(answered) != 1 {
+		t.Errorf("a message from rig answered: %v", answered)
 	}
 }

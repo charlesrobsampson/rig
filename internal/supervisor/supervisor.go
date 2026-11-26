@@ -47,6 +47,9 @@ type Options struct {
 	// PhaseRequest receives an agent's journal record of kind transition.request, for a
 	// human to act on; its error is journaled as record.rejected. Nil ignores requests.
 	PhaseRequest func(ticket, service string, to domain.Phase, reason string) error
+	// Question receives an agent's journal record of kind question; its error is
+	// journaled as record.rejected. Nil ignores questions.
+	Question func(ticket, service, text string) error
 	// Review receives every other record after it is journaled; the review loop acts on
 	// its own kinds (review.ready, review.result, review.reply, verdict) and ignores the
 	// rest. Its error is recorded as a record.rejected record.
@@ -503,6 +506,9 @@ const TransitionRequestKind = "transition.request"
 func (s *Supervisor) act(ticket, service string, e journal.Entry) error {
 	if e.Kind == TransitionRequestKind {
 		return s.askForPhase(ticket, service, e)
+	}
+	if e.Kind == "question" && s.opts.Question != nil {
+		return s.opts.Question(ticket, service, e.Text)
 	}
 	if s.opts.Review != nil {
 		return s.opts.Review(ticket, service, e.Kind, e.Text, e.Data)

@@ -27,6 +27,9 @@ type State struct {
 	// PhaseRequest is an agent's open request to move the ticket, waiting for a human;
 	// any move clears it.
 	PhaseRequest *PhaseRequest `json:"phase_request,omitempty"`
+	// Question is an agent's open question to a person; a person's message to that
+	// service answers it.
+	Question *Question `json:"question,omitempty"`
 	// Review is the ticket's review loop, when its ticket.yaml has a review.
 	Review    *Review   `json:"review,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
@@ -41,6 +44,13 @@ type Approval struct {
 	Service string      `json:"service"`
 	By      string      `json:"by"`
 	At      time.Time   `json:"at"`
+}
+
+// Question is what an agent asked a person through its journal.
+type Question struct {
+	Service string    `json:"service"`
+	Text    string    `json:"text"`
+	At      time.Time `json:"at"`
 }
 
 // PhaseRequest is what an agent asked for through its journal.

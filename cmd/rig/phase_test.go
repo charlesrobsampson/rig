@@ -112,3 +112,26 @@ func TestPhaseWarnsAboutUncommittedWorkButStillMoves(t *testing.T) {
 		t.Errorf("stderr lacks the warning:\n%s", stderr)
 	}
 }
+
+func TestReworkSendsAReviewedTicketBackWithTheFindingAndRecordsTheMiss(t *testing.T) {
+	_, d, repo := newEnv(t)
+	newTicket(t, d, "demo", repo)
+
+	if _, stderr, code := rig(t, d, "rework", "demo", "--finding", "too early"); code == 0 || !strings.Contains(stderr, "from test, review or push") {
+		t.Fatalf("rework from plan: code %d, stderr %q", code, stderr)
+	}
+	rig(t, d, "approve", "demo", "plan_approval")
+	rig(t, d, "phase", "demo", "implement")
+	rig(t, d, "phase", "demo", "test")
+	if _, _, code := rig(t, d, "rework", "demo"); code == 0 {
+		t.Error("rework without a finding was accepted")
+	}
+	stdout, stderr, code := rig(t, d, "rework", "demo", "--finding", "no timeout on the client", "--lens", "reliability")
+	if code != 0 || !strings.Contains(stdout, "demo: test -> implement") {
+		t.Fatalf("code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	out, _, _ := rig(t, d, "timeline", "demo", "--json")
+	if !strings.Contains(out, "review.missed") || !strings.Contains(out, "no timeout on the client") || !strings.Contains(out, "reliability") {
+		t.Errorf("timeline lacks the miss:\n%s", out)
+	}
+}

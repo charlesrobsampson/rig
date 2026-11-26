@@ -160,7 +160,7 @@ func newRootCmd(d deps) *cobra.Command {
 		root.Annotations["vessel"] = a.vesselName
 		return nil
 	}
-	root.AddCommand(newConfigCmd(a), newDaemonCmd(a), newListCmd(a), newEventsCmd(a), newNewCmd(a), newStartCmd(a), newStopCmd(a), newGatesCmd(a), newApproveCmd(a), newPhaseCmd(a), newAgentEventCmd(a), newJournalCmd(a), newAttachCmd(a), newMsgCmd(a), newLogsCmd(a), newReviewCmd(a), newReviewerCmd(a), newWaitCmd(a), newPushCmd(a), newTestsCmd(a), newContractCmd(a), newMCPCmd(a), newReconcileCmd(a), newFleetCmd(a), newStatsCmd(a), newSyncCmd(a), newTimelineCmd(a))
+	root.AddCommand(newConfigCmd(a), newDaemonCmd(a), newListCmd(a), newEventsCmd(a), newNewCmd(a), newStartCmd(a), newStopCmd(a), newGatesCmd(a), newApproveCmd(a), newPhaseCmd(a), newReworkCmd(a), newAgentEventCmd(a), newJournalCmd(a), newAttachCmd(a), newMsgCmd(a), newLogsCmd(a), newReviewCmd(a), newReviewerCmd(a), newWaitCmd(a), newPushCmd(a), newTestsCmd(a), newContractCmd(a), newMCPCmd(a), newReconcileCmd(a), newFleetCmd(a), newStatsCmd(a), newSyncCmd(a), newTimelineCmd(a))
 	// commands whose first argument is a ticket also take "vessel/ticket"
 	for _, c := range root.Commands() {
 		switch c.Name() {

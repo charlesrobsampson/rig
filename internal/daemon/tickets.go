@@ -250,6 +250,13 @@ func RegisterLifecycleHandlers(s *Server, m *lifecycle.Manager) {
 		}
 		return m.SetPhase(ctx, p)
 	})
+	s.Handle(api.MethodTicketRework, func(ctx context.Context, params json.RawMessage) (any, error) {
+		var p api.ReworkParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &api.Error{Code: api.CodeInvalid, Message: "ticket.rework needs params like {\"id\": \"ticket-1\", \"finding\": \"...\", \"lens\": \"security\"}"}
+		}
+		return m.Rework(ctx, p)
+	})
 	s.Handle(api.MethodTransitionRequest, func(ctx context.Context, params json.RawMessage) (any, error) {
 		var p api.TransitionRequestParams
 		if err := json.Unmarshal(params, &p); err != nil {

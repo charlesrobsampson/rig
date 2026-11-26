@@ -36,6 +36,9 @@ const (
 	ReviewLoopEnded    = "review.loop.ended"
 	SyncDone           = "sync.done"
 	PushDone           = "push.done"
+	QuestionAsked      = "question.asked"
+	QuestionAnswered   = "question.answered"
+	ReviewMissed       = "review.missed"
 )
 
 // Entry is one line of timeline.jsonl.
@@ -102,6 +105,14 @@ type PushDoneData struct {
 	Added   int    `json:"added"`
 	Deleted int    `json:"deleted"`
 	Error   string `json:"error,omitempty"`
+}
+
+type QuestionAskedData struct {
+	Text string `json:"text"`
+}
+type ReviewMissedData struct {
+	Finding string `json:"finding"`
+	Lens    string `json:"lens,omitempty"`
 }
 
 // Data encodes a typed payload for an Entry.
