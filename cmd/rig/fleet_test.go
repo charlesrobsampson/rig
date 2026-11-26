@@ -409,3 +409,26 @@ func TestTheDefaultVesselIsLeftOutUntilItHoldsTickets(t *testing.T) {
 		t.Errorf("fleet with a ticket: %q", out)
 	}
 }
+
+func TestAnEmptyDefaultVesselIsNoReasonForAPicker(t *testing.T) {
+	work, _ := twoVessels(t)
+	if _, stderr, code := rig(t, deps{}, "fleet", "remove", "home"); code != 0 {
+		t.Fatal(stderr)
+	}
+	machine := filepath.Join(os.Getenv("HOME"), ".config", "rig", "config.json")
+	os.MkdirAll(filepath.Dir(machine), 0o700)
+	os.WriteFile(machine, []byte(fmt.Sprintf(`{"paths": {"home": %q}}`, filepath.Join(os.Getenv("HOME"), "defhome"))), 0o600)
+	startDaemon(t, work)
+
+	r := &tuiRecord{}
+	if _, stderr, code := rig(t, r.deps(t)); code != 0 {
+		t.Fatalf("rig: %d %s", code, stderr)
+	}
+	if len(r.picks) != 0 || len(r.opts) != 1 || r.opts[0].Vessel != "work" || r.opts[0].CanSwitch {
+		t.Errorf("picks %d, runs %+v; want no picker, work, no switching", len(r.picks), r.opts)
+	}
+	r = &tuiRecord{}
+	if _, stderr, code := rig(t, r.deps(t), "-V", "work"); code != 0 || len(r.opts) != 1 || r.opts[0].CanSwitch {
+		t.Errorf("-V work: %d %s %+v", code, stderr, r.opts)
+	}
+}

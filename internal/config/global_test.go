@@ -398,3 +398,13 @@ func TestABadMachineConfigNamesItself(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestANullInTheVesselIsAnUnsetKeyAndTheMachineValueStays(t *testing.T) {
+	g, src, _, err := loadOver(t, machineDoc, `{"limits":{"max_active_tickets":null}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.Limits.MaxActiveTickets != 3 || src.Keys["limits.max_active_tickets"] != "machine" {
+		t.Errorf("limit %d from %s", g.Limits.MaxActiveTickets, src.Keys["limits.max_active_tickets"])
+	}
+}

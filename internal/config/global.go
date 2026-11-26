@@ -227,6 +227,18 @@ func LoadGlobalResolved(opts GlobalOptions) (Global, Sources, error) {
 		return Global{}, Sources{}, fmt.Errorf("read config: %w", err)
 	}
 
+	// A null is an unset key: dropped, so the machine's value stays.
+	var vessel map[string]any
+	if haveVessel {
+		if err := json.Unmarshal(vesselData, &vessel); err != nil {
+			if derr := decodeStrict(vesselData, &Global{}); derr != nil {
+				err = derr // says the line
+			}
+			return Global{}, Sources{}, fmt.Errorf("parse %s: %w", path, err)
+		}
+		dropNulls(vessel)
+	}
+
 	var machineData []byte
 	if !sameFile(path, machinePath) {
 		switch data, err := os.ReadFile(machinePath); {
@@ -241,7 +253,7 @@ func LoadGlobalResolved(opts GlobalOptions) (Global, Sources, error) {
 
 	decodeFrom := vesselData
 	if machineData != nil {
-		var machine, vessel map[string]any
+		var machine map[string]any
 		if err := json.Unmarshal(machineData, &machine); err != nil {
 			return Global{}, Sources{}, fmt.Errorf("parse %s: %w", machinePath, err)
 		}
@@ -257,22 +269,14 @@ func LoadGlobalResolved(opts GlobalOptions) (Global, Sources, error) {
 		}
 		flatten("", machine, "machine", src.Keys)
 		merged := machine
-		if haveVessel {
-			if err := json.Unmarshal(vesselData, &vessel); err != nil {
-				return Global{}, Sources{}, fmt.Errorf("parse %s: %w", path, err)
-			}
+		if vessel != nil {
 			merged = mergeJSON(machine, vessel)
 		}
 		if decodeFrom, err = json.Marshal(merged); err != nil {
 			return Global{}, Sources{}, err
 		}
 	}
-	if haveVessel {
-		var vessel map[string]any
-		if err := json.Unmarshal(vesselData, &vessel); err == nil {
-			flatten("", vessel, "vessel", src.Keys)
-		}
-	}
+	flatten("", vessel, "vessel", src.Keys)
 	if decodeFrom != nil {
 		if err := decodeStrict(decodeFrom, &g); err != nil {
 			return Global{}, Sources{}, fmt.Errorf("parse %s: %w", path, err)
@@ -324,6 +328,17 @@ func mergeJSON(under, over map[string]any) map[string]any {
 		out[k] = v
 	}
 	return out
+}
+
+func dropNulls(m map[string]any) {
+	for k, v := range m {
+		switch x := v.(type) {
+		case nil:
+			delete(m, k)
+		case map[string]any:
+			dropNulls(x)
+		}
+	}
 }
 
 // flatten records who set each leaf key under prefix; a list and an empty object are leaves.
