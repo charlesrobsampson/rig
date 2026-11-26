@@ -349,6 +349,9 @@ func TestACommandWarnsOnStderrWhenTheDaemonIsAnotherBuild(t *testing.T) {
 	if code != 0 || strings.Count(stderr, "version 1.0.0 but this rig is 2.0.0") != 1 || !strings.Contains(stderr, "rig daemon stop") {
 		t.Errorf("code %d, stderr %q", code, stderr)
 	}
+	if strings.Contains(stderr, "-V") {
+		t.Errorf("no vessel chosen, but the command names one: %q", stderr)
+	}
 	var v any
 	if err := json.Unmarshal([]byte(stdout), &v); err != nil || strings.Contains(stdout, "daemon is version") {
 		t.Errorf("stdout is not clean JSON: %q (%v)", stdout, err)
@@ -365,5 +368,24 @@ func TestACommandWarnsOnStderrWhenTheDaemonIsAnotherBuild(t *testing.T) {
 		if _, stderr, _ := rig(t, d, "list"); strings.Contains(stderr, "daemon") {
 			t.Errorf("client %s: unexpected warning %q", ver, stderr)
 		}
+	}
+}
+
+func TestTheVersionWarningNamesTheVesselWhoseDaemonIsStale(t *testing.T) {
+	work, _ := twoVessels(t)
+	old := version
+	version = "1.0.0"
+	t.Cleanup(func() { version = old })
+	startDaemon(t, work)
+	d := deps{version: "2.0.0"}
+
+	_, stderr, code := rig(t, d, "-V", "work", "daemon", "status")
+	if code != 0 || !strings.Contains(stderr, `run "rig -V work daemon stop"`) {
+		t.Errorf("-V work: code %d, stderr %q", code, stderr)
+	}
+	t.Setenv("RIG_VESSEL", "work")
+	_, stderr, code = rig(t, d, "daemon", "status")
+	if code != 0 || !strings.Contains(stderr, `run "rig -V work daemon stop"`) {
+		t.Errorf("RIG_VESSEL=work: code %d, stderr %q", code, stderr)
 	}
 }

@@ -71,7 +71,7 @@ func (a *app) connect(ctx context.Context, autostart bool) (*client.Client, erro
 	c, err := client.Connect(ctx, opts)
 	if err == nil && a.deps.stderr != nil && a.warned != nil {
 		if msg := client.VersionMismatch(ver, c.DaemonVersion()); msg != "" {
-			a.warned.Do(func() { fmt.Fprintln(a.deps.stderr, msg) })
+			a.warned.Do(func() { fmt.Fprintln(a.deps.stderr, withVessel(msg, a.vesselName)) })
 		}
 	}
 	return c, err
