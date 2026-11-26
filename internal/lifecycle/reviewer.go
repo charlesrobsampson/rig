@@ -137,7 +137,10 @@ func (m *Manager) ReviewRecord(ticket, service, kind, text string, data json.Raw
 		_, err := parseFinding(data)
 		return err
 	case kind == ReviewReplyKind && fromCoder:
-		_, err := parseReply(data)
+		reply, err := parseReply(data)
+		if err == nil && reply.Status == "question" {
+			err = m.stopForQuestion(ticket, reply)
+		}
 		return err
 	case kind == TestResultKind && service == domain.TesterService:
 		return m.recordTest(ticket, data)
@@ -219,7 +222,8 @@ func (m *Manager) beginRound(id, by string) error {
 	// the round cap and the budget keep what the loop has used.
 	awaiting := r != nil && r.Status == domain.ReviewAwaitingReady
 	lost := awaiting && len(r.Rounds) > 0 && r.Rounds[len(r.Rounds)-1].Commit == ""
-	newLoop := r == nil || (awaiting && !lost) || (r.Status == domain.ReviewStopped && human)
+	resumed := r != nil && r.Asked && r.Status == domain.ReviewStopped && human
+	newLoop := r == nil || (awaiting && !lost) || (r.Status == domain.ReviewStopped && human && !resumed)
 	if lost {
 		cp := *r
 		cp.Round--
@@ -246,10 +250,45 @@ func (m *Manager) beginRound(id, by string) error {
 		} else if lost {
 			cur.Round, cur.Rounds = r.Round, r.Rounds
 		}
-		cur.Status, cur.Reason, cur.By = domain.ReviewReviewing, "", ""
+		cur.Status, cur.Reason, cur.By, cur.Asked = domain.ReviewReviewing, "", "", false
 		cur.Round++
 		cur.Rounds = append(cur.Rounds, state.ReviewRound{Round: cur.Round, At: m.opts.Clock.Now().UTC()})
 	})
+	return nil
+}
+
+// stopForQuestion stops a loop that is waiting on the coder's fixes when the coder
+// asks a person about a finding instead: no round runs on an unanswered question, and
+// the round it ended does not count toward the cap.
+func (m *Manager) stopForQuestion(id string, reply api.ReviewReply) error {
+	l, unlock, err := m.begin(id)
+	if err != nil {
+		return fmt.Errorf("stop the review loop for the question: %w", err)
+	}
+	defer unlock()
+	r := l.state.Review
+	target, _, _ := reviewers(l.ticket)
+	if r == nil || r.Status != domain.ReviewFixing || len(r.Rounds) == 0 {
+		return nil
+	}
+	what := ""
+	records, err := journal.Read(l.dir)
+	if err != nil {
+		return fmt.Errorf("read the journal for the question: %w", err)
+	}
+	findings, _ := roundRecords(records, target.Name, r.Rounds[len(r.Rounds)-1].At, time.Time{})
+	for _, f := range findings {
+		if f.ID == reply.ID {
+			what = " (" + f.What + ")"
+		}
+	}
+	reason := fmt.Sprintf("the coder asks a person about finding %s%s: %s", reply.ID, what, reply.Reason)
+	m.setReview(l, func(r *state.Review) {
+		r.Status, r.Reason, r.By, r.Asked = domain.ReviewStopped, reason, "rig", true
+		r.Uncounted++
+	})
+	m.note(l.dir, timeline.ReviewDecided, "rig", "", timeline.ReviewDecidedData{Outcome: "stop", Reason: reason})
+	m.deliver(id, target.Name, "The review loop stopped on your question: "+reason+". Wait for a person.")
 	return nil
 }
 
@@ -257,7 +296,7 @@ func (m *Manager) beginRound(id, by string) error {
 // or the coder disagreeing with a blocking finding, which a person must settle.
 func (m *Manager) stopReason(l loaded, coder string, r state.Review, spent float64) string {
 	cfg := l.ticket.Review
-	if r.Round >= cfg.MaxRounds && r.Status != domain.ReviewPassed {
+	if r.Round-r.Uncounted >= cfg.MaxRounds && r.Status != domain.ReviewPassed {
 		return fmt.Sprintf("the round cap (%d) was reached with findings still open", cfg.MaxRounds)
 	}
 	if cfg.BudgetUSD > 0 && spent-r.CostAtStart >= cfg.BudgetUSD {
@@ -614,6 +653,7 @@ func (m *Manager) settleRound(l loaded, coder string) {
 			text += "\n\nNits, for your judgement only:" + listFindings(nits)
 		}
 		m.deliver(l.id, coder, text)
+		m.returnAfterSync(l)
 		return
 	}
 	m.setReview(l, func(r *state.Review) { r.Status = domain.ReviewFixing })
@@ -951,7 +991,7 @@ func (m *Manager) ReviewerDecide(ctx context.Context, p api.ReviewerDecideParams
 	// to the round's commit, so work committed after it is looked at again.
 	tip, haveTip := reviewTip(ctx, l.ticket, l.state)
 	m.setReview(l, func(r *state.Review) {
-		r.Status, r.Reason, r.By = outcome, reason, "human"
+		r.Status, r.Reason, r.By, r.Asked = outcome, reason, "human", false
 		if outcome == domain.ReviewPassed && haveTip {
 			r.Commit = tip
 		}

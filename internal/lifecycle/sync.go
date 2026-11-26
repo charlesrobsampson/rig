@@ -138,7 +138,8 @@ func (m *Manager) endLoopAfterSync(id string) error {
 // Sync brings each service's base into its branch. A clean merge is committed, the
 // coder is told, and a reviewed ticket starts a new review round on it; a conflict is
 // left in the checkout for the coder to resolve, with the files named. A ticket past
-// implement goes back to implement, because its reviewed work changed. Nothing is
+// implement goes back to implement, because its reviewed work changed; a round that passes on the
+// merged work brings it back (returnAfterSync). Nothing is
 // fetched: the base is the main repository's branch.
 func (m *Manager) Sync(ctx context.Context, p api.SyncParams) (api.SyncResult, error) {
 	l, unlock, err := m.begin(p.ID)
@@ -218,6 +219,16 @@ func (m *Manager) Sync(ctx context.Context, p api.SyncParams) (api.SyncResult, e
 			return res, err
 		}
 		res.Phase = domain.PhaseImplement
+		if reviewed {
+			// After the move, which clears it: only a passing round brings the ticket back.
+			err := m.opts.States.Update(l.statePath, func(s *state.State) error {
+				s.SyncReturn = phase
+				return nil
+			})
+			if err != nil {
+				return res, fmt.Errorf("record the phase to return to: %w", err)
+			}
+		}
 	}
 	if target, _, ok := reviewers(l.ticket); ok {
 		var branchChanged bool
@@ -256,4 +267,37 @@ func (m *Manager) Sync(ctx context.Context, p api.SyncParams) (api.SyncResult, e
 		}
 	}
 	return res, nil
+}
+
+// returnAfterSync moves a ticket that a sync sent back to implement forward to the phase
+// it left, once a round has passed on the merged work. It steps through each phase in
+// between as a person's moves would, but checks no gate and grants nothing: the
+// approvals the sync invalidated stay invalidated. The ticket's lock is held.
+func (m *Manager) returnAfterSync(l loaded) {
+	var made []state.Transition
+	err := m.opts.States.Update(l.statePath, func(s *state.State) error {
+		made = nil
+		if s.SyncReturn == "" || s.Phase != domain.PhaseImplement || s.Review == nil || s.Review.Status != domain.ReviewPassed {
+			return nil
+		}
+		now := m.opts.Clock.Now().UTC()
+		for s.Phase != s.SyncReturn {
+			next, ok := state.NextPhase(s.Phase)
+			if !ok || state.IsBackward(s.Phase, s.SyncReturn) {
+				break
+			}
+			t := state.Transition{From: s.Phase, To: next, By: "rig", Reason: "review passed on the merged work", At: now}
+			s.Transitions = append(s.Transitions, t)
+			made = append(made, t)
+			s.Phase = next
+		}
+		s.PhaseRequest, s.SyncReturn = nil, ""
+		return nil
+	})
+	if err != nil {
+		return
+	}
+	for _, t := range made {
+		m.announceMove(l, t, "")
+	}
 }

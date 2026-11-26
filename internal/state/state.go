@@ -31,9 +31,12 @@ type State struct {
 	// service answers it.
 	Question *Question `json:"question,omitempty"`
 	// Review is the ticket's review loop, when its ticket.yaml has a review.
-	Review    *Review   `json:"review,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Review *Review `json:"review,omitempty"`
+	// SyncReturn is the phase a sync moved a reviewed ticket back from; when a round
+	// passes on the merged work rig moves the ticket there. Any other move clears it.
+	SyncReturn domain.Phase `json:"sync_return,omitempty"`
+	CreatedAt  time.Time    `json:"created_at"`
+	UpdatedAt  time.Time    `json:"updated_at"`
 
 	unknown map[string]json.RawMessage
 }
@@ -75,9 +78,14 @@ type Review struct {
 	By     string `json:"by,omitempty"`
 	// CostAtStart is what the ticket's agents had spent when the loop began, so the
 	// budget counts only the loop.
-	CostAtStart float64       `json:"cost_at_start"`
-	Rounds      []ReviewRound `json:"rounds,omitempty"`
-	At          time.Time     `json:"at"`
+	CostAtStart float64 `json:"cost_at_start"`
+	// Asked says the loop stopped for the coder's question to a person: a person's
+	// start continues it instead of beginning a new loop. Uncounted is how many rounds
+	// ended that way; they keep their numbers but do not count toward max_rounds.
+	Asked     bool          `json:"asked,omitempty"`
+	Uncounted int           `json:"uncounted,omitempty"`
+	Rounds    []ReviewRound `json:"rounds,omitempty"`
+	At        time.Time     `json:"at"`
 }
 
 type ReviewRound struct {
@@ -97,7 +105,7 @@ type TesterRound struct {
 	At      time.Time `json:"at"`
 }
 
-// Transition.By is "human" or "agent:<service>"; Reason is required for backward moves.
+// Transition.By is "human", "agent:<service>" or "rig"; Reason is required for backward moves.
 type Transition struct {
 	From   domain.Phase `json:"from"`
 	To     domain.Phase `json:"to"`

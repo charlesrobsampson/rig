@@ -144,6 +144,7 @@ func (m *Manager) moveLocked(l loaded, id, by string, to domain.Phase, reason, s
 		}
 		s.Phase = to
 		s.PhaseRequest = nil
+		s.SyncReturn = ""
 		s.Transitions = append(s.Transitions, made)
 		return nil
 	})
@@ -154,21 +155,26 @@ func (m *Manager) moveLocked(l loaded, id, by string, to domain.Phase, reason, s
 		return api.TransitionResult{}, &api.Error{Code: api.CodeInternal, Message: fmt.Sprintf("record transition: %v", err)}
 	}
 
-	m.publish(api.EventPhaseChanged, id, "", api.PhaseChangedData{From: made.From, To: made.To, By: by, Reason: reason})
-	m.note(l.dir, timeline.PhaseMoved, by, service, timeline.PhaseMovedData{From: string(made.From), To: string(made.To), Reason: reason})
+	m.announceMove(l, made, service)
 	if endedLoop != nil {
 		m.note(l.dir, timeline.ReviewLoopEnded, by, "", timeline.ReviewLoopEndedData{Rounds: len(endedLoop.Rounds), Status: string(endedLoop.Status)})
-	}
-	if m.opts.OnPhaseChanged != nil {
-		if notices := phaseNotices(l, made); len(notices) > 0 {
-			m.opts.OnPhaseChanged(id, notices)
-		}
 	}
 	res, err := m.reg.Get(id)
 	if err != nil {
 		return api.TransitionResult{}, err
 	}
 	return api.TransitionResult{Summary: res.Summary, From: made.From, To: made.To, By: by, Reason: reason, At: made.At}, nil
+}
+
+// announceMove tells everyone who follows the ticket about a recorded move.
+func (m *Manager) announceMove(l loaded, made state.Transition, service string) {
+	m.publish(api.EventPhaseChanged, l.id, "", api.PhaseChangedData{From: made.From, To: made.To, By: made.By, Reason: made.Reason})
+	m.note(l.dir, timeline.PhaseMoved, made.By, service, timeline.PhaseMovedData{From: string(made.From), To: string(made.To), Reason: made.Reason})
+	if m.opts.OnPhaseChanged != nil {
+		if notices := phaseNotices(l, made); len(notices) > 0 {
+			m.opts.OnPhaseChanged(l.id, notices)
+		}
+	}
 }
 
 // decide says whether the move is allowed now: the order of phases, a reason for a
