@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/charmbracelet/x/ansi"
 	"os"
 	"path/filepath"
@@ -341,7 +342,7 @@ func TestListGroupCollapsesDoneToOneLineUnlessAllDone(t *testing.T) {
 	now := time.Date(2026, 11, 20, 11, 0, 0, 0, time.UTC)
 	var out strings.Builder
 	writeGroupedTable(&out, groupedFixture(), now, 0, false)
-	want := []string{"▾ plan (1) · agents 0s", "▾ implement (2) · $4.12 · agents 1h20m", "▸ done (1) · $1.50 · agents 10m", "4 tickets · $5.62 · agents 1h30m · span 2h00m"}
+	want := []string{"▾ plan (1)", "p1", "▾ implement (2)", "$4.12", "▸ done (1)", "$1.50", "all (4)", "$5.62"}
 	last := -1
 	for _, w := range want {
 		i := strings.Index(out.String(), w)
@@ -374,5 +375,78 @@ func TestListGroupFlagsAndTheJSONStayHonest(t *testing.T) {
 	stdout, _, code := rig(t, deps, "list", "--group")
 	if code != 0 || !strings.Contains(stdout, "no tickets") {
 		t.Errorf("--group with none: %d %q", code, stdout)
+	}
+}
+
+// colAt is where the column named name starts in the table's header line.
+func colAt(t *testing.T, out, name string) int {
+	t.Helper()
+	i := strings.Index(strings.SplitN(out, "\n", 2)[0], name)
+	if i >= 0 {
+		return i // the header line is ASCII
+	}
+	if i < 0 {
+		t.Fatalf("no column %s:\n%s", name, out)
+	}
+	return i
+}
+
+// lineWith is the first line starting with prefix.
+func lineWith(t *testing.T, out, prefix string) string {
+	t.Helper()
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, prefix) {
+			return l
+		}
+	}
+	t.Fatalf("no line starting %q:\n%s", prefix, out)
+	return ""
+}
+
+func TestGroupHeadersAndFooterSitUnderTheirColumns(t *testing.T) {
+	now := time.Date(2026, 11, 20, 11, 0, 0, 0, time.UTC)
+	for _, width := range []int{0, 120, 70} {
+		var out strings.Builder
+		writeGroupedTable(&out, groupedFixture(), now, width, false)
+		o := out.String()
+		cost, tm, agent := colAt(t, o, "COST"), colAt(t, o, "TIME"), colAt(t, o, "AGENT")
+		for prefix, want := range map[string][3]string{
+			"▾ implement (2)": {"$4.12", "2h00m", "1h20m"},
+			"▸ done (1)":      {"$1.50", "1h00m", "10m"},
+			"all (4)":         {"$5.62", "2h00m", "1h30m"},
+		} {
+			l := []rune(lineWith(t, o, prefix))
+			for i, c := range [3]int{cost, tm, agent} {
+				if !strings.HasPrefix(string(l[c:]), want[i]) {
+					t.Errorf("width %d: %q has no %q at column %d:\n%s", width, prefix, want[i], c, o)
+				}
+			}
+		}
+		if strings.Contains(o, " · ") {
+			t.Errorf("the joined header text is gone:\n%s", o)
+		}
+	}
+}
+
+func TestAGroupHeaderShowsWhatIsTheSameForEveryTicketAndWidensID(t *testing.T) {
+	now := time.Date(2026, 11, 20, 11, 0, 0, 0, time.UTC)
+	svc := []api.ServiceSummary{{Name: "rig", Status: "stopped", AgentState: domain.AgentExited}}
+	var tickets []api.TicketSummary
+	for i := 0; i < 34; i++ {
+		tickets = append(tickets, api.TicketSummary{ID: fmt.Sprintf("r%d", i), Phase: domain.PhaseDone, Services: svc})
+	}
+	tickets = append(tickets, api.TicketSummary{ID: "i1", Phase: domain.PhaseImplement, Services: []api.ServiceSummary{{Name: "rig", Status: "running"}}})
+	var out strings.Builder
+	writeGroupedTable(&out, tickets, now, 0, false)
+	o := out.String()
+	services := colAt(t, o, "SERVICES")
+	if services < len("▸ done (34)")+2 {
+		t.Errorf("the ID column must widen to the label:\n%s", o)
+	}
+	if l := []rune(lineWith(t, o, "▸ done (34)")); !strings.HasPrefix(string(l[services:]), "rig:stopped/exited") {
+		t.Errorf("the common status shows:\n%s", o)
+	}
+	if l := lineWith(t, o, "all (35)"); strings.Contains(l, "rig:") {
+		t.Errorf("a mixed footer leaves SERVICES blank:\n%s", o)
 	}
 }

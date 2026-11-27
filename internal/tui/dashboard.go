@@ -354,23 +354,72 @@ func (d *dashboard) view(w, h int) string {
 	if len(d.rows) == 0 {
 		return "no tickets yet — create one with: rig new"
 	}
-	cells := map[string][6]string{}
-	widths := [6]int{len("TICKET"), len("PHASE"), len("AGENTS"), len("PORTS"), len("COST"), len("NEEDS")}
-	for _, t := range d.rows {
-		c := [6]string{t.ID, phaseCell(t), agentsCell(t), portsCell(t), costCell(t), needsCell(t)}
-		cells[t.ID] = c
+	now := time.Now
+	if d.now != nil {
+		now = d.now
+	}
+	at := now()
+	const nCols, colTime, colAgent = 8, 5, 6
+	names := [nCols]string{"TICKET", "PHASE", "AGENTS", "PORTS", "COST", "TIME", "AGENT", "NEEDS"}
+	byID := map[string]api.TicketSummary{}
+	groups := map[domain.Phase]ticketgroups.Group{}
+	for _, g := range d.groups {
+		groups[g.Phase] = g
+	}
+	// summaryCells puts a group's or the vessel's row under the columns; what cannot be
+	// totalled is blank. The lights of AGENTS show only when every ticket has the same.
+	summaryCells := func(r ticketgroups.Row, tickets []api.TicketSummary) [nCols]string {
+		return [nCols]string{r.Label, "", ticketgroups.Common(tickets, agentsCell), r.Ports, r.Cost, r.Time, r.Agent, ""}
+	}
+	headerCells := map[domain.Phase][nCols]string{}
+	for _, g := range d.groups {
+		headerCells[g.Phase] = summaryCells(ticketgroups.GroupRow(g, d.folds.folded(g.Phase), at), g.Tickets)
+	}
+	footerCells := summaryCells(ticketgroups.TotalRow(d.rows, at), d.rows)
+	cells := map[string][nCols]string{}
+	widths := [nCols]int{}
+	measure := func(c [nCols]string) {
 		for i, s := range c {
 			widths[i] = max(widths[i], len([]rune(s)))
 		}
 	}
-	line := func(sel bool, c [6]string, title string, t *api.TicketSummary) string {
-		prefix := "  "
-		if sel {
-			prefix = "> "
+	for i, n := range names {
+		widths[i] = len(n)
+	}
+	for _, t := range d.rows {
+		byID[t.ID] = t
+		c := [nCols]string{t.ID, phaseCell(t), agentsCell(t), portsCell(t), costCell(t), ticketgroups.ElapsedText(t, at), ticketgroups.AgentText(t.AgentSeconds), needsCell(t)}
+		cells[t.ID] = c
+		measure(c)
+	}
+	for _, c := range headerCells {
+		measure(c)
+	}
+	measure(footerCells)
+	// At a narrow width TIME goes first, then AGENT, so TITLE keeps a useful share.
+	show := [nCols]bool{true, true, true, true, true, true, true, true}
+	const minTitle = 12
+	fixed := func() int {
+		n := 2
+		for i := range widths {
+			if show[i] {
+				n += widths[i] + 2
+			}
 		}
+		return n
+	}
+	for _, c := range []int{colTime, colAgent} {
+		if fixed()+minTitle > w {
+			show[c] = false
+		}
+	}
+	line := func(prefix string, c [nCols]string, title string, t *api.TicketSummary) string {
 		var b strings.Builder
 		b.WriteString(prefix)
 		for i, s := range c {
+			if !show[i] {
+				continue
+			}
 			cell := pad(s, widths[i])
 			if i == 2 && t != nil && len(t.Services) > 0 {
 				cell = agentsCellStyled(*t) + strings.Repeat(" ", widths[i]-len([]rune(s)))
@@ -380,13 +429,9 @@ func (d *dashboard) view(w, h int) string {
 		b.WriteString(title)
 		return strings.TrimRight(b.String(), " ")
 	}
-	out := []string{line(false, [6]string{"TICKET", "PHASE", "AGENTS", "PORTS", "COST", "NEEDS"}, "TITLE", nil)}
+	out := []string{line("  ", names, "TITLE", nil)}
 
-	now := time.Now
-	if d.now != nil {
-		now = d.now
-	}
-	footer := ticketgroups.Footer(ticketgroups.TotalsOf(d.rows, now()))
+	footer := ansi.Truncate(line("  ", footerCells, ticketgroups.Common(d.rows, ticketgroups.TitleText), nil), w, "…")
 	pane := d.summaryPane(w, h)
 	legend := h >= legendMinHeight
 	visible := h - 2 - len(pane)
@@ -405,14 +450,6 @@ func (d *dashboard) view(w, h int) string {
 		d.top = i - visible + 1
 	}
 	d.top = min(max(d.top, 0), max(len(items)-visible, 0))
-	groups := map[domain.Phase]ticketgroups.Group{}
-	for _, g := range d.groups {
-		groups[g.Phase] = g
-	}
-	byID := map[string]api.TicketSummary{}
-	for _, t := range d.rows {
-		byID[t.ID] = t
-	}
 	for r := d.top; r < len(items) && r < d.top+visible; r++ {
 		it := items[r]
 		if it.ticket == "" {
@@ -420,7 +457,8 @@ func (d *dashboard) view(w, h int) string {
 			if r == i {
 				prefix = "> "
 			}
-			out = append(out, ansi.Truncate(prefix+ticketgroups.Header(groups[it.header], d.folds.folded(it.header)), w, "…"))
+			g := groups[it.header]
+			out = append(out, ansi.Truncate(line(prefix, headerCells[it.header], ticketgroups.Common(g.Tickets, ticketgroups.TitleText), nil), w, "…"))
 			continue
 		}
 		t := byID[it.ticket]
@@ -428,12 +466,16 @@ func (d *dashboard) view(w, h int) string {
 		if t.Error != "" {
 			title = strings.TrimSpace(title + "  ! " + t.Error)
 		}
-		out = append(out, line(r == i, cells[it.ticket], title, &t))
+		prefix := "  "
+		if r == i {
+			prefix = "> "
+		}
+		out = append(out, line(prefix, cells[it.ticket], title, &t))
 	}
 	if legend {
 		out = append(out, lightLegend())
 	}
-	out = append(out, ansi.Truncate(footer, w, "…"))
+	out = append(out, footer)
 	return strings.Join(append(out, pane...), "\n")
 }
 
@@ -545,6 +587,9 @@ func portsCell(t api.TicketSummary) string {
 // costCell is what the ticket's agents have spent, summed, or "-" when no harness has
 // reported a cost (an unreported cost is not shown as $0.00).
 func costCell(t api.TicketSummary) string {
+	if t.CostUSD != nil {
+		return ticketgroups.CostText(t.CostUSD)
+	}
 	total, any := 0.0, false
 	for _, s := range t.Services {
 		if s.CostUSD != nil {
