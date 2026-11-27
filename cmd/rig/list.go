@@ -5,7 +5,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"io"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -132,58 +131,77 @@ func writeTicketTable(w io.Writer, tickets []api.TicketSummary, now time.Time, w
 		fmt.Fprintln(w, "no tickets")
 		return
 	}
-	header, rows := ticketRows(tickets, tickets, now, width)
-	writeFitted(w, header, rows, width, []int{len(header) - 1, 1}, nil)
+	header, rows, _ := ticketRows(tickets, tickets, now, width)
+	writeFitted(w, header, rows, width, []int{len(header) - 1, 1})
 }
 
-// writeGroupedTable is the table under one line per phase (ticketgroups, as the TUI
-// draws it) and a totals line. Done tickets are one line unless allDone.
+// writeGroupedTable is the table with a row for each phase's group and a last row for
+// the whole vessel (ticketgroups says what is in them), so their totals sit under the
+// columns they total. Done tickets are one row unless allDone.
 func writeGroupedTable(w io.Writer, tickets []api.TicketSummary, now time.Time, width int, allDone bool) {
 	if len(tickets) == 0 {
 		fmt.Fprintln(w, "no tickets")
 		return
 	}
 	var shown []api.TicketSummary
-	var breaks []sectionBreak
-	groups := ticketgroups.Of(tickets)
-	for _, g := range groups {
+	var summaryRows []ticketgroups.Row
+	var at []int // the ticket row each group header comes before
+	for _, g := range ticketgroups.Of(tickets) {
 		folded := g.Phase == domain.PhaseDone && !allDone
-		breaks = append(breaks, sectionBreak{len(shown), ticketgroups.Header(g, folded)})
+		summaryRows = append(summaryRows, ticketgroups.GroupRow(g, folded, now))
+		at = append(at, len(shown))
 		if !folded {
 			shown = append(shown, g.Tickets...)
 		}
 	}
-	header, rows := ticketRows(shown, tickets, now, width)
-	writeFitted(w, header, rows, width, []int{len(header) - 1, 1}, breaks)
-	fmt.Fprintf(w, "\n%s\n", ticketgroups.Footer(ticketgroups.TotalsOf(tickets, now)))
+	header, rows, hasPorts := ticketRows(shown, tickets, now, width)
+	var out [][]string
+	next := 0
+	for i, r := range rows {
+		for next < len(at) && at[next] == i {
+			out = append(out, summaryCells(summaryRows[next], hasPorts))
+			next++
+		}
+		out = append(out, r)
+	}
+	for ; next < len(at); next++ {
+		out = append(out, summaryCells(summaryRows[next], hasPorts))
+	}
+	out = append(out, nil, summaryCells(ticketgroups.TotalRow(tickets, now), hasPorts))
+	writeFitted(w, header, out, width, []int{len(header) - 1, 1})
+}
+
+// summaryCells puts a group or footer row under the table's columns: ID PHASE SERVICES
+// COST TIME AGENT [PORTS] TITLE. PHASE is blank, the label says it.
+func summaryCells(r ticketgroups.Row, hasPorts bool) []string {
+	cells := []string{r.Label, "", r.Services, r.Cost, r.Time, r.Agent}
+	if hasPorts {
+		cells = append(cells, r.Ports)
+	}
+	return append(cells, r.Title)
 }
 
 // ticketRows is the header and a row per ticket; overlaps are found among all, so a
 // ticket left out of the rows still counts.
-func ticketRows(tickets, all []api.TicketSummary, now time.Time, width int) ([]string, [][]string) {
-	header := []string{"ID", "PHASE", "SERVICES", "COST", "TIME", "AGENT", "PORTS", "TITLE"}
-	rows := make([][]string, len(tickets))
+func ticketRows(tickets, all []api.TicketSummary, now time.Time, width int) (header []string, rows [][]string, hasPorts bool) {
+	header = []string{"ID", "PHASE", "SERVICES", "COST", "TIME", "AGENT", "PORTS", "TITLE"}
+	rows = make([][]string, len(tickets))
 	anyPorts := false
 	overlaps := overlapsOf(all)
 	for i, t := range tickets {
-		ports := portsCell(t.Services)
+		ports := ticketgroups.PortsText(t.Services)
 		anyPorts = anyPorts || ports != "-"
-		rows[i] = []string{t.ID, phaseCell(t, overlaps[t.ID]), serviceCell(t.Services), costCell(t.CostUSD), elapsedCell(t, now), agentCell(t), ports, titleCell(t)}
+		rows[i] = []string{t.ID, phaseCell(t, overlaps[t.ID]), ticketgroups.ServicesText(t.Services), ticketgroups.CostText(ticketgroups.CostOf(t)), ticketgroups.ElapsedText(t, now), ticketgroups.AgentText(t.AgentSeconds), ports, ticketgroups.TitleText(t)}
 	}
+	hasPorts = true
 	if width > 0 && !anyPorts {
+		hasPorts = false
 		header = slices.Delete(header, 6, 7)
 		for i := range rows {
 			rows[i] = slices.Delete(rows[i], 6, 7)
 		}
 	}
-	return header, rows
-}
-
-func agentCell(t api.TicketSummary) string {
-	if t.AgentSeconds == 0 {
-		return "-"
-	}
-	return duration(t.AgentSeconds)
+	return header, rows, hasPorts
 }
 
 // phaseCell is the phase and what is going on in it, as short notes.
@@ -235,16 +253,10 @@ func phaseCell(t api.TicketSummary, overlaps []string) string {
 	return strings.Join(notes, " · ")
 }
 
-// sectionBreak is a line printed before row `at`.
-type sectionBreak struct {
-	at   int
-	line string
-}
-
 // writeFitted prints a table with two spaces between columns. With width > 0 it
-// shortens the shrinkable columns, in order, until each line fits. Break lines are
-// printed whole, before the row they name, and count for nothing in the column widths.
-func writeFitted(w io.Writer, header []string, rows [][]string, width int, shrinkable []int, breaks []sectionBreak) {
+// shortens the shrinkable columns, in order, until each line fits. A nil row is a blank
+// line. Every row, group headers and footer included, counts for the column widths.
+func writeFitted(w io.Writer, header []string, rows [][]string, width int, shrinkable []int) {
 	const gap, least = 2, 12
 	all := append([][]string{header}, rows...)
 	widths := make([]int, len(header))
@@ -267,10 +279,10 @@ func writeFitted(w io.Writer, header []string, rows [][]string, width int, shrin
 			}
 		}
 	}
-	for i, r := range all {
-		for i > 0 && len(breaks) > 0 && breaks[0].at <= i-1 {
-			fmt.Fprintln(w, breaks[0].line)
-			breaks = breaks[1:]
+	for _, r := range all {
+		if r == nil {
+			fmt.Fprintln(w)
+			continue
 		}
 		var b strings.Builder
 		for c, cell := range r {
@@ -282,46 +294,6 @@ func writeFitted(w io.Writer, header []string, rows [][]string, width int, shrin
 		}
 		fmt.Fprintln(w, strings.TrimRight(b.String(), " "))
 	}
-	for _, br := range breaks {
-		fmt.Fprintln(w, br.line)
-	}
-}
-
-func serviceCell(services []api.ServiceSummary) string {
-	if len(services) == 0 {
-		return "-"
-	}
-	parts := make([]string, len(services))
-	for i, s := range services {
-		status := string(s.Status)
-		if status == "" {
-			status = "-"
-		}
-		if s.AgentState != "" && s.AgentState != domain.AgentUnknown {
-			status += "/" + string(s.AgentState)
-		}
-		parts[i] = s.Name + ":" + status
-	}
-	return strings.Join(parts, ", ")
-}
-
-func costCell(usd *float64) string {
-	if usd == nil {
-		return "-"
-	}
-	return fmt.Sprintf("$%.2f", *usd)
-}
-
-// elapsedCell is the ticket's age: from creation to done, or to now while it is open.
-func elapsedCell(t api.TicketSummary, now time.Time) string {
-	if t.CreatedAt == nil {
-		return "-"
-	}
-	end := now
-	if t.DoneAt != nil {
-		end = *t.DoneAt
-	}
-	return duration(int64(end.Sub(*t.CreatedAt).Seconds()))
 }
 
 func duration(seconds int64) string { return ticketgroups.Duration(seconds) }
@@ -335,29 +307,6 @@ func tokens(n int64) string {
 		return fmt.Sprintf("%dk", (n+500)/1000)
 	}
 	return fmt.Sprintf("%.1fM", float64(n)/1e6)
-}
-
-func portsCell(services []api.ServiceSummary) string {
-	var ports []string
-	for _, s := range services {
-		if s.HostPort != 0 {
-			ports = append(ports, strconv.Itoa(s.HostPort))
-		}
-	}
-	if len(ports) == 0 {
-		return "-"
-	}
-	return strings.Join(ports, ",")
-}
-
-func titleCell(t api.TicketSummary) string {
-	switch {
-	case t.Error == "":
-		return t.Title
-	case t.Title == "":
-		return "! " + t.Error
-	}
-	return t.Title + "  ! " + t.Error
 }
 
 // overlapsOf finds, for each ticket, the other tickets in the list that have changed a

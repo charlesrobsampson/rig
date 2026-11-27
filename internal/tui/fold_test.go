@@ -1,6 +1,7 @@
 package tui
 
 import (
+	tea "github.com/charmbracelet/bubbletea"
 	"strings"
 	"testing"
 	"time"
@@ -42,8 +43,9 @@ func where(m Model) string {
 }
 
 func TestTicketsAreGroupedByPhaseWithDoneFolded(t *testing.T) {
-	v := foldModel(t).View()
-	want := []string{"▾ plan (1)", "p1", "▾ implement (2) · $4.12 · agents 1h20m", "i1", "i2", "▸ done (2) · $4.00 · agents 20m", "5 tickets · $8.12 · agents 1h40m · span 2h00m"}
+	m, _ := send(foldModel(t), tea.WindowSizeMsg{Width: 120, Height: 20})
+	v := m.View()
+	want := []string{"▾ plan (1)", "p1", "▾ implement (2)", "$4.12", "1h20m", "▸ done (2)", "$4.00", "all (5)", "$8.12", "1h40m"}
 	last := -1
 	for _, w := range want {
 		i := strings.Index(v, w)
@@ -146,5 +148,122 @@ func TestHelpNamesTheFoldKeys(t *testing.T) {
 	m := press(t, foldModel(t), "?")
 	if v := m.View(); !strings.Contains(v, "z Z o") || !strings.Contains(v, "fold") {
 		t.Errorf("help:\n%s", v)
+	}
+}
+
+// colStarts are the columns of the table's header line.
+func colStarts(t *testing.T, v string, names ...string) []int {
+	t.Helper()
+	var out []int
+	for _, n := range names {
+		i := strings.Index(strings.Split(v, "\n")[1], n+" ")
+		if i < 0 {
+			t.Fatalf("no column %s in:\n%s", n, v)
+		}
+		out = append(out, i)
+	}
+	return out
+}
+
+func TestGroupHeaderAndFooterTotalsSitUnderCostTimeAndAgent(t *testing.T) {
+	var small []api.TicketSummary // short labels, so all the columns fit in 80
+	for _, k := range foldFleet {
+		if k.Phase != domain.PhaseImplement {
+			small = append(small, k)
+		}
+	}
+	cases := []struct {
+		width int
+		fleet []api.TicketSummary
+		rows  map[string][3]string
+	}{
+		{120, foldFleet, map[string][3]string{
+			"▾ implement (2)": {"$4.12", "2h00m", "1h20m"},
+			"▸ done (2)":      {"$4.00", "1h00m", "20m"},
+			"all (5)":         {"$8.12", "2h00m", "1h40m"},
+		}},
+		{80, small, map[string][3]string{
+			"▸ done (2)": {"$4.00", "1h00m", "20m"},
+			"all (3)":    {"$4.00", "2h00m", "20m"},
+		}},
+	}
+	for _, c := range cases {
+		m := foldModel(t, func(o *Options) { o.Source = &fakeSource{tickets: c.fleet} })
+		m, _ = send(m, tea.WindowSizeMsg{Width: c.width, Height: 20})
+		v := m.View()
+		cols := colStarts(t, v, "COST", "TIME", "AGENT")
+		for prefix, want := range c.rows {
+			var l string
+			for _, x := range strings.Split(v, "\n") {
+				if strings.HasPrefix(strings.TrimLeft(x, "> "), prefix) {
+					l = x
+				}
+			}
+			if l == "" {
+				t.Fatalf("width %d: no %q row in:\n%s", c.width, prefix, v)
+			}
+			r := []rune(l)
+			for i, col := range cols {
+				if col >= len(r) || !strings.HasPrefix(string(r[col:]), want[i]) {
+					t.Errorf("width %d: %q lacks %q at column %d:\n%s", c.width, prefix, want[i], col, v)
+				}
+			}
+		}
+	}
+}
+
+func TestAtANarrowWidthTheTimeColumnGoesAndTheTotalsStayAligned(t *testing.T) {
+	m, _ := send(foldModel(t), tea.WindowSizeMsg{Width: 60, Height: 20})
+	v := m.View()
+	if strings.Contains(strings.Split(v, "\n")[1], "TIME") {
+		t.Fatalf("TIME stays at 60 columns:\n%s", v)
+	}
+	cols := colStarts(t, v, "COST")
+	for _, x := range strings.Split(v, "\n") {
+		if r := []rune(x); strings.Contains(x, "$4.12") && !strings.HasPrefix(string(r[cols[0]:]), "$4.12") {
+			t.Errorf("COST misaligned:\n%s", v)
+		}
+	}
+}
+
+// aligned checks that COST (and AGENT when named) cells of a ticket row, a group header
+// and the footer start under their column names.
+func TestDroppedColumnsKeepHeaderTicketAndFooterRowsAligned(t *testing.T) {
+	cases := []struct {
+		width       int
+		time, agent bool // which columns are left
+	}{{120, true, true}, {80, false, true}, {60, false, false}}
+	for _, c := range cases {
+		m, _ := send(foldModel(t), tea.WindowSizeMsg{Width: c.width, Height: 20})
+		v := m.View()
+		head := strings.Split(v, "\n")[1]
+		if strings.Contains(head, "TIME") != c.time || strings.Contains(head, "AGENT ") != c.agent {
+			t.Fatalf("width %d: TIME shown=%v AGENT shown=%v, want %v %v:\n%s", c.width, strings.Contains(head, "TIME"), strings.Contains(head, "AGENT "), c.time, c.agent, v)
+		}
+		check := func(prefix, name, want string) {
+			var l string
+			for _, x := range strings.Split(v, "\n") {
+				if strings.HasPrefix(strings.TrimLeft(x, "> "), prefix) {
+					l = x
+				}
+			}
+			col := colStarts(t, v, name)[0]
+			r := []rune(l)
+			if l == "" || col >= len(r) || !strings.HasPrefix(string(r[col:]), want) {
+				t.Errorf("width %d: %q lacks %q under %s:\n%s", c.width, prefix, want, name, v)
+			}
+		}
+		check("i1", "COST", "$2.00")
+		check("▾ implement (2)", "COST", "$4.12")
+		check("all (5)", "COST", "$8.12")
+		if c.agent {
+			check("i1", "AGENT", "50m")
+			check("▾ implement (2)", "AGENT", "1h20m")
+			check("all (5)", "AGENT", "1h40m")
+		}
+		if c.time {
+			check("i1", "TIME", "2h00m")
+			check("all (5)", "TIME", "2h00m")
+		}
 	}
 }
