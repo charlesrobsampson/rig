@@ -70,6 +70,9 @@ type ServiceSummary struct {
 	// absent, not zero, when the harness does not report cost.
 	CostUSD  *float64 `json:"cost_usd,omitempty"`
 	HostPort int      `json:"host_port,omitempty"`
+	// IdleSince is when the agent last became idle; present only while its state is
+	// idle and state records the time.
+	IdleSince *time.Time `json:"idle_since,omitempty"`
 }
 
 type TicketGetParams struct {

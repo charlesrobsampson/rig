@@ -277,6 +277,10 @@ func (r *Registry) load(id string) api.TicketGetResult {
 					usd := ss.Agent.Cost.USD
 					summary.CostUSD = &usd
 				}
+				if ss.Agent.State == domain.AgentIdle && !ss.Agent.IdleSince.IsZero() {
+					since := ss.Agent.IdleSince
+					summary.IdleSince = &since
+				}
 			}
 			res.Summary.Services = append(res.Summary.Services, summary)
 		}
