@@ -52,7 +52,7 @@ func eventsDaemon(t *testing.T, home string) *events.Bus {
 
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(testkit.WaitLimit)
 	for !cond() {
 		select {
 		case <-deadline:
@@ -74,7 +74,7 @@ func streamEvents(t *testing.T, args ...string) (stdout, stderr *lockedBuffer, s
 		select {
 		case c := <-code:
 			return c
-		case <-time.After(5 * time.Second):
+		case <-time.After(testkit.WaitLimit):
 			t.Fatal("rig events did not exit")
 			return -1
 		}
@@ -140,7 +140,7 @@ func TestEventsJSONPrintsOneEventPerLine(t *testing.T) {
 func TestEventsExitsWithAnErrorWhenTheDaemonGoesAway(t *testing.T) {
 	home := rigEnv(t)
 	srvDone := make(chan struct{})
-	bus := events.NewBus(testkit.NewFakeClock(time.Now()), 0)
+	bus := events.NewBus(testkit.NewFakeClock(time.Now()), 0) // the fake clock starts at real now so it is not before the daemon records real times; no elapsed time is compared
 	srv, err := daemon.Listen(daemon.Options{SocketPath: filepath.Join(home, "rigd.sock"), PIDPath: filepath.Join(home, "rigd.pid"), Version: "test"})
 	if err != nil {
 		t.Fatal(err)
@@ -180,7 +180,7 @@ func watchWith(t *testing.T, d deps, args ...string) (stdout *lockedBuffer, stop
 		select {
 		case c := <-code:
 			return c
-		case <-time.After(5 * time.Second):
+		case <-time.After(testkit.WaitLimit):
 			t.Fatal("rig watch did not exit")
 			return -1
 		}

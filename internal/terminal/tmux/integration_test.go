@@ -5,6 +5,7 @@ package tmux_test
 import (
 	"context"
 	"fmt"
+	"github.com/charlesrobsampson/rig/internal/testkit"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,7 +25,7 @@ func TestTheBackendMeetsTheContractAgainstRealTmux(t *testing.T) {
 	}
 	ctx := context.Background()
 	terminaltest.Run(t, func(t *testing.T) terminaltest.Subject {
-		socket := fmt.Sprintf("rig-itest-%d-%d", os.Getpid(), time.Now().UnixNano()%100000)
+		socket := fmt.Sprintf("rig-itest-%d-%d", os.Getpid(), time.Now().UnixNano()%100000) // uniqueness of a name, not a duration
 		b := tmux.New(tmux.Options{Socket: socket})
 		t.Cleanup(func() { exec.Command("tmux", "-L", socket, "kill-server").Run() })
 		return terminaltest.Subject{
@@ -47,19 +48,14 @@ func realTmux(t *testing.T) *tmux.Backend {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
-	socket := fmt.Sprintf("rig-itest-%d-%d", os.Getpid(), time.Now().UnixNano()%100000)
+	socket := fmt.Sprintf("rig-itest-%d-%d", os.Getpid(), time.Now().UnixNano()%100000) // uniqueness of a name, not a duration
 	t.Cleanup(func() { exec.Command("tmux", "-L", socket, "kill-server").Run() })
 	return tmux.New(tmux.Options{Socket: socket})
 }
 
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		if cond() {
-			return
-		}
-	}
-	t.Fatalf("timed out waiting for %s", what)
+	testkit.Eventually(t, what, cond)
 }
 
 func TestAFinishedPaneIsKeptWithItsExitStatus(t *testing.T) {

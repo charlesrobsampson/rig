@@ -240,3 +240,22 @@ func TestFakeClockCallbackMayScheduleMoreWork(t *testing.T) {
 		t.Errorf("log = %v, want %v (follow-up due inside the same Advance)", log, want)
 	}
 }
+
+func TestBlockUntilWaitsForTimersToBeArmedAndNextWaitSaysHowFar(t *testing.T) {
+	c := testkit.NewFakeClock(time.Unix(0, 0))
+	if _, ok := c.NextWait(); ok {
+		t.Fatal("NextWait reported a timer on an empty clock")
+	}
+	go func() {
+		c.NewTimer(5 * time.Second)
+		c.NewTimer(2 * time.Second)
+	}()
+	c.BlockUntil(t, 2)
+	if wait, ok := c.NextWait(); !ok || wait != 2*time.Second {
+		t.Errorf("NextWait = %s, %v; want 2s", wait, ok)
+	}
+	c.Advance(time.Second)
+	if wait, _ := c.NextWait(); wait != time.Second {
+		t.Errorf("NextWait after 1s = %s, want 1s", wait)
+	}
+}

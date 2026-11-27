@@ -183,24 +183,21 @@ func TestRemoveWaitsForContainersToDetach(t *testing.T) {
 	if err := d.RemoveContainer(ctx, "rig-demo-api", true); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(5 * time.Second)
-	for {
+	var err error
+	testkit.Eventually(t, "Remove to finish after the container left", func() bool {
 		select {
-		case err := <-done:
-			if err != nil {
-				t.Fatalf("Remove: %v", err)
-			}
-			if got := names(t, d); len(got) != 0 {
-				t.Errorf("networks left: %v", got)
-			}
-			return
+		case err = <-done:
+			return true
 		default:
+			clock.Advance(250 * time.Millisecond)
+			return false
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("Remove never finished after the container left")
-		}
-		clock.Advance(250 * time.Millisecond)
-		time.Sleep(time.Millisecond)
+	})
+	if err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if got := names(t, d); len(got) != 0 {
+		t.Errorf("networks left: %v", got)
 	}
 }
 
@@ -212,24 +209,21 @@ func TestRemoveGivesUpAndNamesWhatIsStillAttached(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() { done <- m.Remove(ctx, "demo") }()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
+	var err error
+	testkit.Eventually(t, "Remove to give up", func() bool {
 		select {
-		case err := <-done:
-			if !errors.Is(err, docker.ErrInUse) || !strings.Contains(err.Error(), "rig-demo-api") || !strings.Contains(err.Error(), "rig-demo-dep-db") {
-				t.Errorf("error = %v, want ErrInUse naming both containers", err)
-			}
-			if got := names(t, d); len(got) != 1 {
-				t.Errorf("the network should remain: %v", got)
-			}
-			return
+		case err = <-done:
+			return true
 		default:
+			clock.Advance(time.Second)
+			return false
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("Remove never gave up")
-		}
-		clock.Advance(time.Second)
-		time.Sleep(time.Millisecond)
+	})
+	if !errors.Is(err, docker.ErrInUse) || !strings.Contains(err.Error(), "rig-demo-api") || !strings.Contains(err.Error(), "rig-demo-dep-db") {
+		t.Errorf("error = %v, want ErrInUse naming both containers", err)
+	}
+	if got := names(t, d); len(got) != 1 {
+		t.Errorf("the network should remain: %v", got)
 	}
 }
 

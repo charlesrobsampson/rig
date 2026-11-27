@@ -3,6 +3,7 @@ package testkit
 import (
 	"sort"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/charlesrobsampson/rig/internal/clock"
@@ -14,11 +15,14 @@ type FakeClock struct {
 	now    time.Time
 	seq    int
 	timers []*fakeTimer
+	armed  chan struct{} // closed and replaced whenever a timer is armed
 }
 
 var _ clock.Clock = (*FakeClock)(nil)
 
-func NewFakeClock(start time.Time) *FakeClock { return &FakeClock{now: start} }
+func NewFakeClock(start time.Time) *FakeClock {
+	return &FakeClock{now: start, armed: make(chan struct{})}
+}
 
 func (c *FakeClock) Now() time.Time {
 	c.mu.Lock()
@@ -57,6 +61,45 @@ func (c *FakeClock) arm(t *fakeTimer, d time.Duration) {
 		t.pending = true
 		c.timers = append(c.timers, t)
 	}
+	close(c.armed)
+	c.armed = make(chan struct{})
+}
+
+// BlockUntil waits until n timers are pending, so a test advances time only once the
+// code under test has asked for its next wake-up. The deadline only guards against a
+// hung test; it is not part of any assertion.
+func (c *FakeClock) BlockUntil(t testing.TB, n int) {
+	t.Helper()
+	hang := time.After(60 * time.Second)
+	for {
+		c.mu.Lock()
+		have, armed := len(c.timers), c.armed
+		c.mu.Unlock()
+		if have >= n {
+			return
+		}
+		select {
+		case <-armed:
+		case <-hang:
+			t.Fatalf("fake clock: waited for %d pending timers, have %d", n, have)
+		}
+	}
+}
+
+// NextWait is how far away the earliest pending timer is.
+func (c *FakeClock) NextWait() (time.Duration, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.timers) == 0 {
+		return 0, false
+	}
+	next := c.timers[0]
+	for _, t := range c.timers[1:] {
+		if t.when.Before(next.when) {
+			next = t
+		}
+	}
+	return next.when.Sub(c.now), true
 }
 
 // Advance moves time forward, firing everything that comes due on the way. A callback

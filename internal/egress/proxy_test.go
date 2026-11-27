@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/charlesrobsampson/rig/internal/testkit"
 	"io"
 	"net"
 	"net/http"
@@ -70,7 +71,7 @@ func connect(t *testing.T, proxy, target string) (status string, conn net.Conn, 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close() })
-	conn.SetDeadline(time.Now().Add(10 * time.Second))
+	testkit.GuardConn(conn)
 	fmt.Fprintf(conn, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", target, target)
 	br = bufio.NewReader(conn)
 	line, err := br.ReadString('\n')
@@ -101,10 +102,7 @@ func TestAnAllowedHostIsTunneledBothWays(t *testing.T) {
 		t.Errorf("unexpected trailing bytes %q", rest)
 	}
 
-	deadline := time.Now().Add(3 * time.Second)
-	for len(log.all()) == 0 && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
-	}
+	testkit.Eventually(t, "the log entry", func() bool { return len(log.all()) > 0 })
 	if e := log.all(); len(e) != 1 || e[0].Action != "allow" || e[0].Host != fmt.Sprintf("localhost:%d", port) {
 		t.Errorf("log = %+v", e)
 	}
@@ -387,7 +385,7 @@ func TestAForwardRelaysInwardToItsTargetOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	testkit.GuardConn(conn)
 	conn.Write([]byte("hello service"))
 	got := make([]byte, len("hello service"))
 	if _, err := io.ReadFull(conn, got); err != nil || string(got) != "hello service" {
@@ -403,7 +401,7 @@ func TestAForwardRelaysInwardToItsTargetOnly(t *testing.T) {
 	cancel()
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit): // real time: only the hang guard
 		t.Error("ServeForward did not stop when its context ended")
 	}
 }
@@ -422,14 +420,11 @@ func TestAForwardToAnUnreachableTargetClosesTheConnectionAndLogsIt(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	testkit.GuardConn(conn)
 	if n, _ := conn.Read(make([]byte, 1)); n != 0 {
 		t.Error("data came back from a target that could not be reached")
 	}
-	deadline := time.Now().Add(3 * time.Second)
-	for len(log.all()) == 0 && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
-	}
+	testkit.Eventually(t, "the log entry", func() bool { return len(log.all()) > 0 })
 	if e := log.all(); len(e) != 1 || e[0].Action != "forward-failed" || e[0].Host != "service:1" {
 		t.Errorf("log = %+v", e)
 	}

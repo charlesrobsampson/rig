@@ -27,7 +27,7 @@ func next(t *testing.T, sub *events.Subscription) api.Event {
 			t.Fatal("subscription closed")
 		}
 		return ev
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("no event arrived")
 	}
 	return api.Event{}
@@ -116,7 +116,7 @@ func TestASlowSubscriberIsDroppedWithoutBlockingPublishersOrOthers(t *testing.T)
 	}()
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("a slow subscriber blocked the publisher")
 	}
 

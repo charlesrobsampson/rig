@@ -60,7 +60,7 @@ func contractEnv(t *testing.T) (deps, *testkit.FakeTerminal, map[string]string) 
 // typed, for the failure message.
 func typed(term *testkit.FakeTerminal, pane string, want ...string) string {
 	var all []string
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(testkit.WaitLimit) // real time: only the hang guard
 	for {
 		all = all[:0]
 		for _, in := range term.Input(terminal.PaneID(pane)) {
@@ -73,7 +73,7 @@ func typed(term *testkit.FakeTerminal, pane string, want ...string) string {
 				return in.Text
 			}
 		}
-		if !time.Now().Before(deadline) {
+		if !time.Now().Before(deadline) { // real time: only the hang guard
 			return strings.Join(all, " | ")
 		}
 		time.Sleep(20 * time.Millisecond)

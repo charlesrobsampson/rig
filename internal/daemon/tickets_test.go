@@ -167,7 +167,7 @@ func TestTicketNewCreatesTheTicketAndAnnouncesIt(t *testing.T) {
 		if ev.Type != api.EventTicketCreated || ev.Ticket != "demo" {
 			t.Errorf("event = %s for %q, want ticket.created for demo", ev.Type, ev.Ticket)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("no ticket.created event was published")
 	}
 }

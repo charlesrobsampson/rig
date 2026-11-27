@@ -84,7 +84,7 @@ func (r *reviewRig) record(service, kind, text string, data any) error {
 	if data == nil {
 		raw = nil
 	}
-	if err := journal.Append(r.path, api.JournalRecord{At: time.Now().UTC(), Ticket: "demo", Service: service, Source: api.JournalSourceContainer, Kind: kind, Text: text, Data: raw}); err != nil {
+	if err := journal.Append(r.path, api.JournalRecord{At: time.Now().UTC(), Ticket: "demo", Service: service, Source: api.JournalSourceContainer, Kind: kind, Text: text, Data: raw}); err != nil { // a record timestamp, not a duration
 		r.t.Fatal(err)
 	}
 	err := r.lc.ReviewRecord("demo", service, kind, text, raw)

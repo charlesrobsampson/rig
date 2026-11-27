@@ -35,7 +35,7 @@ func TestTheFakeAgentReceivesTheExactTextThroughRealTmux(t *testing.T) {
 	script := filepath.Join(work, "script.txt")
 	os.WriteFile(script, []byte("wait-input "+received+"\n"), 0o600)
 
-	socket := fmt.Sprintf("rig-itest-%d-%d", os.Getpid(), time.Now().UnixNano()%100000)
+	socket := fmt.Sprintf("rig-itest-%d-%d", os.Getpid(), time.Now().UnixNano()%100000) // uniqueness of a name, not a duration
 	backend := tmux.New(tmux.Options{Socket: socket})
 	t.Cleanup(func() { exec.Command("tmux", "-L", socket, "kill-server").Run() })
 	pane, err := backend.Spawn(ctx, terminal.SpawnSpec{Ticket: "demo", Service: "api", Dir: work, Command: []string{bin, "-script", script}})
@@ -60,15 +60,8 @@ func TestTheFakeAgentReceivesTheExactTextThroughRealTmux(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "[rig] " + text
-	deadline := time.Now().Add(10 * time.Second)
-	for {
+	testkit.Eventually(t, fmt.Sprintf("the agent to receive %q", want), func() bool {
 		raw, _ := os.ReadFile(received)
-		if strings.TrimRight(string(raw), "\n") == want {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the agent received %q, want %q", raw, want)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+		return strings.TrimRight(string(raw), "\n") == want
+	})
 }

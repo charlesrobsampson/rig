@@ -338,16 +338,10 @@ esac
 
 func waitForFile(t *testing.T, path string) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if _, err := os.Stat(path); err == nil {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for %s", path)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	testkit.Eventually(t, path, func() bool {
+		_, err := os.Stat(path)
+		return err == nil
+	})
 }
 
 func TestReadyStartsTheServerOnceAndFindsItsSocket(t *testing.T) {
@@ -388,7 +382,7 @@ func TestReadyGivesUpWhenTheServerNeverComesUp(t *testing.T) {
 
 	result := make(chan error, 1)
 	go func() { result <- b.Ready(ctx) }()
-	deadline := time.After(10 * time.Second)
+	deadline := time.After(testkit.WaitLimit)
 	for {
 		select {
 		case err := <-result:
@@ -527,13 +521,13 @@ func TestClosingAPaneRemovesAScriptItNeverRan(t *testing.T) {
 func TestReadySweepsOnlyOldLaunchScripts(t *testing.T) {
 	fake := startFakeHerdr(t)
 	scripts := t.TempDir()
-	clock := testkit.NewFakeClock(time.Now())
+	clock := testkit.NewFakeClock(time.Now()) // a start time for the fake clock; no elapsed time is compared
 	b := herdr.New(herdr.Options{Session: "rig", Socket: fake.path, ScriptDir: scripts, Clock: clock})
 	old, recent, other := filepath.Join(scripts, "rig-launch111"), filepath.Join(scripts, "rig-launch222"), filepath.Join(scripts, "unrelated")
 	for _, d := range []string{old, recent, other} {
 		os.Mkdir(d, 0o700)
 	}
-	longAgo := time.Now().Add(-2 * time.Hour)
+	longAgo := time.Now().Add(-2 * time.Hour) // a file mtime two hours back, far from any threshold
 	os.Chtimes(old, longAgo, longAgo)
 	os.Chtimes(other, longAgo, longAgo)
 

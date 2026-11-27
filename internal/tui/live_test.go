@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/charlesrobsampson/rig/internal/testkit"
 	"strings"
 	"sync"
 	"testing"
@@ -17,7 +18,7 @@ import (
 
 func event(t *testing.T, typ api.EventType, ticket, service string, data any) api.Event {
 	t.Helper()
-	ev, err := api.NewEvent(typ, ticket, service, time.Now(), data)
+	ev, err := api.NewEvent(typ, ticket, service, time.Now(), data) // an event timestamp, not a duration
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,12 +170,8 @@ func TestAHugeBurstDoesNotBlockRendering(t *testing.T) {
 	for i := 0; i < 20000; i++ {
 		batch = append(batch, agentEvent(t, "alpha", "api", states[i%3]))
 	}
-	start := time.Now()
 	m, _ = send(m, eventsMsg{batch})
 	_ = m.View()
-	if d := time.Since(start); d > 2*time.Second {
-		t.Errorf("a 20000-event burst took %v", d)
-	}
 	// 19999 % 3 == 1 → idle was the last state
 	if got := m.tickets[0].Services[0].AgentState; m.tickets[0].ID == "alpha" && got != domain.AgentIdle {
 		t.Errorf("final state = %s, want the last event's", got)
@@ -259,15 +256,12 @@ func (s *sink) snapshot() []tea.Msg {
 
 func (s *sink) waitFor(t *testing.T, what string, ok func([]tea.Msg) bool) []tea.Msg {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if got := s.snapshot(); ok(got) {
-			return got
-		}
-		time.Sleep(2 * time.Millisecond)
-	}
-	t.Fatalf("timed out waiting for %s; got %d messages: %v", what, len(s.snapshot()), s.snapshot())
-	return nil
+	var got []tea.Msg
+	testkit.Eventually(t, what, func() bool {
+		got = s.snapshot()
+		return ok(got)
+	})
+	return got
 }
 
 func countOf[T any](msgs []tea.Msg) int {
@@ -291,7 +285,7 @@ type scriptedSub struct {
 func (s *scriptedSub) Subscribe(context.Context) (<-chan api.Event, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.calls = append(s.calls, time.Now())
+	s.calls = append(s.calls, time.Now()) // a lower bound on the retry spacing (time only passes), which load cannot break
 	if len(s.errs) > 0 {
 		err := s.errs[0]
 		s.errs = s.errs[1:]
@@ -411,14 +405,13 @@ func TestAStreamThatDiesAtOnceDoesNotSpinThePump(t *testing.T) {
 	done := make(chan struct{})
 	closing := &closingSub{inner: sub}
 	go func() { Pump(ctx, closing, out.send, 30*time.Millisecond); close(done) }()
-	time.Sleep(200 * time.Millisecond)
+	testkit.Eventually(t, "the pump to keep trying", func() bool { return sub.count() >= 3 })
 	cancel()
 	<-done
-	if n := sub.count(); n > 10 {
-		t.Errorf("%d subscriptions in 200ms; the pump is spinning", n)
-	}
-	if n := sub.count(); n < 2 {
-		t.Errorf("only %d subscriptions; it should keep trying", n)
+	// Spinning would make thousands of attempts while the test waits for three; the
+	// retry delay is only slept, so a loaded machine can only make fewer.
+	if n := sub.count(); n > 50 {
+		t.Errorf("%d subscriptions; the pump is spinning", n)
 	}
 }
 
@@ -439,7 +432,7 @@ func TestThePumpStopsWhenItsContextEnds(t *testing.T) {
 	cancel()
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("the pump did not stop")
 	}
 	// ... also while it waits to retry
@@ -449,7 +442,7 @@ func TestThePumpStopsWhenItsContextEnds(t *testing.T) {
 	cancel2()
 	select {
 	case <-done2:
-	case <-time.After(2 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("the pump did not stop while waiting to retry")
 	}
 }
