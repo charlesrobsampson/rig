@@ -342,7 +342,7 @@ func TestCancellationInterruptsWaiting(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("error = %v, want context.Canceled", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("wait-input ignored cancellation")
 	}
 

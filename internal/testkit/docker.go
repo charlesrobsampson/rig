@@ -37,6 +37,7 @@ type FakeDocker struct {
 	execs  map[string][]docker.ExecSpec
 
 	healthImages map[string]bool
+	onStart      map[string][]func(c *fakeCtr) // by container name; run in order when it starts, lock held
 	builds       map[string]int
 	lastBuild    docker.BuildSpec
 	buildHook    func(docker.BuildSpec) error
@@ -60,7 +61,7 @@ type fakeCtr struct {
 func NewFakeDocker() *FakeDocker {
 	return &FakeDocker{
 		nets: map[string]*fakeNet{}, ctrs: map[string]*fakeCtr{}, images: map[string]bool{},
-		nextPort: 40000, changed: make(chan struct{}), execs: map[string][]docker.ExecSpec{}, healthImages: map[string]bool{}, builds: map[string]int{},
+		nextPort: 40000, changed: make(chan struct{}), execs: map[string][]docker.ExecSpec{}, healthImages: map[string]bool{}, onStart: map[string][]func(*fakeCtr){}, builds: map[string]int{},
 	}
 }
 
@@ -522,8 +523,42 @@ func (f *FakeDocker) StartContainer(ctx context.Context, nameOrID string) error 
 	if c.spec.Healthcheck != nil || f.healthImages[c.spec.Image] {
 		c.info.Health = docker.HealthStarting
 	}
+	for _, hook := range f.onStart[c.info.Name] {
+		hook(c)
+	}
 	f.broadcast()
 	return nil
+}
+
+// ExitOnStart makes the named container's process print text and exit with code as
+// soon as it is started, so a test need not race a goroutine against the start.
+func (f *FakeDocker) ExitOnStart(name, text string, code int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onStart[name] = append(f.onStart[name], func(c *fakeCtr) {
+		c.logs = append(c.logs, strings.Split(strings.TrimSuffix(text, "\n"), "\n")...)
+		f.stop(c, code)
+	})
+}
+
+// PrintOnStart makes the named container's process print lines as soon as it is
+// started, so they exist before anything first inspects or reads it.
+func (f *FakeDocker) PrintOnStart(name string, lines ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onStart[name] = append(f.onStart[name], func(c *fakeCtr) { c.logs = append(c.logs, lines...) })
+}
+
+// HealthOnStart moves the named container to h as soon as it is started (it must have
+// a healthcheck, as with SetHealth).
+func (f *FakeDocker) HealthOnStart(name string, h docker.Health) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onStart[name] = append(f.onStart[name], func(c *fakeCtr) {
+		if c.info.Health != docker.HealthNone {
+			c.info.Health = h
+		}
+	})
 }
 
 func (f *FakeDocker) stop(c *fakeCtr, code int) {

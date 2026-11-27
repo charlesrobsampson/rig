@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,12 +93,7 @@ func TestLogsFollowStreamsUntilInterrupted(t *testing.T) {
 
 	wait := func(want string) {
 		t.Helper()
-		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
-			if strings.Contains(out.String(), want) {
-				return
-			}
-		}
-		t.Fatalf("never saw %q in %q", want, out.String())
+		testkit.Eventually(t, fmt.Sprintf("%q in the output", want), func() bool { return strings.Contains(out.String(), want) })
 	}
 	wait("svc1 | first")
 	dk.Print("rig-demo-svc1", "second, printed while following")
@@ -108,7 +104,7 @@ func TestLogsFollowStreamsUntilInterrupted(t *testing.T) {
 		if code != 0 {
 			t.Errorf("exit code %d after Ctrl-C, stderr %q", code, errOut.String())
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("logs -f did not stop")
 	}
 }

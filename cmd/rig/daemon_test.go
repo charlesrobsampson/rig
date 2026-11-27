@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/charlesrobsampson/rig/internal/testkit"
 	"os"
 	"path/filepath"
 	"strings"
@@ -72,7 +73,7 @@ func (d *inProcessDaemon) shutdown(t *testing.T) {
 	for _, c := range done {
 		select {
 		case <-c:
-		case <-time.After(5 * time.Second):
+		case <-time.After(testkit.WaitLimit):
 			t.Error("daemon did not exit")
 		}
 	}

@@ -98,19 +98,17 @@ func (f *fixture) sendAsync(service, text string) <-chan outcome {
 // finish moves the fake clock forward until the send is over.
 func (f *fixture) finish(done <-chan outcome) outcome {
 	f.t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
+	var o outcome
+	testkit.Eventually(f.t, "the send to finish", func() bool {
 		select {
-		case o := <-done:
-			return o
+		case o = <-done:
+			return true
 		default:
+			f.clock.Advance(100 * time.Millisecond)
+			return false
 		}
-		if time.Now().After(deadline) {
-			f.t.Fatal("the send never finished")
-		}
-		f.clock.Advance(100 * time.Millisecond)
-		time.Sleep(time.Millisecond)
-	}
+	})
+	return o
 }
 
 func (f *fixture) send(text string) outcome { return f.finish(f.sendAsync("api", text)) }
@@ -227,13 +225,7 @@ func TestNothingAtAllIsTypedIntoABlockedAgent(t *testing.T) {
 	t.Run("a prompt appears while the text is going in", func(t *testing.T) {
 		f := newFixture(t, domain.AgentWorking)
 		done := f.sendAsync("api", "hello")
-		deadline := time.Now().Add(5 * time.Second)
-		for len(f.term.Input(f.pane)) == 0 { // the text is in, the pause has begun
-			if time.Now().After(deadline) {
-				t.Fatal("the text was never typed")
-			}
-			time.Sleep(time.Millisecond)
-		}
+		testkit.Eventually(t, "the text to be typed", func() bool { return len(f.term.Input(f.pane)) > 0 }) // the text is in, the pause has begun
 		f.setAgentState(domain.AgentBlocked)
 		o := f.finish(done)
 		if apiCode(t, o.err) != api.CodeBlocked || !strings.Contains(o.err.Error(), "not submitted") {
@@ -414,7 +406,7 @@ func TestACancelledContextStopsAWaitingMessage(t *testing.T) {
 		if !errors.Is(err, context.Canceled) || len(f.term.Input(f.pane)) != 0 {
 			t.Errorf("error = %v, input %v", err, f.term.Input(f.pane))
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("the message kept waiting after cancellation")
 	}
 }

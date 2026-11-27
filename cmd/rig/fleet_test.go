@@ -56,7 +56,7 @@ func startDaemon(t *testing.T, config string) {
 		cancel()
 		select {
 		case <-done:
-		case <-time.After(5 * time.Second):
+		case <-time.After(testkit.WaitLimit):
 			t.Error("daemon did not exit")
 		}
 	})

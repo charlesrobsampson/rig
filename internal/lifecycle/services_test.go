@@ -254,17 +254,11 @@ func TestAnUnhealthyServiceIsAnErrorWithItsLastLogLines(t *testing.T) {
 	withService(t, f.create("demo", repo), repo, true, apiService)
 
 	// the container prints something before the check gives up
-	go func() {
-		for { // wait for the container to exist
-			if _, err := dk.InspectContainer(ctx, "rig-demo-svc1"); err == nil {
-				break
-			}
-			time.Sleep(time.Millisecond)
-		}
-		for i := 0; i < 200; i++ {
-			dk.Print("rig-demo-svc1", "booting step "+fmtInt(i))
-		}
-	}()
+	var lines []string
+	for i := 0; i < 200; i++ {
+		lines = append(lines, "booting step "+fmtInt(i))
+	}
+	dk.PrintOnStart("rig-demo-svc1", lines...)
 	res := f.mustStart("demo", domain.SandboxContainer)
 	c := containerByService(res)["svc1"]
 	if c.Running || !strings.Contains(c.Error, "not healthy after") || !strings.Contains(c.Error, "/healthz") || !strings.Contains(c.Error, "last log lines") {
@@ -284,16 +278,7 @@ func TestAServiceThatExitsDuringStartupIsAnError(t *testing.T) {
 	probe.set(false)
 	repo := testkit.NewRepo(t)
 	withService(t, f.create("demo", repo), repo, true, apiService)
-	go func() {
-		for i := 0; i < 500; i++ {
-			if _, err := dk.InspectContainer(ctx, "rig-demo-svc1"); err == nil {
-				dk.Print("rig-demo-svc1", "Error: cannot find module './server.js'")
-				dk.Exit("rig-demo-svc1", 1)
-				return
-			}
-			time.Sleep(time.Millisecond)
-		}
-	}()
+	dk.ExitOnStart("rig-demo-svc1", "Error: cannot find module './server.js'", 1)
 	c := containerByService(f.mustStart("demo", domain.SandboxContainer))["svc1"]
 	if c.Running || !strings.Contains(c.Error, "exited with code 1") || !strings.Contains(c.Error, "cannot find module") {
 		t.Errorf("container = %+v", c)

@@ -300,7 +300,7 @@ func TestTheTUIReceivesLiveEventsFromTheDaemon(t *testing.T) {
 		if ev.Type != api.EventTicketCreated || ev.Ticket != "second" {
 			t.Errorf("event = %+v", ev)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("no event arrived")
 	}
 	cancel()
@@ -309,7 +309,7 @@ func TestTheTUIReceivesLiveEventsFromTheDaemon(t *testing.T) {
 		for ok { // drain whatever was queued; the channel must then close
 			_, ok = <-ch
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testkit.WaitLimit):
 		t.Fatal("the channel did not close after cancelling")
 	}
 }
@@ -322,7 +322,7 @@ func TestThePumpFeedsTheModelFromARealDaemon(t *testing.T) {
 	msgs := make(chan tea.Msg, 100)
 	go tui.Pump(ctx, source(d), func(m tea.Msg) { msgs <- m }, 50*time.Millisecond)
 
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(testkit.WaitLimit)
 	live := false
 	for !live {
 		select {

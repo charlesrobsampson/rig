@@ -46,7 +46,7 @@ func (f *watchFixture) start() {
 		cancel()
 		select {
 		case <-done:
-		case <-time.After(5 * time.Second):
+		case <-time.After(testkit.WaitLimit):
 			f.t.Error("the watcher did not stop")
 		}
 	}
@@ -73,22 +73,22 @@ func (f *watchFixture) logLine(id string, e egress.Entry) {
 // next waits for an egress.denied event, advancing the fake clock so the watcher scans.
 func (f *watchFixture) next() (api.Event, api.EgressDeniedData) {
 	f.t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
+	var got api.Event
+	var data api.EgressDeniedData
+	testkit.Eventually(f.t, "an egress.denied event", func() bool {
 		select {
 		case ev := <-f.sub.Events():
 			if ev.Type == api.EventEgressDenied {
-				var d api.EgressDeniedData
-				json.Unmarshal(ev.Data, &d)
-				return ev, d
+				json.Unmarshal(ev.Data, &data)
+				got = ev
+				return true
 			}
 		default:
 			f.clock.Advance(time.Second)
-			time.Sleep(2 * time.Millisecond)
 		}
-	}
-	f.t.Fatal("no egress.denied event arrived")
-	return api.Event{}, api.EgressDeniedData{}
+		return false
+	})
+	return got, data
 }
 
 func (f *watchFixture) noMore() {

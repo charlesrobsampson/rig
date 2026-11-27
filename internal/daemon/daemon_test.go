@@ -79,7 +79,7 @@ func (h *harness) wait(t *testing.T) error {
 	h.once.Do(func() {
 		select {
 		case h.err = <-h.done:
-		case <-time.After(5 * time.Second):
+		case <-time.After(testkit.WaitLimit):
 			t.Error("server did not shut down")
 		}
 	})
@@ -100,7 +100,7 @@ func dial(t *testing.T, path string) *client {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close() })
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	testkit.GuardConn(conn)
 	return &client{conn: conn, enc: api.NewEncoder(conn), dec: api.NewDecoder(conn)}
 }
 
@@ -319,7 +319,7 @@ func TestStreamingHandlers(t *testing.T) {
 		c.conn.Close()
 		select {
 		case <-cancelled:
-		case <-time.After(5 * time.Second):
+		case <-time.After(testkit.WaitLimit):
 			t.Fatal("stream handler kept running after the client left")
 		}
 	})
@@ -345,7 +345,7 @@ func TestConcurrentClients(t *testing.T) {
 				return
 			}
 			defer conn.Close()
-			conn.SetDeadline(time.Now().Add(5 * time.Second))
+			testkit.GuardConn(conn)
 			c := &client{conn: conn, enc: api.NewEncoder(conn), dec: api.NewDecoder(conn)}
 			if resp := c.call(t, api.MethodHello, api.HelloParams{Client: "c"}); resp.Err() != nil {
 				t.Error(resp.Err())

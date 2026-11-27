@@ -154,7 +154,7 @@ func TestStopWithAForeignContainerStillAttachedReportsItAndKeepsTheCheckout(t *t
 
 	done := make(chan error, 1)
 	go func() { _, err := f.stop("demo", false, false); done <- err }()
-	deadline := time.After(30 * time.Second)
+	deadline := time.After(testkit.WaitLimit)
 	for {
 		clock.Advance(time.Second) // the wait for the container to detach runs on the fake clock
 		select {
