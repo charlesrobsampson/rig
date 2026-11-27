@@ -118,6 +118,10 @@ of the same daemon API as the CLI, and updates live from the daemon's event stre
   kept per vessel until rig exits. A line under the table totals the vessel: tickets, cost,
   agent time (the time agents spent working, added up, so parallel tickets count each) and
   the span from the first ticket's creation to now (or to the last done).
+  The lights, one per service: `●` working, `○` idle, `!` blocked, `✕` exited, `·` unknown.
+  A one-line legend sits under the table on a terminal 24 rows or taller, and `?` lists them
+  under "Lights". An exited agent on a ticket that is not done or stopped shows in yellow: it
+  needs you (`rig start`).
 - **Ticket view** (`enter`). Tabs for the plan, tasks (with progress), contract, diff,
   logs and manual tests, which you tick off and sign off.
 - **Actions.** `a` approve, `v` move to review, `p` push, `x` stop, `t` attach (the TUI
@@ -125,7 +129,8 @@ of the same daemon API as the CLI, and updates live from the daemon's event stre
   change. Anything destructive asks first. `?` shows every key.
 - **The fleet.** With more than one vessel (`rig fleet`) and none chosen, bare `rig`
   starts with a picker: `j`/`k`, `/` to search, `enter` to open (a stopped vessel's daemon
-  starts). `F` goes back to it.
+  starts). `F` goes back to it. Each vessel shows what its tickets have spent (done ones
+  included), and `this month` for the selected one.
 - **Straight to a view.** `rig -V osmo -t os-3 --tab diff` opens that vessel, ticket and tab.
   `Y` anywhere copies the command for what is on screen, to come back to it or hand it on.
 
@@ -138,7 +143,7 @@ by name, and the set of them is your **fleet**:
 
 ```sh
 rig fleet add osmo ~/osmo-plan/rig/config.json
-rig fleet                 # every vessel: daemon running or not, tickets
+rig fleet                 # every vessel: daemon running or not, tickets, spend
 rig -V osmo list          # or RIG_VESSEL=osmo; agents always name their vessel
 rig list --all            # the tickets of every running vessel
 rig list --group          # the same table under one line per phase, done as one line (--all-done lists it)

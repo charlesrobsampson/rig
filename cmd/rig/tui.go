@@ -103,6 +103,7 @@ func (a *app) pickVessel(cmd *cobra.Command) (name string, many bool, err error)
 		if info.Tickets != nil {
 			row.Tickets = info.Standing
 		}
+		row.Spend, row.SpendMonth = dollars(info.SpendUSD), dollars(info.SpendMonthUSD)
 		rows[i] = row
 	}
 	pick := tui.PickVessel

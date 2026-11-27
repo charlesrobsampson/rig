@@ -152,3 +152,21 @@ func TestFGoesBackToTheFleetOnlyWhenThereIsAnother(t *testing.T) {
 		t.Errorf("the header does not name the vessel:\n%s", v)
 	}
 }
+
+func TestThePickerShowsSpendAndThisMonthsForTheSelectedVessel(t *testing.T) {
+	p := NewPicker([]VesselRow{
+		{Name: "osmo", Status: "stopped", Tickets: "-", Spend: "$12.34", SpendMonth: "$1.20"},
+		{Name: "portal", Status: "running (v1)", Tickets: "2", Spend: "$0.00", SpendMonth: "$0.00"},
+	})
+	p, _ = p.send(tea.WindowSizeMsg{Width: 80, Height: 20})
+	v := p.View()
+	for _, want := range []string{"SPEND", "$12.34", "$0.00", "$1.20 this month"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("picker lacks %q:\n%s", want, v)
+		}
+	}
+	p, _ = p.send(key("j"))
+	if v := p.View(); strings.Contains(v, "$1.20 this month") || !strings.Contains(v, "$0.00 this month") {
+		t.Errorf("detail line does not follow the selection:\n%s", v)
+	}
+}
