@@ -74,9 +74,17 @@ func TestAnAgentStateEventMovesTheLightWithoutAskingTheDaemon(t *testing.T) {
 	if src.calls != calls {
 		t.Error("the fleet was re-read for an agent state event")
 	}
-	// the blocked ticket now sorts to the top and the other lights are unchanged
-	if lines := strings.Split(v, "\n"); !strings.Contains(lines[2], "alpha") {
-		t.Errorf("blocked ticket is not first:\n%s", v)
+	// tickets stay under their phase header; the other lights are unchanged
+	if h, a := strings.Index(v, "implement (1)"), strings.Index(v, "alpha"); h < 0 || a < h {
+		t.Errorf("alpha is not under the implement header:\n%s", v)
+	}
+	// and within one phase the blocked ticket sorts to the top
+	for i := range m.tickets {
+		m.tickets[i].Phase = domain.PhaseImplement
+	}
+	m.dash.set(m.tickets)
+	if lines := strings.Split(m.View(), "\n"); !strings.Contains(lines[3], "alpha") {
+		t.Errorf("blocked ticket is not first in its group:\n%s", m.View())
 	}
 	if !strings.Contains(v, "○ web") {
 		t.Errorf("another service's light changed:\n%s", v)
@@ -220,7 +228,7 @@ func TestADropWhileTheDaemonIsGoneShowsTheDownStateAndRecovers(t *testing.T) {
 func TestEventsForTheOpenTicketReloadItsTab(t *testing.T) {
 	m, src := liveModel(t)
 	src.files = map[string]string{"contract.md": "# Contract v1\n"}
-	m = press(t, m, "g", "enter", "3")
+	m = press(t, m, "G", "enter", "3") // alpha, the last ticket: beta is in plan, above it
 	if !strings.Contains(m.View(), "Contract v1") {
 		t.Fatalf("view:\n%s", m.View())
 	}

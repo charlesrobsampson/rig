@@ -24,9 +24,9 @@ func ids(d *dashboard) string {
 	return strings.Join(out, ",")
 }
 
-func TestRowsSortByAttentionThenByID(t *testing.T) {
+func TestRowsSortByAttentionThenByIDWithinAGroup(t *testing.T) {
 	d := &dashboard{}
-	d.set([]api.TicketSummary{
+	fleet := []api.TicketSummary{
 		{ID: "a-quiet", Phase: domain.PhaseImplement, Services: []api.ServiceSummary{svc("api", domain.AgentWorking, 0)}},
 		{ID: "b-gate", Phase: domain.PhasePlan, PendingGate: domain.GatePlanApproval},
 		{ID: "c-error", Error: "ticket.yaml not found"},
@@ -36,7 +36,11 @@ func TestRowsSortByAttentionThenByID(t *testing.T) {
 		{ID: "g-quiet"},
 		{ID: "h-blocked", Services: []api.ServiceSummary{svc("api", domain.AgentBlocked, 0)}},
 		{ID: "i-asked", Phase: domain.PhasePlan, PendingGate: domain.GatePlanApproval, PhaseRequest: &api.PhaseRequestSummary{To: domain.PhaseImplement, Service: "api"}},
-	})
+	}
+	for i := range fleet {
+		fleet[i].Phase = domain.PhaseImplement // one group; groups come first, see the grouping tests
+	}
+	d.set(fleet)
 	if got, want := ids(d), "e-blocked,h-blocked,f-violation,d-contract,c-error,i-asked,b-gate,a-quiet,g-quiet"; got != want {
 		t.Errorf("order = %s\nwant    %s", got, want)
 	}
@@ -141,7 +145,7 @@ func TestNavigationStopsAtTheEnds(t *testing.T) {
 	for _, step := range []struct {
 		key  string
 		want string
-	}{{"k", "a"}, {"up", "a"}, {"j", "b"}, {"down", "c"}, {"j", "c"}, {"j", "c"}, {"g", "a"}, {"G", "c"}, {"home", "a"}, {"end", "c"}} {
+	}{{"k", ""}, {"up", ""}, {"j", "a"}, {"down", "b"}, {"j", "c"}, {"j", "c"}, {"g", "a"}, {"G", "c"}, {"home", "a"}, {"end", "c"}} {
 		switch step.key {
 		case "up":
 			m, _ = send(m, tea.KeyMsg{Type: tea.KeyUp})

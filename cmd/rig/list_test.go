@@ -324,3 +324,55 @@ func TestListShowsAStalledChecker(t *testing.T) {
 		t.Errorf("list:\n%s", out.String())
 	}
 }
+
+func groupedFixture() []api.TicketSummary {
+	cost := func(v float64) *float64 { return &v }
+	t0 := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
+	done := t0.Add(time.Hour)
+	return []api.TicketSummary{
+		{ID: "d1", Title: "old", Phase: domain.PhaseDone, CostUSD: cost(1.5), AgentSeconds: 600, CreatedAt: &t0, DoneAt: &done},
+		{ID: "i1", Title: "one", Phase: domain.PhaseImplement, CostUSD: cost(2), AgentSeconds: 3000, CreatedAt: &t0},
+		{ID: "i2", Title: "two", Phase: domain.PhaseImplement, CostUSD: cost(2.12), AgentSeconds: 1800, CreatedAt: &t0},
+		{ID: "p1", Title: "fresh", Phase: domain.PhasePlan, CreatedAt: &t0},
+	}
+}
+
+func TestListGroupCollapsesDoneToOneLineUnlessAllDone(t *testing.T) {
+	now := time.Date(2026, 11, 20, 11, 0, 0, 0, time.UTC)
+	var out strings.Builder
+	writeGroupedTable(&out, groupedFixture(), now, 0, false)
+	want := []string{"▾ plan (1) · agents 0s", "▾ implement (2) · $4.12 · agents 1h20m", "▸ done (1) · $1.50 · agents 10m", "4 tickets · $5.62 · agents 1h30m · span 2h00m"}
+	last := -1
+	for _, w := range want {
+		i := strings.Index(out.String(), w)
+		if i < last || i < 0 {
+			t.Fatalf("lacks %q in order:\n%s", w, out.String())
+		}
+		last = i
+	}
+	if strings.Contains(out.String(), "d1") || !strings.Contains(out.String(), "i2") || !strings.Contains(out.String(), "AGENT") {
+		t.Errorf("done must be one line, the others listed, with an AGENT column:\n%s", out.String())
+	}
+	out.Reset()
+	writeGroupedTable(&out, groupedFixture(), now, 0, true)
+	if !strings.Contains(out.String(), "▾ done (1)") || !strings.Contains(out.String(), "d1") {
+		t.Errorf("--all-done:\n%s", out.String())
+	}
+}
+
+func TestListGroupFlagsAndTheJSONStayHonest(t *testing.T) {
+	rigEnv(t)
+	d := &inProcessDaemon{}
+	t.Cleanup(func() { d.shutdown(t) })
+	deps := deps{spawner: d.spawn}
+	if _, _, code := rig(t, deps, "list", "--all-done"); code != 2 {
+		t.Errorf("--all-done without --group exited %d, want 2", code)
+	}
+	if _, _, code := rig(t, deps, "list", "--group", "--all"); code != 2 {
+		t.Errorf("--group with --all exited %d, want 2", code)
+	}
+	stdout, _, code := rig(t, deps, "list", "--group")
+	if code != 0 || !strings.Contains(stdout, "no tickets") {
+		t.Errorf("--group with none: %d %q", code, stdout)
+	}
+}

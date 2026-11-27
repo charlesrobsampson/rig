@@ -35,6 +35,8 @@ type Registry struct {
 	base func(domain.Ticket, state.State) []api.BaseInfo
 	// touched, when set, lists the files each service has changed against its base.
 	touched func(domain.Ticket, state.State) []api.TouchedInfo
+	// agentSeconds, when set, supplies the time a ticket's agents spent working.
+	agentSeconds func(domain.Ticket, state.State) int64
 	// aiSummary, when set, supplies a ticket's language-model summary.
 	aiSummary func(id string) *api.SummaryInfo
 	// drift, when set, supplies how a ticket's reality differs from its state.
@@ -110,6 +112,12 @@ func (r *Registry) WithTouched(f func(domain.Ticket, state.State) []api.TouchedI
 // WithDrift makes summaries carry the drift last found for each ticket.
 func (r *Registry) WithDrift(f func(id string) []string) *Registry {
 	r.drift = f
+	return r
+}
+
+// WithAgentSeconds makes summaries carry the time the ticket's agents spent working.
+func (r *Registry) WithAgentSeconds(f func(domain.Ticket, state.State) int64) *Registry {
+	r.agentSeconds = f
 	return r
 }
 
@@ -276,6 +284,9 @@ func (r *Registry) load(id string) api.TicketGetResult {
 			}
 			res.Summary.Services = append(res.Summary.Services, summary)
 		}
+	}
+	if r.agentSeconds != nil && res.Ticket != nil && res.State != nil {
+		res.Summary.AgentSeconds = r.agentSeconds(*res.Ticket, *res.State)
 	}
 	if r.aiSummary != nil {
 		res.Summary.AISummary = r.aiSummary(id)
