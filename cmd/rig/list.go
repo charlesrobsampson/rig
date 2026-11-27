@@ -131,7 +131,7 @@ func writeTicketTable(w io.Writer, tickets []api.TicketSummary, now time.Time, w
 		fmt.Fprintln(w, "no tickets")
 		return
 	}
-	header, rows := ticketRows(tickets, tickets, now, width)
+	header, rows, _ := ticketRows(tickets, tickets, now, width)
 	writeFitted(w, header, rows, width, []int{len(header) - 1, 1})
 }
 
@@ -154,8 +154,7 @@ func writeGroupedTable(w io.Writer, tickets []api.TicketSummary, now time.Time, 
 			shown = append(shown, g.Tickets...)
 		}
 	}
-	header, rows := ticketRows(shown, tickets, now, width)
-	hasPorts := len(header) == 8
+	header, rows, hasPorts := ticketRows(shown, tickets, now, width)
 	var out [][]string
 	next := 0
 	for i, r := range rows {
@@ -184,23 +183,25 @@ func summaryCells(r ticketgroups.Row, hasPorts bool) []string {
 
 // ticketRows is the header and a row per ticket; overlaps are found among all, so a
 // ticket left out of the rows still counts.
-func ticketRows(tickets, all []api.TicketSummary, now time.Time, width int) ([]string, [][]string) {
-	header := []string{"ID", "PHASE", "SERVICES", "COST", "TIME", "AGENT", "PORTS", "TITLE"}
-	rows := make([][]string, len(tickets))
+func ticketRows(tickets, all []api.TicketSummary, now time.Time, width int) (header []string, rows [][]string, hasPorts bool) {
+	header = []string{"ID", "PHASE", "SERVICES", "COST", "TIME", "AGENT", "PORTS", "TITLE"}
+	rows = make([][]string, len(tickets))
 	anyPorts := false
 	overlaps := overlapsOf(all)
 	for i, t := range tickets {
 		ports := ticketgroups.PortsText(t.Services)
 		anyPorts = anyPorts || ports != "-"
-		rows[i] = []string{t.ID, phaseCell(t, overlaps[t.ID]), ticketgroups.ServicesText(t.Services), ticketgroups.CostText(t.CostUSD), ticketgroups.ElapsedText(t, now), ticketgroups.AgentText(t.AgentSeconds), ports, ticketgroups.TitleText(t)}
+		rows[i] = []string{t.ID, phaseCell(t, overlaps[t.ID]), ticketgroups.ServicesText(t.Services), ticketgroups.CostText(ticketgroups.CostOf(t)), ticketgroups.ElapsedText(t, now), ticketgroups.AgentText(t.AgentSeconds), ports, ticketgroups.TitleText(t)}
 	}
+	hasPorts = true
 	if width > 0 && !anyPorts {
+		hasPorts = false
 		header = slices.Delete(header, 6, 7)
 		for i := range rows {
 			rows[i] = slices.Delete(rows[i], 6, 7)
 		}
 	}
-	return header, rows
+	return header, rows, hasPorts
 }
 
 // phaseCell is the phase and what is going on in it, as short notes.

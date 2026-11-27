@@ -107,3 +107,17 @@ func TestTotalsSumAgentTimeButSpanTheElapsedTime(t *testing.T) {
 		t.Errorf("all done: the span ends at the last done, got %ds", got.ElapsedSeconds)
 	}
 }
+
+func TestACostFromTheServicesIsShownAndTotalledTheSame(t *testing.T) {
+	c1, c2 := 1.2, 0.8
+	a := tk("a", domain.PhaseImplement, -1, 0, 0, 0)
+	b := tk("b", domain.PhaseImplement, -1, 0, 0, 0)
+	a.Services = []api.ServiceSummary{{Name: "x", CostUSD: &c1}}
+	b.Services = []api.ServiceSummary{{Name: "x", CostUSD: &c2}}
+	if got := ticketgroups.CostText(ticketgroups.CostOf(a)); got != "$1.20" {
+		t.Errorf("row cost = %s", got)
+	}
+	if r := ticketgroups.TotalRow([]api.TicketSummary{a, b}, t0); r.Cost != "$2.00" {
+		t.Errorf("footer cost = %q, want the sum of what the rows show", r.Cost)
+	}
+}

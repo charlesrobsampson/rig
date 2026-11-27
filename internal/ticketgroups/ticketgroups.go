@@ -38,8 +38,8 @@ func Of(tickets []api.TicketSummary) []Group {
 			by[p] = g
 		}
 		g.Tickets = append(g.Tickets, t)
-		if t.CostUSD != nil {
-			g.CostUSD, g.Costed = g.CostUSD+*t.CostUSD, true
+		if c := CostOf(t); c != nil {
+			g.CostUSD, g.Costed = g.CostUSD+*c, true
 		}
 		g.AgentSeconds += t.AgentSeconds
 	}
@@ -169,6 +169,24 @@ func TitleText(t api.TicketSummary) string {
 	return t.Title + "  ! " + t.Error
 }
 
+// CostOf is a ticket's cost: its cost_usd, else the sum of what its services report,
+// nil when nothing does. Rows and totals both use it, so the totals total what is shown.
+func CostOf(t api.TicketSummary) *float64 {
+	if t.CostUSD != nil {
+		return t.CostUSD
+	}
+	total, any := 0.0, false
+	for _, s := range t.Services {
+		if s.CostUSD != nil {
+			total, any = total+*s.CostUSD, true
+		}
+	}
+	if !any {
+		return nil
+	}
+	return &total
+}
+
 // CostText is a ticket's cost, "-" when no harness reported one.
 func CostText(usd *float64) string {
 	if usd == nil {
@@ -214,8 +232,8 @@ func TotalsOf(tickets []api.TicketSummary, now time.Time) Totals {
 	var first, lastDone time.Time
 	allDone := len(tickets) > 0
 	for _, k := range tickets {
-		if k.CostUSD != nil {
-			t.CostUSD, t.Costed = t.CostUSD+*k.CostUSD, true
+		if c := CostOf(k); c != nil {
+			t.CostUSD, t.Costed = t.CostUSD+*c, true
 		}
 		t.AgentSeconds += k.AgentSeconds
 		if k.CreatedAt != nil && (first.IsZero() || k.CreatedAt.Before(first)) {

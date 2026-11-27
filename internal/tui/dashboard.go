@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/charmbracelet/lipgloss"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -571,36 +570,11 @@ func agentsCellStyled(t api.TicketSummary) string {
 	return strings.Join(parts, "  ")
 }
 
-func portsCell(t api.TicketSummary) string {
-	var ports []string
-	for _, s := range t.Services {
-		if s.HostPort != 0 {
-			ports = append(ports, strconv.Itoa(s.HostPort))
-		}
-	}
-	if len(ports) == 0 {
-		return "-"
-	}
-	return strings.Join(ports, ",")
-}
+func portsCell(t api.TicketSummary) string { return ticketgroups.PortsText(t.Services) }
 
 // costCell is what the ticket's agents have spent, summed, or "-" when no harness has
 // reported a cost (an unreported cost is not shown as $0.00).
-func costCell(t api.TicketSummary) string {
-	if t.CostUSD != nil {
-		return ticketgroups.CostText(t.CostUSD)
-	}
-	total, any := 0.0, false
-	for _, s := range t.Services {
-		if s.CostUSD != nil {
-			total, any = total+*s.CostUSD, true
-		}
-	}
-	if !any {
-		return "-"
-	}
-	return fmt.Sprintf("$%.2f", total)
-}
+func costCell(t api.TicketSummary) string { return ticketgroups.CostText(ticketgroups.CostOf(t)) }
 
 // needsCell lists the markers; a pending gate names the gate.
 func needsCell(t api.TicketSummary) string {

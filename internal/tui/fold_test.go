@@ -225,3 +225,45 @@ func TestAtANarrowWidthTheTimeColumnGoesAndTheTotalsStayAligned(t *testing.T) {
 		}
 	}
 }
+
+// aligned checks that COST (and AGENT when named) cells of a ticket row, a group header
+// and the footer start under their column names.
+func TestDroppedColumnsKeepHeaderTicketAndFooterRowsAligned(t *testing.T) {
+	cases := []struct {
+		width       int
+		time, agent bool // which columns are left
+	}{{120, true, true}, {80, false, true}, {60, false, false}}
+	for _, c := range cases {
+		m, _ := send(foldModel(t), tea.WindowSizeMsg{Width: c.width, Height: 20})
+		v := m.View()
+		head := strings.Split(v, "\n")[1]
+		if strings.Contains(head, "TIME") != c.time || strings.Contains(head, "AGENT ") != c.agent {
+			t.Fatalf("width %d: TIME shown=%v AGENT shown=%v, want %v %v:\n%s", c.width, strings.Contains(head, "TIME"), strings.Contains(head, "AGENT "), c.time, c.agent, v)
+		}
+		check := func(prefix, name, want string) {
+			var l string
+			for _, x := range strings.Split(v, "\n") {
+				if strings.HasPrefix(strings.TrimLeft(x, "> "), prefix) {
+					l = x
+				}
+			}
+			col := colStarts(t, v, name)[0]
+			r := []rune(l)
+			if l == "" || col >= len(r) || !strings.HasPrefix(string(r[col:]), want) {
+				t.Errorf("width %d: %q lacks %q under %s:\n%s", c.width, prefix, want, name, v)
+			}
+		}
+		check("i1", "COST", "$2.00")
+		check("▾ implement (2)", "COST", "$4.12")
+		check("all (5)", "COST", "$8.12")
+		if c.agent {
+			check("i1", "AGENT", "50m")
+			check("▾ implement (2)", "AGENT", "1h20m")
+			check("all (5)", "AGENT", "1h40m")
+		}
+		if c.time {
+			check("i1", "TIME", "2h00m")
+			check("all (5)", "TIME", "2h00m")
+		}
+	}
+}
