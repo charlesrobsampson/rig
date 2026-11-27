@@ -439,3 +439,36 @@ func TestAStalledCheckerShowsAfterFiveMinutesIdleAndClearsWithItsResult(t *testi
 		t.Errorf("stalled after the result: %+v", got)
 	}
 }
+
+func TestSummariesCarryHowLongAnAgentHasBeenIdle(t *testing.T) {
+	f := newFixture(t)
+	f.writeYAML("alpha", yaml("alpha", "A", "idle", "busy", "bare"))
+	since := epoch.Add(-time.Hour)
+	f.writeState("alpha", state.State{Phase: domain.PhaseImplement, Services: map[string]state.ServiceState{
+		"idle": {Agent: state.Agent{State: domain.AgentIdle, IdleSince: since}},
+		"busy": {Agent: state.Agent{State: domain.AgentWorking, IdleSince: since}},
+		"bare": {Agent: state.Agent{State: domain.AgentIdle}},
+	}})
+	check := func(name string, svcs []api.ServiceSummary) {
+		t.Helper()
+		got := map[string]*time.Time{}
+		for _, s := range svcs {
+			got[s.Name] = s.IdleSince
+		}
+		if p := got["idle"]; p == nil || !p.Equal(since) {
+			t.Errorf("%s: idle service idle_since = %v, want %v", name, p, since)
+		}
+		if got["busy"] != nil {
+			t.Errorf("%s: a working service must not carry idle_since", name)
+		}
+		if got["bare"] != nil {
+			t.Errorf("%s: an idle service without idle_since in state must not carry one", name)
+		}
+	}
+	check("list", f.list()[0].Services)
+	res, err := f.reg.Get("alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("get", res.Summary.Services)
+}
