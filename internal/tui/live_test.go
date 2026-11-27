@@ -75,8 +75,16 @@ func TestAnAgentStateEventMovesTheLightWithoutAskingTheDaemon(t *testing.T) {
 		t.Error("the fleet was re-read for an agent state event")
 	}
 	// tickets stay under their phase header; the other lights are unchanged
-	if strings.Index(v, "implement (1)") > strings.Index(v, "alpha") {
+	if h, a := strings.Index(v, "implement (1)"), strings.Index(v, "alpha"); h < 0 || a < h {
 		t.Errorf("alpha is not under the implement header:\n%s", v)
+	}
+	// and within one phase the blocked ticket sorts to the top
+	for i := range m.tickets {
+		m.tickets[i].Phase = domain.PhaseImplement
+	}
+	m.dash.set(m.tickets)
+	if lines := strings.Split(m.View(), "\n"); !strings.Contains(lines[3], "alpha") {
+		t.Errorf("blocked ticket is not first in its group:\n%s", m.View())
 	}
 	if !strings.Contains(v, "○ web") {
 		t.Errorf("another service's light changed:\n%s", v)

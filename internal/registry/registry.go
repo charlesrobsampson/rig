@@ -35,9 +35,10 @@ type Registry struct {
 	base func(domain.Ticket, state.State) []api.BaseInfo
 	// touched, when set, lists the files each service has changed against its base.
 	touched func(domain.Ticket, state.State) []api.TouchedInfo
-	// aiSummary, when set, supplies a ticket's language-model summary.
+	// agentSeconds, when set, supplies the time a ticket's agents spent working.
 	agentSeconds func(domain.Ticket, state.State) int64
-	aiSummary    func(id string) *api.SummaryInfo
+	// aiSummary, when set, supplies a ticket's language-model summary.
+	aiSummary func(id string) *api.SummaryInfo
 	// drift, when set, supplies how a ticket's reality differs from its state.
 	drift func(id string) []string
 	// roundPending, when set, says whether a review round is being started for a ticket.
@@ -114,13 +115,13 @@ func (r *Registry) WithDrift(f func(id string) []string) *Registry {
 	return r
 }
 
-// WithAISummary makes summaries carry the ticket's language-model summary, if any.
-// WithAgentSeconds sets how a summary gets its agent_seconds.
+// WithAgentSeconds makes summaries carry the time the ticket's agents spent working.
 func (r *Registry) WithAgentSeconds(f func(domain.Ticket, state.State) int64) *Registry {
 	r.agentSeconds = f
 	return r
 }
 
+// WithAISummary makes summaries carry the ticket's language-model summary, if any.
 func (r *Registry) WithAISummary(f func(id string) *api.SummaryInfo) *Registry {
 	r.aiSummary = f
 	return r

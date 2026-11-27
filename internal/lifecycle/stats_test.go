@@ -3,6 +3,7 @@ package lifecycle_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -133,15 +134,19 @@ func TestStatsMeasureAgentsPhasesGatesAndChangesAndAddUpTheVessel(t *testing.T) 
 	if n := lc.AgentSeconds(tk, st); n != s.AgentSeconds {
 		t.Errorf("the summary's agent seconds = %d, rig stats says %d", n, s.AgentSeconds)
 	}
-	// cached: with the signature unchanged the files are not read again (an unreadable
-	// file would make a re-read fail or differ); a changed transcript is picked up
+	// cached: rewrite the transcript with the same size and modification time, so its
+	// signature is unchanged but a fresh read would give another answer (600, not 1200)
 	p := filepath.Join(path, ".rig-claude", "svc1", "projects", "-work", "s.jsonl")
+	info, _ := os.Stat(p)
+	os.WriteFile(p, []byte(strings.Replace(string(mustRead(t, p)), "12:10:00", "12:15:00", 1)), 0o600)
+	os.Chtimes(p, info.ModTime(), info.ModTime())
 	if n := lc.AgentSeconds(tk, st); n != 1200 {
-		t.Errorf("cached = %d", n)
+		t.Errorf("an unchanged signature was read again: %d, want the cached 1200", n)
 	}
-	os.WriteFile(p, append(mustRead(t, p), []byte(`{"type":"user","timestamp":"2026-11-09T12:25:00Z"}`+"\n")...), 0o600)
-	if n := lc.AgentSeconds(tk, st); n != 1200+300 {
-		t.Errorf("after the transcript grew = %d, want 1500", n)
+	// a changed signature is read again
+	os.WriteFile(p, append(mustRead(t, p), []byte(`{"type":"user","timestamp":"2026-11-09T12:35:00Z"}`+"\n")...), 0o600)
+	if n := lc.AgentSeconds(tk, st); n != 1800 {
+		t.Errorf("after the transcript grew = %d, want 1800", n)
 	}
 	if _, err := lc.Stats(ctx, api.StatsParams{IDs: []string{"broken"}}); err == nil {
 		t.Error("a named ticket that cannot be read was not an error")
