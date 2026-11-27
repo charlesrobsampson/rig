@@ -7,12 +7,16 @@ import (
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/charlesrobsampson/rig/internal/api"
+	"github.com/charlesrobsampson/rig/internal/clock"
 	"github.com/charlesrobsampson/rig/internal/config"
 	"github.com/charlesrobsampson/rig/internal/domain"
+	"github.com/charlesrobsampson/rig/internal/registry"
+	"github.com/charlesrobsampson/rig/internal/state"
 )
 
 // chooseVessel turns a vessel chosen by name into its config. The order is --config,
@@ -154,7 +158,38 @@ type vesselInfo struct {
 	Tickets *int   `json:"tickets,omitempty"`
 	// Standing says where they stand, as `rig fleet` prints it.
 	Standing string `json:"standing,omitempty"`
-	Error    string `json:"error,omitempty"`
+	// SpendUSD is what every ticket's agents report having spent, done tickets included;
+	// SpendMonthUSD is the part from tickets created this (local) month. Both are absent
+	// when the tickets cannot be read.
+	SpendUSD      *float64 `json:"spend_usd,omitempty"`
+	SpendMonthUSD *float64 `json:"spend_month_usd,omitempty"`
+	Error         string   `json:"error,omitempty"`
+}
+
+// vesselSpend sums the tickets' cost: all of it, and the part from tickets created in the
+// local calendar month of now.
+func vesselSpend(tickets []api.TicketSummary, now time.Time) (total, month float64) {
+	now = now.Local()
+	for _, t := range tickets {
+		if t.CostUSD == nil {
+			continue
+		}
+		total += *t.CostUSD
+		if t.CreatedAt != nil {
+			if c := t.CreatedAt.Local(); c.Year() == now.Year() && c.Month() == now.Month() {
+				month += *t.CostUSD
+			}
+		}
+	}
+	return total, month
+}
+
+// dollars formats a spend as $12.34, or "-" when it is unknown.
+func dollars(usd *float64) string {
+	if usd == nil {
+		return "-"
+	}
+	return fmt.Sprintf("$%.2f", *usd)
 }
 
 // inspectVessel looks at a vessel without starting its daemon; tickets is filled only when
@@ -171,6 +206,10 @@ func (a *app) inspectVessel(cmd *cobra.Command, h config.NamedVessel) (vesselInf
 	info.Home = g.Paths.Home
 	c, err := sub.connect(cmd.Context(), false)
 	if err != nil {
+		// No daemon: read the ticket files directly, as the registry does for the daemon.
+		if tickets, err := registry.New(g.TicketsDir(), state.NewManager(clock.Real())).List(); err == nil {
+			info.setSpend(tickets, a.now())
+		}
 		return info, nil
 	}
 	defer c.Close()
@@ -187,7 +226,13 @@ func (a *app) inspectVessel(cmd *cobra.Command, h config.NamedVessel) (vesselInf
 	}
 	n := len(res.Tickets)
 	info.Tickets, info.Standing = &n, standing(res.Tickets)
+	info.setSpend(res.Tickets, a.now())
 	return info, res.Tickets
+}
+
+func (i *vesselInfo) setSpend(tickets []api.TicketSummary, now time.Time) {
+	total, month := vesselSpend(tickets, now)
+	i.SpendUSD, i.SpendMonthUSD = &total, &month
 }
 
 func newFleetCmd(a *app) *cobra.Command {
@@ -217,7 +262,7 @@ per product. No daemon is started to find out. The default config is the vessel 
 				return nil
 			}
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "VESSEL\tDAEMON\tTICKETS\tHOME\tCONFIG")
+			fmt.Fprintln(tw, "VESSEL\tDAEMON\tTICKETS\tSPEND\tHOME\tCONFIG")
 			for _, i := range infos {
 				daemon, tickets := "stopped", "-"
 				if i.Running {
@@ -229,7 +274,7 @@ per product. No daemon is started to find out. The default config is the vessel 
 				if i.Error != "" {
 					daemon = "error: " + i.Error
 				}
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", i.Name, daemon, tickets, i.Home, i.Config)
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", i.Name, daemon, tickets, dollars(i.SpendUSD), i.Home, i.Config)
 			}
 			return tw.Flush()
 		},

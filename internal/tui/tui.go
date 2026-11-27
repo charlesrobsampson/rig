@@ -571,7 +571,11 @@ func (m Model) downView() string {
 }
 
 func (m Model) helpView() string {
-	lines := []string{"Keys", ""}
+	words := make([]string, len(lights))
+	for i, l := range lights {
+		words[i] = Light(l.State) + " " + l.Word
+	}
+	lines := []string{"Lights  " + strings.Join(words, "  ") + "  (yellow ✕ needs you)", "Keys"}
 	for _, k := range Keys {
 		lines = append(lines, fmt.Sprintf("  %-8s %s", k.Key, k.Help))
 	}

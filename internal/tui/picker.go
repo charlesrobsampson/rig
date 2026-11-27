@@ -7,11 +7,14 @@ import (
 	"text/tabwriter"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // VesselRow is one vessel in the picker.
 type VesselRow struct {
 	Name, Status, Tickets string
+	// Spend is what the vessel's tickets cost in all, SpendMonth the part from this month's.
+	Spend, SpendMonth string
 }
 
 // Picker chooses a vessel: j/k to move, / to search by name, enter to open.
@@ -121,14 +124,14 @@ func (p Picker) View() string {
 	}
 	var b strings.Builder
 	tw := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "  VESSEL\tDAEMON\tTICKETS")
+	fmt.Fprintln(tw, "  VESSEL\tDAEMON\tTICKETS\tSPEND")
 	rows := p.visible()
 	for i, r := range rows {
 		mark := " "
 		if i == min(p.sel, len(rows)-1) {
 			mark = ">"
 		}
-		fmt.Fprintf(tw, "%s %s\t%s\t%s\n", mark, r.Name, r.Status, r.Tickets)
+		fmt.Fprintf(tw, "%s %s\t%s\t%s\t%s\n", mark, r.Name, r.Status, r.Tickets, r.Spend)
 	}
 	tw.Flush()
 	body := b.String()
@@ -139,5 +142,15 @@ func (p Picker) View() string {
 	if p.typing {
 		footer = "/" + string(p.filter) + "█   enter open · esc clear"
 	}
-	return strings.Join([]string{"rig · fleet · choose a vessel", fit(body, w, h-2), footer}, "\n")
+	parts := []string{"rig · fleet · choose a vessel", fit(body, w, h-3)}
+	if len(rows) > 0 {
+		r := rows[min(p.sel, len(rows)-1)]
+		detail := r.Name + " · " + r.Status
+		if r.SpendMonth != "" && r.SpendMonth != "-" {
+			detail += " · " + r.SpendMonth + " this month"
+		}
+		parts = append(parts, ansi.Truncate(detail, w, "…"))
+	}
+	parts = append(parts, footer)
+	return strings.Join(parts, "\n")
 }
