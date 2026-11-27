@@ -48,6 +48,9 @@ type TicketSummary struct {
 	// CostUSD is what all the ticket's agents (its reviewer included) report having
 	// spent; absent when none reports cost.
 	CostUSD *float64 `json:"cost_usd,omitempty"`
+	// AgentSeconds is the time the ticket's agents spent working, added up over all of
+	// them (as rig stats reports it); absent when none is measured.
+	AgentSeconds int64 `json:"agent_seconds,omitempty"`
 	// CreatedAt and DoneAt bound the ticket's time (DoneAt once it moved to done).
 	// Base lists the services whose base branch has moved on since they branched.
 	Base []BaseInfo `json:"base,omitempty"`
@@ -776,6 +779,8 @@ type AgentStats struct {
 	// means rig has no transcripts for it (a host agent on the person's own login).
 	Requests int      `json:"requests"`
 	Models   []string `json:"models,omitempty"`
+	// AgentSeconds is the time the agent spent working (usage.WorkGap).
+	AgentSeconds int64 `json:"agent_seconds"`
 }
 
 // PhaseTime is how long a ticket spent in a phase, all visits together.
@@ -805,6 +810,9 @@ type TicketStats struct {
 	CostUSD float64      `json:"cost_usd"`
 	Tokens  TokenCount   `json:"tokens"`
 	Agents  []AgentStats `json:"agents"`
+	// AgentSeconds adds up the agents' working time; it exceeds ElapsedSeconds when
+	// agents ran in parallel.
+	AgentSeconds int64 `json:"agent_seconds"`
 	// ElapsedSeconds runs from the ticket's creation to its move to done (or now).
 	CreatedAt      time.Time   `json:"created_at"`
 	DoneAt         *time.Time  `json:"done_at,omitempty"`
@@ -827,6 +835,7 @@ type StatsTotals struct {
 	CostUSD        float64    `json:"cost_usd"`
 	Tokens         TokenCount `json:"tokens"`
 	ElapsedSeconds int64      `json:"elapsed_seconds"`
+	AgentSeconds   int64      `json:"agent_seconds"`
 	ReviewRounds   int        `json:"review_rounds"`
 	Added          int        `json:"added"`
 	Deleted        int        `json:"deleted"`

@@ -13,10 +13,11 @@ import (
 
 	"github.com/charlesrobsampson/rig/internal/api"
 	"github.com/charlesrobsampson/rig/internal/domain"
+	"github.com/charlesrobsampson/rig/internal/ticketgroups"
 )
 
 func newListCmd(a *app) *cobra.Command {
-	var summaries, all, wide bool
+	var summaries, all, wide, group, allDone bool
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List tickets with their phase, services, and ports",
@@ -25,9 +26,22 @@ func newListCmd(a *app) *cobra.Command {
 --summaries also prints each ticket's language-model summary, when summarizer.provider
 is set in the config (ollama or claude) and one has been made. A summary is advisory: it
 is always printed with the real diff stats it was made from, and the backend that wrote
-it is named, marked "remote" when the content left this machine.`,
+it is named, marked "remote" when the content left this machine.
+
+AGENT is the time the ticket's agents spent working (what rig stats reports); TIME is the
+ticket's age, which overlaps other tickets and includes waiting.
+
+--group sorts the tickets under one line per phase, in lifecycle order, each with its
+ticket count, cost and agent time, and a line totalling the vessel. Done tickets are left
+as that one line unless --all-done.`,
 		Args: usageArgs(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if allDone && !group {
+				return usageError(fmt.Errorf("--all-done goes with --group"))
+			}
+			if all && group {
+				return usageError(fmt.Errorf("--group lists one vessel; it does not go with --all"))
+			}
 			if all {
 				return a.listAll(cmd)
 			}
@@ -47,7 +61,11 @@ it is named, marked "remote" when the content left this machine.`,
 			if wide {
 				width = 0
 			}
-			writeTicketTable(cmd.OutOrStdout(), res.Tickets, a.now(), width)
+			if group {
+				writeGroupedTable(cmd.OutOrStdout(), res.Tickets, a.now(), width, allDone)
+			} else {
+				writeTicketTable(cmd.OutOrStdout(), res.Tickets, a.now(), width)
+			}
 			if summaries {
 				writeSummaries(cmd.OutOrStdout(), res.Tickets)
 			}
@@ -55,6 +73,8 @@ it is named, marked "remote" when the content left this machine.`,
 		},
 	}
 	cmd.Flags().BoolVar(&summaries, "summaries", false, "also show each ticket's language-model summary")
+	cmd.Flags().BoolVar(&group, "group", false, "group the tickets by phase, each group under a line with its count, cost and agent time")
+	cmd.Flags().BoolVar(&allDone, "all-done", false, "with --group, list the done tickets too instead of one line")
 	cmd.Flags().BoolVar(&wide, "wide", false, "do not shorten anything to fit the terminal")
 	cmd.Flags().BoolVar(&all, "all", false, "the tickets of every home whose daemon runs (rig homes), starting none")
 	return cmd
@@ -112,22 +132,58 @@ func writeTicketTable(w io.Writer, tickets []api.TicketSummary, now time.Time, w
 		fmt.Fprintln(w, "no tickets")
 		return
 	}
-	header := []string{"ID", "PHASE", "SERVICES", "COST", "TIME", "PORTS", "TITLE"}
+	header, rows := ticketRows(tickets, tickets, now, width)
+	writeFitted(w, header, rows, width, []int{len(header) - 1, 1}, nil)
+}
+
+// writeGroupedTable is the table under one line per phase (ticketgroups, as the TUI
+// draws it) and a totals line. Done tickets are one line unless allDone.
+func writeGroupedTable(w io.Writer, tickets []api.TicketSummary, now time.Time, width int, allDone bool) {
+	if len(tickets) == 0 {
+		fmt.Fprintln(w, "no tickets")
+		return
+	}
+	var shown []api.TicketSummary
+	var breaks []sectionBreak
+	groups := ticketgroups.Of(tickets)
+	for _, g := range groups {
+		folded := g.Phase == domain.PhaseDone && !allDone
+		breaks = append(breaks, sectionBreak{len(shown), ticketgroups.Header(g, folded)})
+		if !folded {
+			shown = append(shown, g.Tickets...)
+		}
+	}
+	header, rows := ticketRows(shown, tickets, now, width)
+	writeFitted(w, header, rows, width, []int{len(header) - 1, 1}, breaks)
+	fmt.Fprintf(w, "\n%s\n", ticketgroups.Footer(ticketgroups.TotalsOf(tickets, now)))
+}
+
+// ticketRows is the header and a row per ticket; overlaps are found among all, so a
+// ticket left out of the rows still counts.
+func ticketRows(tickets, all []api.TicketSummary, now time.Time, width int) ([]string, [][]string) {
+	header := []string{"ID", "PHASE", "SERVICES", "COST", "TIME", "AGENT", "PORTS", "TITLE"}
 	rows := make([][]string, len(tickets))
 	anyPorts := false
-	overlaps := overlapsOf(tickets)
+	overlaps := overlapsOf(all)
 	for i, t := range tickets {
 		ports := portsCell(t.Services)
 		anyPorts = anyPorts || ports != "-"
-		rows[i] = []string{t.ID, phaseCell(t, overlaps[t.ID]), serviceCell(t.Services), costCell(t.CostUSD), elapsedCell(t, now), ports, titleCell(t)}
+		rows[i] = []string{t.ID, phaseCell(t, overlaps[t.ID]), serviceCell(t.Services), costCell(t.CostUSD), elapsedCell(t, now), agentCell(t), ports, titleCell(t)}
 	}
 	if width > 0 && !anyPorts {
-		header = slices.Delete(header, 5, 6)
+		header = slices.Delete(header, 6, 7)
 		for i := range rows {
-			rows[i] = slices.Delete(rows[i], 5, 6)
+			rows[i] = slices.Delete(rows[i], 6, 7)
 		}
 	}
-	writeFitted(w, header, rows, width, []int{len(header) - 1, 1})
+	return header, rows
+}
+
+func agentCell(t api.TicketSummary) string {
+	if t.AgentSeconds == 0 {
+		return "-"
+	}
+	return duration(t.AgentSeconds)
 }
 
 // phaseCell is the phase and what is going on in it, as short notes.
@@ -179,9 +235,16 @@ func phaseCell(t api.TicketSummary, overlaps []string) string {
 	return strings.Join(notes, " · ")
 }
 
+// sectionBreak is a line printed before row `at`.
+type sectionBreak struct {
+	at   int
+	line string
+}
+
 // writeFitted prints a table with two spaces between columns. With width > 0 it
-// shortens the shrinkable columns, in order, until each line fits.
-func writeFitted(w io.Writer, header []string, rows [][]string, width int, shrinkable []int) {
+// shortens the shrinkable columns, in order, until each line fits. Break lines are
+// printed whole, before the row they name, and count for nothing in the column widths.
+func writeFitted(w io.Writer, header []string, rows [][]string, width int, shrinkable []int, breaks []sectionBreak) {
 	const gap, least = 2, 12
 	all := append([][]string{header}, rows...)
 	widths := make([]int, len(header))
@@ -204,7 +267,11 @@ func writeFitted(w io.Writer, header []string, rows [][]string, width int, shrin
 			}
 		}
 	}
-	for _, r := range all {
+	for i, r := range all {
+		for i > 0 && len(breaks) > 0 && breaks[0].at <= i-1 {
+			fmt.Fprintln(w, breaks[0].line)
+			breaks = breaks[1:]
+		}
 		var b strings.Builder
 		for c, cell := range r {
 			cell = ansi.Truncate(cell, widths[c], "…")
@@ -214,6 +281,9 @@ func writeFitted(w io.Writer, header []string, rows [][]string, width int, shrin
 			}
 		}
 		fmt.Fprintln(w, strings.TrimRight(b.String(), " "))
+	}
+	for _, br := range breaks {
+		fmt.Fprintln(w, br.line)
 	}
 }
 
@@ -254,19 +324,7 @@ func elapsedCell(t api.TicketSummary, now time.Time) string {
 	return duration(int64(end.Sub(*t.CreatedAt).Seconds()))
 }
 
-// duration is a short human form: 45s, 12m, 1h05m, 3d04h.
-func duration(seconds int64) string {
-	d := time.Duration(max(seconds, 0)) * time.Second
-	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
-	}
-	return fmt.Sprintf("%dd%02dh", int(d.Hours())/24, int(d.Hours())%24)
-}
+func duration(seconds int64) string { return ticketgroups.Duration(seconds) }
 
 // tokens is a short human form: 950, 24k, 1.9M.
 func tokens(n int64) string {

@@ -106,6 +106,11 @@ type Manager struct {
 	pendingMu sync.Mutex
 	pending   map[string]bool
 
+	// transcriptMu guards transcripts: what each agent's transcripts added up to, kept
+	// until their signature changes so a refresh reads only what moved.
+	transcriptMu sync.Mutex
+	transcripts  map[string]cachedTranscript
+
 	// bg runs the review rounds an agent's record starts, which outlive the call.
 	bg       sync.WaitGroup
 	bgCtx    context.Context

@@ -89,6 +89,7 @@ func writeTicketStats(w io.Writer, t api.TicketStats) {
 		phases = append(phases, fmt.Sprintf("%s %s", p.Phase, duration(p.Seconds)))
 	}
 	fmt.Fprintf(w, "time    %s (%s)\n", duration(t.ElapsedSeconds), strings.Join(phases, ", "))
+	fmt.Fprintf(w, "agents  %s working, all agents added up\n", duration(t.AgentSeconds))
 	if len(t.Gates) > 0 {
 		var gates []string
 		for _, g := range t.Gates {

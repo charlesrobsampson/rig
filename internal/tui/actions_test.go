@@ -138,7 +138,7 @@ func TestEachActionKeyMakesTheRightCall(t *testing.T) {
 
 func TestActionsApplyToTheSelectedRowAndToTheOpenTicket(t *testing.T) {
 	src := &fakeSource{}
-	other := api.TicketSummary{ID: "aaa", PendingGate: domain.GateReviewApproval, Services: []api.ServiceSummary{{Name: "api"}}}
+	other := api.TicketSummary{ID: "aaa", Phase: domain.PhasePlan, PendingGate: domain.GateReviewApproval, Services: []api.ServiceSummary{{Name: "api"}}}
 	m := ready(t, src, oneSvc, other) // both need a gate: sorted by id, aaa first
 	m = press(t, m, "j", "a", "y")    // second row: demo
 	m = press(t, m, "g", "enter", "a", "y")
