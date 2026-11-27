@@ -59,6 +59,11 @@ type Options struct {
 	// CanSwitch lets F leave the TUI to choose another vessel (Run then returns
 	// ErrSwitchVessel).
 	CanSwitch bool
+	// Folds keeps which phase groups are folded, per vessel name, across the vessel
+	// picker; the caller holds the map for the session. Nil means a fresh one.
+	Folds map[string]Folds
+	// Now is the clock for the totals line (default time.Now).
+	Now func() time.Time
 }
 
 // Target is a place in the TUI a command can open directly.
@@ -139,7 +144,14 @@ func New(o Options) Model {
 	if o.RefreshEvery == 0 {
 		o.RefreshEvery = 2 * time.Second
 	}
-	return Model{opts: o, dash: &dashboard{}, pending: o.Open}
+	folds := Folds{}
+	if o.Folds != nil {
+		if o.Folds[o.Vessel] == nil {
+			o.Folds[o.Vessel] = folds
+		}
+		folds = o.Folds[o.Vessel]
+	}
+	return Model{opts: o, dash: &dashboard{folds: folds, now: o.Now}, pending: o.Open}
 }
 
 // SwitchVessel says the person left to choose another vessel.
@@ -337,6 +349,17 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if t, ok := m.dash.current(); ok {
 			return m.open(t.ID)
 		}
+		if msg.String() == "enter" {
+			m.dash.toggle()
+		}
+	case "z", " ":
+		if _, onTicket := m.dash.current(); msg.String() == "z" || !onTicket {
+			m.dash.toggle()
+		}
+	case "Z":
+		m.dash.foldOthers()
+	case "o":
+		m.dash.openAll()
 	case "down", "j":
 		m.dash.move(1)
 	case "up", "k":
@@ -463,8 +486,9 @@ func (m Model) goTo(t Tab) (tea.Model, tea.Cmd) {
 var Keys = []struct{ Key, Help string }{
 	{"?", "show or hide this help"},
 	{"j/k ↑/↓", "move the selection"},
-	{"g/G", "first / last ticket"},
-	{"enter", "open the selected ticket"},
+	{"g/G", "first / last visible ticket"},
+	{"enter", "open the selected ticket (on a phase header: fold or unfold it)"},
+	{"z Z o", "fold or unfold the cursor's phase group / fold all but it / open all (done starts folded)"},
 	{"esc", "back from a ticket"},
 	{"tab/1-6", "next tab / jump to a tab (plan, tasks, contract, diff, logs, manual)"},
 	{"space", "(manual tab) tick or untick the selected step; y copies its code blocks"},
@@ -480,8 +504,7 @@ var Keys = []struct{ Key, Help string }{
 	{"Y", "copy the command that opens this view (vessel, ticket, tab)"},
 	{"F", "back to the fleet: choose another vessel (when there are several)"},
 	{"r", "refresh now"},
-	{"q", "quit"},
-	{"ctrl+c", "quit from anywhere"},
+	{"q ctrl+c", "quit (ctrl+c also from inside a ticket or a prompt)"},
 }
 
 func (m Model) View() string {

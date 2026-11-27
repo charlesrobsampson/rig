@@ -109,7 +109,15 @@ of the same daemon API as the CLI, and updates live from the daemon's event stre
 
 - **Dashboard.** One row per ticket: phase, an agent light per service (● working,
   ○ idle, ! blocked, ✕ exited), ports, cost, and what needs you (BLOCKED agent, CONTRACT
-  CHANGE, ERROR, DRIFT, APPROVE gate). Tickets that need you sort to the top.
+  CHANGE, ERROR, DRIFT, APPROVE gate). Tickets are grouped by phase in lifecycle order
+  (plan, implement, test, review, push, done), each group under a line such as
+  `▾ implement (3) · $4.12 · agents 1h20m`; within a group the tickets that need you sort
+  to the top. `done` starts folded (`▸ done (34) · $37.10 · agents 9h40m`). `z` (or `enter`
+  or `space` on a header) folds and unfolds the group under the cursor, `Z` folds all but
+  the cursor's, `o` opens all; the cursor skips folded rows, and which groups are folded is
+  kept per vessel until rig exits. A line under the table totals the vessel: tickets, cost,
+  agent time (the time agents spent working, added up, so parallel tickets count each) and
+  the span from the first ticket's creation to now (or to the last done).
 - **Ticket view** (`enter`). Tabs for the plan, tasks (with progress), contract, diff,
   logs and manual tests, which you tick off and sign off.
 - **Actions.** `a` approve, `v` move to review, `p` push, `x` stop, `t` attach (the TUI
@@ -133,6 +141,7 @@ rig fleet add osmo ~/osmo-plan/rig/config.json
 rig fleet                 # every vessel: daemon running or not, tickets
 rig -V osmo list          # or RIG_VESSEL=osmo; agents always name their vessel
 rig list --all            # the tickets of every running vessel
+rig list --group          # the same table under one line per phase, done as one line (--all-done lists it)
 rig stats                 # cost, tokens, time, waits, rounds and change size, with totals
 rig stats t10 --json      # one ticket's full breakdown, for tools
 ```

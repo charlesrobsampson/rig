@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -47,6 +48,38 @@ type Transcript struct {
 	// Models are the models that answered, sorted.
 	Models      []string
 	First, Last time.Time
+	// WorkSeconds is the time the agent spent working: the gaps between consecutive
+	// transcript entries (all files merged) that are at most WorkGap.
+	WorkSeconds int64
+}
+
+// WorkGap is the longest silence between two transcript entries that still counts as
+// the agent working. An agent waiting on a long tool call (rig's own gate runs the race
+// detector and the docker tests, 5 to 10 minutes) writes nothing between the call and
+// its result; waiting on a person or a gate is usually far longer.
+const WorkGap = 15 * time.Minute
+
+// Signature is a cheap stand-in for the transcripts' content: file count, total size
+// and newest modification, read from stat alone, so a caller can tell that nothing
+// changed since it last read them.
+func Signature(configDir string) string {
+	var n int
+	var size int64
+	var newest time.Time
+	filepath.WalkDir(filepath.Join(configDir, "projects"), func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || d.Type()&fs.ModeSymlink != 0 || !strings.HasSuffix(path, ".jsonl") {
+			return nil
+		}
+		if info, err := d.Info(); err == nil {
+			n++
+			size += info.Size()
+			if info.ModTime().After(newest) {
+				newest = info.ModTime()
+			}
+		}
+		return nil
+	})
+	return fmt.Sprintf("%d/%d/%d", n, size, newest.UnixNano())
 }
 
 type line struct {
@@ -70,6 +103,7 @@ type line struct {
 // request counts once. A missing directory is an agent that never ran: nothing, no error.
 func ReadTranscripts(configDir string) (Transcript, error) {
 	var t Transcript
+	var stamps []time.Time
 	seen := map[string]bool{}
 	models := map[string]bool{}
 	err := filepath.WalkDir(filepath.Join(configDir, "projects"), func(path string, d fs.DirEntry, err error) error {
@@ -81,16 +115,22 @@ func ReadTranscripts(configDir string) (Transcript, error) {
 		case d.Type()&fs.ModeSymlink != 0, d.IsDir(), !strings.HasSuffix(path, ".jsonl"):
 			return nil
 		}
-		return readFile(path, &t, seen, models)
+		return readFile(path, &t, &stamps, seen, models)
 	})
 	for m := range models {
 		t.Models = append(t.Models, m)
 	}
 	sort.Strings(t.Models)
+	sort.Slice(stamps, func(i, j int) bool { return stamps[i].Before(stamps[j]) })
+	for i := 1; i < len(stamps); i++ {
+		if gap := stamps[i].Sub(stamps[i-1]); gap <= WorkGap {
+			t.WorkSeconds += int64(gap.Seconds())
+		}
+	}
 	return t, err
 }
 
-func readFile(path string, t *Transcript, seen, models map[string]bool) error {
+func readFile(path string, t *Transcript, stamps *[]time.Time, seen, models map[string]bool) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -104,6 +144,7 @@ func readFile(path string, t *Transcript, seen, models map[string]bool) error {
 			continue
 		}
 		if !l.Timestamp.IsZero() {
+			*stamps = append(*stamps, l.Timestamp)
 			if t.First.IsZero() || l.Timestamp.Before(t.First) {
 				t.First = l.Timestamp
 			}

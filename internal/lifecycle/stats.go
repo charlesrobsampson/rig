@@ -11,6 +11,7 @@ import (
 	"github.com/charlesrobsampson/rig/internal/domain"
 	"github.com/charlesrobsampson/rig/internal/git"
 	"github.com/charlesrobsampson/rig/internal/journal"
+	"github.com/charlesrobsampson/rig/internal/state"
 	"github.com/charlesrobsampson/rig/internal/timeline"
 	"github.com/charlesrobsampson/rig/internal/usage"
 )
@@ -52,6 +53,7 @@ func (m *Manager) Stats(ctx context.Context, p api.StatsParams) (api.StatsResult
 		t.CostUSD += s.CostUSD
 		t.Tokens = addTokens(t.Tokens, s.Tokens)
 		t.ElapsedSeconds += s.ElapsedSeconds
+		t.AgentSeconds += s.AgentSeconds
 		t.ReviewRounds += s.ReviewRounds
 		for _, c := range s.Changes {
 			t.Added, t.Deleted = t.Added+c.Added, t.Deleted+c.Deleted
@@ -68,20 +70,7 @@ func (m *Manager) ticketStats(ctx context.Context, l loaded) api.TicketStats {
 	st := l.state
 	s := api.TicketStats{ID: l.id, Title: l.ticket.Title, Phase: st.Phase, CreatedAt: st.CreatedAt}
 
-	// Every agent the ticket has, and any other that left a cost in state (a reviewer
-	// from a review block since removed), so this and rig list add up the same.
-	names := []string{}
-	for _, svc := range agentServices(l.ticket) {
-		names = append(names, svc.Name)
-	}
-	var others []string
-	for name, ss := range st.Services {
-		if ss.Agent.Cost != nil && !slices.Contains(names, name) {
-			others = append(others, name)
-		}
-	}
-	slices.Sort(others)
-	names = append(names, others...)
+	names := agentNames(l.ticket, st)
 	for _, name := range names {
 		a := api.AgentStats{Service: name, Role: "coder"}
 		switch name {
@@ -94,11 +83,12 @@ func (m *Manager) ticketStats(ctx context.Context, l loaded) api.TicketStats {
 		if c := st.Services[svc.Name].Agent.Cost; c != nil {
 			a.CostUSD = c.USD
 		}
-		if t, err := usage.ReadTranscripts(agentConfigDir(l.dir, svc.Name)); err == nil {
+		if t, err := m.transcript(agentConfigDir(l.dir, svc.Name)); err == nil {
 			a.Tokens = api.TokenCount(t.Tokens)
-			a.Requests, a.Models = t.Requests, t.Models
+			a.Requests, a.Models, a.AgentSeconds = t.Requests, t.Models, t.WorkSeconds
 		}
 		s.Agents = append(s.Agents, a)
+		s.AgentSeconds += a.AgentSeconds
 		s.CostUSD += a.CostUSD
 		s.Tokens = addTokens(s.Tokens, a.Tokens)
 	}
@@ -213,4 +203,58 @@ func changeOf(files []git.FileChange) api.ChangeStats {
 		c.Added, c.Deleted = c.Added+f.Added, c.Deleted+f.Deleted
 	}
 	return c
+}
+
+// agentNames is every agent the ticket has, and any other that left a cost in state (a
+// reviewer from a review block since removed), so stats and rig list add up the same.
+func agentNames(t domain.Ticket, st state.State) []string {
+	names := []string{}
+	for _, svc := range agentServices(t) {
+		names = append(names, svc.Name)
+	}
+	var others []string
+	for name, ss := range st.Services {
+		if ss.Agent.Cost != nil && !slices.Contains(names, name) {
+			others = append(others, name)
+		}
+	}
+	slices.Sort(others)
+	return append(names, others...)
+}
+
+type cachedTranscript struct {
+	signature string
+	t         usage.Transcript
+	err       error
+}
+
+// transcript reads an agent's transcripts, once per change to them.
+func (m *Manager) transcript(configDir string) (usage.Transcript, error) {
+	sig := usage.Signature(configDir)
+	m.transcriptMu.Lock()
+	c, ok := m.transcripts[configDir]
+	m.transcriptMu.Unlock()
+	if ok && c.signature == sig {
+		return c.t, c.err
+	}
+	t, err := usage.ReadTranscripts(configDir)
+	m.transcriptMu.Lock()
+	if m.transcripts == nil {
+		m.transcripts = map[string]cachedTranscript{}
+	}
+	m.transcripts[configDir] = cachedTranscript{sig, t, err}
+	m.transcriptMu.Unlock()
+	return t, err
+}
+
+// AgentSeconds is the time a ticket's agents spent working, the number rig stats
+// reports for it, cheap enough to ask on every refresh.
+func (m *Manager) AgentSeconds(t domain.Ticket, st state.State) int64 {
+	var total int64
+	for _, name := range agentNames(t, st) {
+		if tr, err := m.transcript(agentConfigDir(filepath.Join(m.opts.Dir, t.ID), name)); err == nil {
+			total += tr.WorkSeconds
+		}
+	}
+	return total
 }

@@ -36,7 +36,8 @@ type Registry struct {
 	// touched, when set, lists the files each service has changed against its base.
 	touched func(domain.Ticket, state.State) []api.TouchedInfo
 	// aiSummary, when set, supplies a ticket's language-model summary.
-	aiSummary func(id string) *api.SummaryInfo
+	agentSeconds func(domain.Ticket, state.State) int64
+	aiSummary    func(id string) *api.SummaryInfo
 	// drift, when set, supplies how a ticket's reality differs from its state.
 	drift func(id string) []string
 	// roundPending, when set, says whether a review round is being started for a ticket.
@@ -114,6 +115,12 @@ func (r *Registry) WithDrift(f func(id string) []string) *Registry {
 }
 
 // WithAISummary makes summaries carry the ticket's language-model summary, if any.
+// WithAgentSeconds sets how a summary gets its agent_seconds.
+func (r *Registry) WithAgentSeconds(f func(domain.Ticket, state.State) int64) *Registry {
+	r.agentSeconds = f
+	return r
+}
+
 func (r *Registry) WithAISummary(f func(id string) *api.SummaryInfo) *Registry {
 	r.aiSummary = f
 	return r
@@ -272,6 +279,9 @@ func (r *Registry) load(id string) api.TicketGetResult {
 			}
 			res.Summary.Services = append(res.Summary.Services, summary)
 		}
+	}
+	if r.agentSeconds != nil && res.Ticket != nil && res.State != nil {
+		res.Summary.AgentSeconds = r.agentSeconds(*res.Ticket, *res.State)
 	}
 	if r.aiSummary != nil {
 		res.Summary.AISummary = r.aiSummary(id)

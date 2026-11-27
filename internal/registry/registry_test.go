@@ -372,6 +372,20 @@ func TestSummariesCarryTheTouchedFilesWhenTheRegistryKnowsHowToFindThem(t *testi
 	}
 }
 
+func TestSummariesCarryAgentSecondsFromTheHook(t *testing.T) {
+	f := newFixture(t)
+	f.writeYAML("alpha", yaml("alpha", "A", "api"))
+	f.writeState("alpha", state.State{Phase: domain.PhaseImplement})
+	f.writeYAML("broken", "id: [")
+	if got := f.list(); got[0].AgentSeconds != 0 {
+		t.Errorf("without a hook: %d", got[0].AgentSeconds)
+	}
+	f.reg.WithAgentSeconds(func(t domain.Ticket, s state.State) int64 { return 90 })
+	if got := f.list(); got[0].AgentSeconds != 90 || got[1].AgentSeconds != 0 {
+		t.Errorf("alpha %d, broken %d", got[0].AgentSeconds, got[1].AgentSeconds)
+	}
+}
+
 func TestALostReviewRoundIsListedAsAwaitingReady(t *testing.T) {
 	f := newFixture(t)
 	f.writeYAML("a", yaml("a", "Stuck", "api"))

@@ -57,3 +57,40 @@ func TestNoTranscriptsIsNotAnError(t *testing.T) {
 		t.Errorf("%+v, %v", got, err)
 	}
 }
+
+func TestWorkSecondsCountsGapsUpToTheLimitAcrossFilesMerged(t *testing.T) {
+	line := func(ts string) string { return `{"type":"user","timestamp":"` + ts + `"}` + "\n" }
+	tests := []struct {
+		name  string
+		files []string
+		want  int64
+	}{
+		{"one entry", []string{line("2026-11-25T10:00:00Z")}, 0},
+		{"small gaps add up, unsorted", []string{line("2026-11-25T10:02:00Z") + line("2026-11-25T10:00:00Z") + line("2026-11-25T10:00:30Z")}, 120},
+		{"a gap of exactly the limit counts, a longer one does not", []string{line("2026-11-25T10:00:00Z") + line("2026-11-25T10:15:00Z") + line("2026-11-25T10:30:01Z")}, 900},
+		{"files are merged before gaps are taken", []string{line("2026-11-25T10:00:00Z") + line("2026-11-25T10:10:00Z"), line("2026-11-25T10:05:00Z")}, 600},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for i, f := range tt.files {
+				write(t, filepath.Join(dir, "projects", "-work", string(rune('a'+i))+".jsonl"), f)
+			}
+			got, err := usage.ReadTranscripts(dir)
+			if err != nil || got.WorkSeconds != tt.want {
+				t.Errorf("WorkSeconds = %d, %v; want %d", got.WorkSeconds, err, tt.want)
+			}
+		})
+	}
+}
+
+func TestSignatureChangesWithTheTranscripts(t *testing.T) {
+	dir := t.TempDir()
+	empty := usage.Signature(dir)
+	write(t, filepath.Join(dir, "projects", "-work", "a.jsonl"), "{}\n")
+	one := usage.Signature(dir)
+	write(t, filepath.Join(dir, "projects", "-work", "a.jsonl"), "{}\n{}\n")
+	if two := usage.Signature(dir); empty == one || one == two || usage.Signature(dir) != two {
+		t.Errorf("signatures %q %q %q", empty, one, two)
+	}
+}

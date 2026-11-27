@@ -73,7 +73,7 @@ func TestStatsMeasureAgentsPhasesGatesAndChangesAndAddUpTheVessel(t *testing.T) 
 		}
 		return nil
 	})
-	transcript := `{"type":"assistant","timestamp":"2026-11-09T12:20:00Z","requestId":"r1","message":{"id":"m1","model":"claude-sonnet-5-5","usage":{"input_tokens":10,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":50}}}` + "\n"
+	transcript := `{"type":"user","timestamp":"2026-11-09T12:10:00Z"}` + "\n" + `{"type":"assistant","timestamp":"2026-11-09T12:20:00Z","requestId":"r1","message":{"id":"m1","model":"claude-sonnet-5-5","usage":{"input_tokens":10,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":50}}}` + "\n"
 	for _, svc := range []string{"svc1", "review"} {
 		p := filepath.Join(path, ".rig-claude", svc, "projects", "-work", "s.jsonl")
 		os.MkdirAll(filepath.Dir(p), 0o700)
@@ -100,6 +100,9 @@ func TestStatsMeasureAgentsPhasesGatesAndChangesAndAddUpTheVessel(t *testing.T) 
 	if s.CostUSD != 0.75 || len(s.Agents) != 2 || s.Agents[1].Role != "reviewer" || s.Agents[0].Requests != 1 || s.Agents[0].Models[0] != "claude-sonnet-5-5" {
 		t.Errorf("agents = %+v, cost %v", s.Agents, s.CostUSD)
 	}
+	if s.AgentSeconds != 1200 || s.Agents[0].AgentSeconds != 600 || got.Totals.AgentSeconds != 1200 {
+		t.Errorf("agent seconds: ticket %d, svc1 %d, totals %d; want 1200, 600, 1200", s.AgentSeconds, s.Agents[0].AgentSeconds, got.Totals.AgentSeconds)
+	}
 	if s.Tokens != (api.TokenCount{Input: 20, CacheWrite: 200, CacheRead: 2000, Output: 100}) {
 		t.Errorf("tokens = %+v", s.Tokens)
 	}
@@ -124,6 +127,21 @@ func TestStatsMeasureAgentsPhasesGatesAndChangesAndAddUpTheVessel(t *testing.T) 
 	tot := got.Totals
 	if tot.Tickets != 1 || tot.Done != 1 || tot.CostUSD != 0.75 || tot.Tokens != s.Tokens || tot.ElapsedSeconds != 3660 || tot.ReviewRounds != 2 || tot.Added != 10 {
 		t.Errorf("totals = %+v", tot)
+	}
+	tk, _ := config.LoadTicket(filepath.Join(path, "ticket.yaml"), config.TicketOptions{RepoCheck: func(string) error { return nil }})
+	st, _ := states.Load(filepath.Join(path, "state.json"))
+	if n := lc.AgentSeconds(tk, st); n != s.AgentSeconds {
+		t.Errorf("the summary's agent seconds = %d, rig stats says %d", n, s.AgentSeconds)
+	}
+	// cached: with the signature unchanged the files are not read again (an unreadable
+	// file would make a re-read fail or differ); a changed transcript is picked up
+	p := filepath.Join(path, ".rig-claude", "svc1", "projects", "-work", "s.jsonl")
+	if n := lc.AgentSeconds(tk, st); n != 1200 {
+		t.Errorf("cached = %d", n)
+	}
+	os.WriteFile(p, append(mustRead(t, p), []byte(`{"type":"user","timestamp":"2026-11-09T12:25:00Z"}`+"\n")...), 0o600)
+	if n := lc.AgentSeconds(tk, st); n != 1200+300 {
+		t.Errorf("after the transcript grew = %d, want 1500", n)
 	}
 	if _, err := lc.Stats(ctx, api.StatsParams{IDs: []string{"broken"}}); err == nil {
 		t.Error("a named ticket that cannot be read was not an error")

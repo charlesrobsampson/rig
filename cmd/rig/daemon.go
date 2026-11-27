@@ -261,6 +261,7 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 	reg.WithBase(func(t domain.Ticket, st state.State) []api.BaseInfo {
 		return lc.BaseStatus(context.Background(), t, st)
 	})
+	reg.WithAgentSeconds(lc.AgentSeconds)
 	reg.WithRoundPending(lc.RoundPending)
 	reg.WithReviewStale(func(t domain.Ticket, st state.State) bool {
 		return lc.ReviewStale(context.Background(), t, st)

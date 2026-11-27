@@ -47,9 +47,10 @@ func (a *app) rootRun(cmd *cobra.Command, ticket, tab string) error {
 	case tab != "":
 		return usageError(errors.New("--tab needs --ticket"))
 	}
+	folds := map[string]tui.Folds{} // kept across the vessel picker, gone when rig exits
 	chosen := a.configPath != "" || os.Getenv("RIG_CONFIG") != ""
 	for {
-		opts := tui.Options{Source: daemonSource{a}, Version: version, Vessel: a.vesselName, Open: open}
+		opts := tui.Options{Source: daemonSource{a}, Version: version, Vessel: a.vesselName, Open: open, Folds: folds}
 		if chosen {
 			fleet, user, err := loadFleet()
 			if err != nil {
