@@ -34,6 +34,7 @@ const (
 	AgentContainerMissing      = "agent_container_missing"
 	AgentPaneMissing           = "agent_pane_missing"
 	NetworkMissing             = "network_missing"
+	AgentPidsHigh              = "agent_pids_high"
 	OrphanContainer            = "orphan_container"
 	OrphanNetwork              = "orphan_network"
 )
@@ -59,7 +60,12 @@ type Reconciler struct {
 	mu    sync.Mutex // serializes passes (a fix must not race a check)
 	last  map[string][]string
 	lastK string
+	pids  map[string]map[string]int // ticket -> service -> processes in the agent's container
 }
+
+// PidsWarnPercent is how full an agent container's process limit gets before a pass
+// reports it as drift.
+const PidsWarnPercent = 80
 
 func New(o Options) *Reconciler {
 	if o.Clock == nil {
@@ -71,7 +77,7 @@ func New(o Options) *Reconciler {
 	if o.Interval == 0 {
 		o.Interval = time.Minute
 	}
-	return &Reconciler{o: o, last: map[string][]string{}}
+	return &Reconciler{o: o, last: map[string][]string{}, pids: map[string]map[string]int{}}
 }
 
 // Drift is the last pass's findings for one ticket, one line each. Nothing is checked
@@ -80,6 +86,18 @@ func (r *Reconciler) Drift(ticket string) []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]string(nil), r.last[ticket]...)
+}
+
+// Pids is the last pass's process count for each of one ticket's running agent
+// containers, by service; empty when none was measured.
+func (r *Reconciler) Pids(ticket string) map[string]int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string]int, len(r.pids[ticket]))
+	for svc, n := range r.pids[ticket] {
+		out[svc] = n
+	}
+	return out
 }
 
 // Run checks at once, then every interval, until ctx ends.
@@ -110,6 +128,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, fix bool) (api.ReconcileResu
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	res := api.ReconcileResult{Drift: []api.DriftItem{}}
+	pids := map[string]map[string]int{}
 
 	tickets := r.readTickets()
 	busy := func(id string) bool { return r.o.Busy != nil && r.o.Busy(id) }
@@ -192,6 +211,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, fix bool) (api.ReconcileResu
 			if dockerOK && ss.Agent.ContainerID != "" {
 				if problem := containerProblem(findContainer, ss.Agent.ContainerID); problem != "" {
 					add(svc.Name, AgentContainerMissing, "the agent's container "+problem, false)
+				} else {
+					c, _ := findContainer(ss.Agent.ContainerID)
+					r.checkPids(ctx, &res, pids, id, svc.Name, c, add)
 				}
 			}
 			if panes != nil && ss.Agent.PaneID != "" {
@@ -243,8 +265,27 @@ func (r *Reconciler) Reconcile(ctx context.Context, fix bool) (api.ReconcileResu
 	if fix && dockerOK {
 		r.removeOrphans(ctx, &res, containers, networks)
 	}
+	r.pids = pids
 	r.remember(res)
 	return res, nil
+}
+
+// checkPids counts the processes in a running agent container, keeps the count for
+// ticket.list, and reports a container that is close to its process limit. Zombies and
+// runaway processes fill the Docker VM, so it says so before the limit bites.
+func (r *Reconciler) checkPids(ctx context.Context, res *api.ReconcileResult, pids map[string]map[string]int, ticket, service string, c docker.ContainerInfo, add func(service, kind, detail string, fixable bool)) {
+	n, err := r.o.Docker.ContainerPids(ctx, c.ID)
+	if err != nil {
+		res.Notes = append(res.Notes, fmt.Sprintf("the processes of %s could not be counted (%v)", c.Name, err))
+		return
+	}
+	if pids[ticket] == nil {
+		pids[ticket] = map[string]int{}
+	}
+	pids[ticket][service] = n
+	if c.PidsLimit > 0 && n*100 >= c.PidsLimit*PidsWarnPercent {
+		add(service, AgentPidsHigh, fmt.Sprintf("pids %d of %d", n, c.PidsLimit), false)
+	}
 }
 
 func firstErr(errs ...error) error {

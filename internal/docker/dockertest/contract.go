@@ -249,6 +249,38 @@ func Run(t *testing.T, newSubject func(t *testing.T) Subject) {
 				t.Errorf("inspect after removal = %v, want ErrNotFound", err)
 			}
 		})
+		t.Run("init and the process limit are kept, processes are counted, orphans are reaped", func(t *testing.T) {
+			e := newEnv(t, newSubject)
+			plain := e.create(e.spec(nil))
+			if plain.Init || plain.PidsLimit != 0 {
+				t.Errorf("a container made without them reports init=%v limit=%d", plain.Init, plain.PidsLimit)
+			}
+			c := e.start(e.spec(func(s *docker.ContainerSpec) { s.Init, s.PidsLimit = true, 4096 }))
+			if !c.Init || c.PidsLimit != 4096 {
+				t.Errorf("init = %v, pids limit = %d; want true and 4096", c.Init, c.PidsLimit)
+			}
+			if n, err := e.Docker.ContainerPids(ctx, c.ID); err != nil || n < 1 {
+				t.Errorf("ContainerPids = %d, %v; want at least 1", n, err)
+			}
+			if !e.RunsProcesses {
+				return
+			}
+			// A detached child outlives the exec's shell and is adopted by process 1,
+			// which must reap it when it ends, or it stays a zombie for good.
+			sh := func(script string) string {
+				res, err := e.Docker.Exec(ctx, c.ID, docker.ExecSpec{Command: []string{"sh", "-c", script}})
+				if err != nil {
+					t.Fatalf("exec %q: %v", script, err)
+				}
+				return strings.TrimSpace(res.Output)
+			}
+			sh("sleep 0.13 & exit 0")
+			// Wait on the state of the container, not on the clock: the child is gone once ps no longer lists it.
+			eventually(t, "the detached child to end", func() bool { return sh("ps -o args | grep -c '[s]leep 0.13'") == "0" })
+			eventually(t, "no zombie to be left", func() bool {
+				return sh("grep -l '^State:[[:space:]]*Z' /proc/[0-9]*/status 2>/dev/null | wc -l") == "0"
+			})
+		})
 		t.Run("force removes a running container", func(t *testing.T) {
 			e := newEnv(t, newSubject)
 			c := e.start(e.spec(nil))

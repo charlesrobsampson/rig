@@ -3,6 +3,7 @@ package reconcile_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -495,5 +496,68 @@ func TestATicketsReviewerIsNotAnOrphan(t *testing.T) {
 	f.dk.StartContainer(ctx, c.ID)
 	if res := f.run(false); strings.Contains(kinds(res), "orphan") {
 		t.Errorf("drift = %+v", res.Drift)
+	}
+}
+
+// limitedAgent replaces the ticket's agent container with one that has a process limit
+// of 100 and points state at it.
+func (f *fixture) limitedAgent(id string, r running) docker.ContainerInfo {
+	f.t.Helper()
+	f.dk.RemoveContainer(ctx, r.agent.ID, true)
+	c, err := f.dk.CreateContainer(ctx, docker.ContainerSpec{Name: "rig-" + id + "-api-agent", Image: "img", Network: r.network.Name,
+		Labels: docker.Labels(id, "api", docker.RoleAgent), Init: true, PidsLimit: 100})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	if err := f.dk.StartContainer(ctx, c.ID); err != nil {
+		f.t.Fatal(err)
+	}
+	if err := f.states.Update(filepath.Join(f.dir, id, "state.json"), func(s *state.State) error {
+		ss := s.Services["api"]
+		ss.Agent.ContainerID = c.ID
+		s.Services["api"] = ss
+		return nil
+	}); err != nil {
+		f.t.Fatal(err)
+	}
+	return c
+}
+
+func TestAnAgentContainerNearItsProcessLimitIsDrift(t *testing.T) {
+	f := newFixture(t)
+	r := f.runningTicket("demo")
+	c := f.limitedAgent("demo", r)
+	for _, tt := range []struct {
+		pids int
+		want string
+	}{{0, ""}, {79, ""}, {80, "demo/api:agent_pids_high"}, {100, "demo/api:agent_pids_high"}} {
+		f.dk.SetPids(c.ID, tt.pids)
+		res := f.run(false)
+		if got := kinds(res); got != tt.want {
+			t.Errorf("%d of 100: drift = %q, want %q", tt.pids, got, tt.want)
+		}
+		if tt.want != "" {
+			if d := res.Drift[0]; d.Detail != fmt.Sprintf("pids %d of 100", tt.pids) || d.Fixable {
+				t.Errorf("drift item = %+v", d)
+			}
+			if got := f.r.Drift("demo"); len(got) != 1 || got[0] != fmt.Sprintf("api: pids %d of 100", tt.pids) {
+				t.Errorf("Drift = %v", got)
+			}
+		}
+		if got := f.r.Pids("demo")["api"]; got != tt.pids {
+			t.Errorf("Pids = %d, want %d", got, tt.pids)
+		}
+	}
+}
+
+func TestAContainerWithoutALimitHasItsProcessesCountedButNeverDrifts(t *testing.T) {
+	f := newFixture(t)
+	r := f.runningTicket("demo")
+	f.dk.SetPids(r.agent.ID, 50000)
+	if res := f.run(false); len(res.Drift) != 0 {
+		t.Errorf("drift = %s", kinds(res))
+	}
+	if got := f.r.Pids("demo")["api"]; got != 50000 {
+		t.Errorf("Pids = %d", got)
 	}
 }

@@ -453,7 +453,7 @@ func (f *FakeDocker) CreateContainer(ctx context.Context, spec docker.ContainerS
 			return docker.ContainerInfo{}, fmt.Errorf("%w: mount source %s does not exist", docker.ErrInvalid, m.Source)
 		}
 	}
-	c := &fakeCtr{spec: spec, ip: map[string]string{}}
+	c := &fakeCtr{spec: spec, ip: map[string]string{}, pids: 1}
 	f.nextCtr++
 	c.info = docker.ContainerInfo{
 		ID: fmt.Sprintf("ctr-%d", f.nextCtr), Name: spec.Name, Image: spec.Image, State: docker.StateCreated, Health: docker.HealthNone,

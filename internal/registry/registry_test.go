@@ -486,3 +486,22 @@ func TestSummariesCarryHowLongAnAgentHasBeenIdle(t *testing.T) {
 	}
 	check("get", res.Summary.Services)
 }
+
+func TestSummariesCarryTheProcessCountOfEachAgentContainer(t *testing.T) {
+	f := newFixture(t)
+	f.writeYAML("alpha", yaml("alpha", "A", "api", "web"))
+	f.writeState("alpha", state.State{Phase: domain.PhaseImplement})
+	if got := f.list()[0].Services; got[0].Pids != 0 || got[1].Pids != 0 {
+		t.Errorf("without a hook: %+v", got)
+	}
+	f.reg.WithPids(func(id string) map[string]int {
+		if id != "alpha" {
+			t.Errorf("asked for ticket %q", id)
+		}
+		return map[string]int{"api": 312}
+	})
+	got := f.list()[0].Services
+	if got[0].Name != "api" || got[0].Pids != 312 || got[1].Pids != 0 {
+		t.Errorf("services = %+v", got)
+	}
+}
