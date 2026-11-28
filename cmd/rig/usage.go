@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -112,7 +113,7 @@ an error naming it.`,
 			for m := range unpriced {
 				rep.Totals.Unpriced = append(rep.Totals.Unpriced, m)
 			}
-			sortStrings(rep.Totals.Unpriced)
+			sort.Strings(rep.Totals.Unpriced)
 			if a.json {
 				return printJSON(cmd.OutOrStdout(), rep)
 			}
@@ -122,14 +123,6 @@ an error naming it.`,
 	}
 	cmd.Flags().StringVar(&since, "since", "", "count only entries at or after this time (RFC 3339, or a date like 2026-11-01)")
 	return cmd
-}
-
-func sortStrings(s []string) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j] < s[j-1]; j-- {
-			s[j], s[j-1] = s[j-1], s[j]
-		}
-	}
 }
 
 func asSession(file string, t usage.Transcript, cost float64, unpriced []string) usageSession {
