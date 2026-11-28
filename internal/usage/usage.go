@@ -86,6 +86,7 @@ type line struct {
 	Type      string    `json:"type"`
 	Timestamp time.Time `json:"timestamp"`
 	RequestID string    `json:"requestId"`
+	CWD       string    `json:"cwd"`
 	Message   struct {
 		ID    string `json:"id"`
 		Model string `json:"model"`

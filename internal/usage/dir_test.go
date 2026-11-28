@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -131,5 +132,66 @@ func TestADirectoryThatIsNotATranscriptsFolderIsAnErrorNamingIt(t *testing.T) {
 		if !errors.Is(err, usage.ErrNotTranscripts) || err.Error()[:len(dir)] != dir {
 			t.Errorf("%s: %v", dir, err)
 		}
+	}
+}
+
+func cwdReq(ts, id, cwd, model string, out int) string {
+	c := ""
+	if cwd != "" {
+		c = `"cwd":"` + cwd + `",`
+	}
+	return `{"type":"assistant","timestamp":"` + ts + `",` + c + `"requestId":"r` + id + `","message":{"id":"m` + id + `","model":"` + model + `","usage":{"input_tokens":10,"output_tokens":` + strconv.Itoa(out) + `}}}` + "\n"
+}
+
+func itoa(n int) string {
+	return string(rune('0'+n/100%10)) + string(rune('0'+n/10%10)) + string(rune('0'+n%10))
+}
+
+func TestASessionIsSplitByWorkingDirectoryInOrderOfFirstAppearance(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "projects", "-h-proj", "s1.jsonl"),
+		cwdReq("2026-11-25T10:00:00Z", "1", "/h/proj", "claude-sonnet-5-5", 100)+
+			cwdReq("2026-11-25T10:01:00Z", "2", "/h/proj-two/sub", "claude-opus-5-5", 200)+
+			// the same request repeated on another line counts once, under the first cwd
+			cwdReq("2026-11-25T10:01:01Z", "2", "/h/elsewhere", "claude-opus-5-5", 200)+
+			cwdReq("2026-11-25T10:02:00Z", "3", "/h/proj", "claude-sonnet-5-5", 100)+
+			cwdReq("2026-11-25T10:03:00Z", "4", "", "claude-sonnet-5-5", 100))
+	d, err := usage.ReadDir(dir, time.Time{}, table(t))
+	if err != nil || len(d.Sessions) != 1 {
+		t.Fatalf("%v %+v", err, d)
+	}
+	s := d.Sessions[0]
+	if len(s.CWDs) != 3 || s.CWDs[0].CWD != "/h/proj" || s.CWDs[1].CWD != "/h/proj-two/sub" || s.CWDs[2].CWD != "" {
+		t.Fatalf("cwds: %+v", s.CWDs)
+	}
+	if s.CWDs[0].Requests != 2 || s.CWDs[1].Requests != 1 || s.CWDs[2].Requests != 1 {
+		t.Errorf("requests: %+v", s.CWDs)
+	}
+	var reqs int
+	var cost float64
+	for _, c := range s.CWDs {
+		reqs += c.Requests
+		cost += c.CostUSD
+	}
+	if reqs != s.Transcript.Requests || math.Abs(cost-s.CostUSD) > 1e-12 || s.CostUSD == 0 {
+		t.Errorf("parts %d / %v, session %d / %v", reqs, cost, s.Transcript.Requests, s.CostUSD)
+	}
+	if s.CWDs[1].CostUSD <= s.CWDs[0].CostUSD/2 {
+		t.Errorf("the opus request should cost more than one sonnet request: %+v", s.CWDs)
+	}
+}
+
+func TestSinceIsAppliedBeforeTheCWDSplit(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "projects", "-h", "s1.jsonl"),
+		cwdReq("2026-11-01T10:00:00Z", "1", "/h/old", "claude-sonnet-5-5", 100)+
+			cwdReq("2026-12-01T10:00:00Z", "2", "/h/new", "claude-sonnet-5-5", 100))
+	d, err := usage.ReadDir(dir, time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC), table(t))
+	if err != nil || len(d.Sessions) != 1 {
+		t.Fatalf("%v %+v", err, d)
+	}
+	s := d.Sessions[0]
+	if len(s.CWDs) != 1 || s.CWDs[0].CWD != "/h/new" || s.CWDs[0].Requests != 1 || math.Abs(s.CWDs[0].CostUSD-s.CostUSD) > 1e-12 {
+		t.Errorf("cwds: %+v", s.CWDs)
 	}
 }

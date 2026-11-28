@@ -21,6 +21,17 @@ type Session struct {
 	// Unpriced are the models seen that the price table does not list: their tokens
 	// are counted, their cost is not in CostUSD.
 	Unpriced []string
+	// CWDs splits the session by the working directory each counted request ran in, in
+	// order of first appearance; a request whose entry has no cwd is under "". The parts
+	// sum to the session's requests and cost.
+	CWDs []CWDUsage
+}
+
+// CWDUsage is the part of a session that ran in one working directory.
+type CWDUsage struct {
+	CWD      string
+	Requests int
+	CostUSD  float64
 }
 
 // Dir is what every transcript under one directory adds up to.
@@ -72,6 +83,7 @@ func ReadDir(dir string, since time.Time, prices *pricing.Table) (Dir, error) {
 		var s Session
 		var stamps []time.Time
 		models, unpriced := map[string]bool{}, map[string]bool{}
+		cwdIdx := map[string]int{}
 		err := scanFile(path, func(l line) {
 			if !since.IsZero() && l.Timestamp.Before(since) {
 				return // a line with no timestamp is before any time we were asked about
@@ -93,6 +105,14 @@ func ReadDir(dir string, since time.Time, prices *pricing.Table) (Dir, error) {
 			}
 			usd, ok := prices.Cost(l.Message.Model, pricing.Request{Input: u.Input, CacheWrite5m: w5, CacheWrite1h: w1, CacheRead: u.CacheRead, Output: u.Output})
 			s.CostUSD += usd
+			i, found := cwdIdx[l.CWD]
+			if !found {
+				i = len(s.CWDs)
+				cwdIdx[l.CWD] = i
+				s.CWDs = append(s.CWDs, CWDUsage{CWD: l.CWD})
+			}
+			s.CWDs[i].Requests++
+			s.CWDs[i].CostUSD += usd
 			if l.Message.Model != "" {
 				models[l.Message.Model] = true
 			}

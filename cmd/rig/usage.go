@@ -36,8 +36,8 @@ type usageTotals struct {
 }
 
 type usageDirectory struct {
-	Dir      string         `json:"dir"`
-	Sessions []usageSession `json:"sessions"`
+	Dir      string            `json:"dir"`
+	Sessions []usageSessionRow `json:"sessions"`
 	usageSession
 }
 
@@ -51,6 +51,18 @@ type usageSession struct {
 	CostUSD      float64      `json:"cost_usd"`
 	Unpriced     []string     `json:"unpriced"`
 	AgentSeconds int64        `json:"agent_seconds"`
+}
+
+// usageSessionRow is a session: the totals plus where each request ran.
+type usageSessionRow struct {
+	usageSession
+	CWDs []usageCWD `json:"cwds"`
+}
+
+type usageCWD struct {
+	CWD      string  `json:"cwd"`
+	Requests int     `json:"requests"`
+	CostUSD  float64 `json:"cost_usd"`
 }
 
 func newUsageCmd(a *app) *cobra.Command {
@@ -96,9 +108,13 @@ an error naming it.`,
 				if err != nil {
 					return usageError(err)
 				}
-				ud := usageDirectory{Dir: dir, Sessions: []usageSession{}, usageSession: asSession("", d.Total, d.CostUSD, d.Unpriced)}
+				ud := usageDirectory{Dir: dir, Sessions: []usageSessionRow{}, usageSession: asSession("", d.Total, d.CostUSD, d.Unpriced)}
 				for _, s := range d.Sessions {
-					ud.Sessions = append(ud.Sessions, asSession(s.File, s.Transcript, s.CostUSD, s.Unpriced))
+					us := usageSessionRow{usageSession: asSession(s.File, s.Transcript, s.CostUSD, s.Unpriced), CWDs: []usageCWD{}}
+					for _, c := range s.CWDs {
+						us.CWDs = append(us.CWDs, usageCWD{CWD: c.CWD, Requests: c.Requests, CostUSD: c.CostUSD})
+					}
+					ud.Sessions = append(ud.Sessions, us)
 				}
 				rep.Directories = append(rep.Directories, ud)
 				rep.Totals.Requests += d.Total.Requests
@@ -157,6 +173,21 @@ func usageTime(t *time.Time) string {
 	return t.Format("2006-01-02 15:04")
 }
 
+// usageCWDs is the first working directory of a session, and +N for N more.
+func usageCWDs(cwds []usageCWD) string {
+	if len(cwds) == 0 {
+		return "-"
+	}
+	out := cwds[0].CWD
+	if out == "" {
+		out = "-"
+	}
+	if len(cwds) > 1 {
+		out += fmt.Sprintf(" +%d", len(cwds)-1)
+	}
+	return out
+}
+
 func usageCost(cost float64, unpriced []string) string {
 	if len(unpriced) > 0 {
 		return fmt.Sprintf("$%.2f+", cost)
@@ -165,19 +196,19 @@ func usageCost(cost float64, unpriced []string) string {
 }
 
 func writeUsage(w io.Writer, rep usageReport) {
-	row := func(tw io.Writer, name string, s usageSession) {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", name, usageTime(s.First), usageTime(s.Last), s.Requests,
+	row := func(tw io.Writer, name string, cwds []usageCWD, s usageSession) {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", name, usageCWDs(cwds), usageTime(s.First), usageTime(s.Last), s.Requests,
 			tokens(s.Tokens.Input), tokens(s.Tokens.CacheWrite), tokens(s.Tokens.CacheRead), tokens(s.Tokens.Output),
 			usageCost(s.CostUSD, s.Unpriced), duration(s.AgentSeconds), strings.Join(s.Models, ","))
 	}
 	for _, d := range rep.Directories {
 		fmt.Fprintln(w, d.Dir)
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(tw, "SESSION\tFIRST (UTC)\tLAST (UTC)\tREQUESTS\tINPUT\tCACHE WRITE\tCACHE READ\tOUTPUT\tCOST\tTIME\tMODELS")
+		fmt.Fprintln(tw, "SESSION\tCWD\tFIRST (UTC)\tLAST (UTC)\tREQUESTS\tINPUT\tCACHE WRITE\tCACHE READ\tOUTPUT\tCOST\tTIME\tMODELS")
 		for _, s := range d.Sessions {
-			row(tw, s.File, s)
+			row(tw, s.File, s.CWDs, s.usageSession)
 		}
-		row(tw, "TOTAL", d.usageSession)
+		row(tw, "TOTAL", nil, d.usageSession)
 		tw.Flush()
 		if len(d.Unpriced) > 0 {
 			fmt.Fprintf(w, "unpriced (not in the price table, tokens counted, cost left out): %s\n", strings.Join(d.Unpriced, ", "))
