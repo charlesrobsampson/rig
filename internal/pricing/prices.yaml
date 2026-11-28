@@ -1,0 +1,17 @@
+# Model prices rig uses to turn transcript token counts into dollars (rig usage).
+# Edit this file to update them; no code change is needed.
+taken: 2026-11-03
+source: Anthropic published API prices, USD per million tokens, copied by hand on the date above
+# Cache writes are priced as a multiple of the model's input rate.
+cache_write:
+  five_minute: 1.25
+  one_hour: 2
+models:
+  claude-opus-5-5: {input: 4, cache_read: 0.20, output: 20}
+  claude-sonnet-5-5: {input: 2, cache_read: 0.10, output: 10}
+  claude-fable-5-2: {input: 8, cache_read: 0.20, output: 40}
+  # a request's prompt is its input + cache write + cache read tokens
+  claude-haiku-5-5:
+    tiers:
+      - {up_to: 100000, input: 0.10, cache_read: 0.01, output: 0.50}
+      - {input: 0.50, cache_read: 0.05, output: 2.50}

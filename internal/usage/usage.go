@@ -94,6 +94,11 @@ type line struct {
 			CacheWrite int64 `json:"cache_creation_input_tokens"`
 			CacheRead  int64 `json:"cache_read_input_tokens"`
 			Output     int64 `json:"output_tokens"`
+			// CacheCreation splits the cache writes by time to live, when Claude Code says
+			CacheCreation struct {
+				FiveMinute int64 `json:"ephemeral_5m_input_tokens"`
+				OneHour    int64 `json:"ephemeral_1h_input_tokens"`
+			} `json:"cache_creation"`
 		} `json:"usage"`
 	} `json:"message"`
 }
@@ -131,18 +136,7 @@ func ReadTranscripts(configDir string) (Transcript, error) {
 }
 
 func readFile(path string, t *Transcript, stamps *[]time.Time, seen, models map[string]bool) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 1<<20), 64<<20) // a line can carry a whole file the agent read
-	for sc.Scan() {
-		var l line
-		if json.Unmarshal(sc.Bytes(), &l) != nil {
-			continue
-		}
+	return scanFile(path, func(l line) {
 		if !l.Timestamp.IsZero() {
 			*stamps = append(*stamps, l.Timestamp)
 			if t.First.IsZero() || l.Timestamp.Before(t.First) {
@@ -155,7 +149,7 @@ func readFile(path string, t *Transcript, stamps *[]time.Time, seen, models map[
 		u := l.Message.Usage
 		key := l.Message.ID + "/" + l.RequestID
 		if l.Type != "assistant" || u == nil || seen[key] {
-			continue
+			return
 		}
 		seen[key] = true
 		t.Requests++
@@ -163,6 +157,24 @@ func readFile(path string, t *Transcript, stamps *[]time.Time, seen, models map[
 		if l.Message.Model != "" {
 			models[l.Message.Model] = true
 		}
+	})
+}
+
+// scanFile calls visit with each line of a transcript that parses.
+func scanFile(path string, visit func(line)) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 1<<20), 64<<20) // a line can carry a whole file the agent read
+	for sc.Scan() {
+		var l line
+		if json.Unmarshal(sc.Bytes(), &l) != nil {
+			continue
+		}
+		visit(l)
 	}
 	return sc.Err()
 }
