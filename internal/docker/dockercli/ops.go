@@ -258,6 +258,12 @@ func createArgs(spec docker.ContainerSpec) (args []string, env map[string]string
 			args = append(args, "--health-retries", strconv.Itoa(h.Retries))
 		}
 	}
+	if spec.Init {
+		args = append(args, "--init")
+	}
+	if spec.PidsLimit > 0 {
+		args = append(args, "--pids-limit", strconv.Itoa(spec.PidsLimit))
+	}
 	if spec.TTY {
 		args = append(args, "--tty")
 	}
@@ -343,6 +349,8 @@ type containerJSON struct {
 	} `json:"Mounts"`
 	HostConfig struct {
 		PortBindings map[string][]portBindingJSON `json:"PortBindings"`
+		Init         *bool                        `json:"Init"`
+		PidsLimit    *int64                       `json:"PidsLimit"`
 	} `json:"HostConfig"`
 	NetworkSettings struct {
 		Ports    map[string][]portBindingJSON `json:"Ports"`
@@ -381,6 +389,10 @@ func parseContainers(out string) ([]docker.ContainerInfo, error) {
 		}
 		if info.State != docker.StateExited {
 			info.ExitCode = 0
+		}
+		info.Init = r.HostConfig.Init != nil && *r.HostConfig.Init
+		if l := r.HostConfig.PidsLimit; l != nil && *l > 0 {
+			info.PidsLimit = int(*l) // null, 0 and -1 are all "no limit"
 		}
 		if r.State.Health != nil {
 			switch r.State.Health.Status {
@@ -470,6 +482,18 @@ func (c *Client) ListContainers(ctx context.Context, labels map[string]string) (
 	infos, err := parseContainers(res.Stdout)
 	sort.Slice(infos, func(i, j int) bool { return infos[i].Name < infos[j].Name })
 	return infos, err
+}
+
+func (c *Client) ContainerPids(ctx context.Context, nameOrID string) (int, error) {
+	res, err := c.run(ctx, "stats", "--no-stream", "--format", "{{.PIDs}}", nameOrID)
+	if err != nil {
+		return 0, err
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(res.Stdout))
+	if err != nil {
+		return 0, fmt.Errorf("parse docker stats pids %q: %w", strings.TrimSpace(res.Stdout), err)
+	}
+	return n, nil
 }
 
 func (c *Client) Exec(ctx context.Context, nameOrID string, spec docker.ExecSpec) (docker.ExecResult, error) {

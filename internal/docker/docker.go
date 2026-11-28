@@ -92,6 +92,10 @@ type Docker interface {
 	// container rig made.
 	ListContainers(ctx context.Context, labels map[string]string) ([]ContainerInfo, error)
 
+	// ContainerPids is the number of processes (tasks) in a running container, zombies
+	// included: what its --pids-limit counts.
+	ContainerPids(ctx context.Context, nameOrID string) (int, error)
+
 	// Exec runs a command to completion inside a running container.
 	Exec(ctx context.Context, nameOrID string, spec ExecSpec) (ExecResult, error)
 	// Logs returns the container's output (stdout and stderr merged, as text). It
@@ -143,6 +147,10 @@ type ContainerSpec struct {
 	// TTY and Stdin make the container usable by `docker exec -it` style sessions.
 	TTY   bool
 	Stdin bool
+	// Init runs a minimal init as process 1 (docker run --init), which reaps orphaned
+	// children. PidsLimit caps the container's processes (--pids-limit); 0 is no cap.
+	Init      bool
+	PidsLimit int
 }
 
 // Mount is a bind mount from the host. The source must exist.
@@ -194,6 +202,9 @@ type ContainerInfo struct {
 	Labels   map[string]string
 	Env      map[string]string
 	Mounts   []Mount
+	// Init and PidsLimit are what the container was created with (0 = no limit).
+	Init      bool
+	PidsLimit int
 	// Ports are the bindings in effect; Host is the real port even if 0 was asked for.
 	Ports []PortBinding
 	// Networks maps each network the container is on to the names peers can reach it by.
