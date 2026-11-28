@@ -561,3 +561,41 @@ func TestAContainerWithoutALimitHasItsProcessesCountedButNeverDrifts(t *testing.
 		t.Errorf("Pids = %d", got)
 	}
 }
+
+// blockingPids holds ContainerPids until released, as a slow docker stats would.
+type blockingPids struct {
+	*testkit.FakeDocker
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (b blockingPids) ContainerPids(ctx context.Context, name string) (int, error) {
+	b.entered <- struct{}{}
+	<-b.release
+	return b.FakeDocker.ContainerPids(ctx, name)
+}
+
+func TestReadersDoNotWaitForAPassThatIsCountingProcesses(t *testing.T) {
+	f := newFixture(t)
+	f.runningTicket("demo")
+	b := blockingPids{FakeDocker: f.dk, entered: make(chan struct{}, 1), release: make(chan struct{})}
+	r := f.build(b, f.term)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r.Reconcile(ctx, false)
+	}()
+	select {
+	case <-b.entered: // the pass is now inside Docker, holding its pass lock
+	case <-time.After(60 * time.Second):
+		t.Fatal("the pass never reached the process count")
+	}
+	_ = r.Drift("demo") // would deadlock here if readers waited for the pass
+	_ = r.Pids("demo")
+	close(b.release)
+	select {
+	case <-done:
+	case <-time.After(60 * time.Second):
+		t.Fatal("the pass never finished")
+	}
+}
