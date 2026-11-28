@@ -153,3 +153,38 @@ func TestUsageAgreesWithStatsOnATicketsTranscripts(t *testing.T) {
 		t.Errorf("usage %+v, stats %+v", rep.Totals, stats.Totals)
 	}
 }
+
+func TestUsageSplitsASessionByWorkingDirectory(t *testing.T) {
+	rigEnv(t)
+	dir := t.TempDir()
+	req := func(ts, id, cwd string) string {
+		c := ""
+		if cwd != "" {
+			c = `"cwd":"` + cwd + `",`
+		}
+		return `{"type":"assistant","timestamp":"` + ts + `",` + c + `"requestId":"r` + id + `","message":{"id":"m` + id + `","model":"claude-sonnet-5-5","usage":{"input_tokens":10,"output_tokens":100}}}` + "\n"
+	}
+	p := filepath.Join(dir, "projects", "-h-proj", "s1.jsonl")
+	os.MkdirAll(filepath.Dir(p), 0o700)
+	os.WriteFile(p, []byte(req("2026-11-25T10:00:00Z", "1", "/h/my-proj")+req("2026-11-25T10:01:00Z", "2", "/h/other")+req("2026-11-25T10:02:00Z", "3", "/h/my-proj")+req("2026-11-25T10:03:00Z", "4", "")), 0o600)
+	stdout, _, code := rig(t, deps{}, "usage", dir, "--json")
+	var rep usageReport
+	if code != 0 || json.Unmarshal([]byte(stdout), &rep) != nil {
+		t.Fatalf("code %d\n%s", code, stdout)
+	}
+	s := rep.Directories[0].Sessions[0]
+	if len(s.CWDs) != 3 || s.CWDs[0].CWD != "/h/my-proj" || s.CWDs[0].Requests != 2 || s.CWDs[2].CWD != "" {
+		t.Fatalf("cwds: %+v", s.CWDs)
+	}
+	var cost float64
+	for _, c := range s.CWDs {
+		cost += c.CostUSD
+	}
+	if math.Abs(cost-s.CostUSD) > 1e-12 || rep.Directories[0].CWDs != nil {
+		t.Errorf("parts %v, session %v, dir cwds %v", cost, s.CostUSD, rep.Directories[0].CWDs)
+	}
+	stdout, _, _ = rig(t, deps{}, "usage", dir)
+	if !strings.Contains(stdout, "/h/my-proj +2") {
+		t.Errorf("table lacks the first cwd and +2:\n%s", stdout)
+	}
+}
