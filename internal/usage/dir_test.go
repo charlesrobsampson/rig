@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -139,7 +140,7 @@ func cwdReq(ts, id, cwd, model string, out int) string {
 	if cwd != "" {
 		c = `"cwd":"` + cwd + `",`
 	}
-	return `{"type":"assistant","timestamp":"` + ts + `",` + c + `"requestId":"r` + id + `","message":{"id":"m` + id + `","model":"` + model + `","usage":{"input_tokens":10,"output_tokens":` + itoa(out) + `}}}` + "\n"
+	return `{"type":"assistant","timestamp":"` + ts + `",` + c + `"requestId":"r` + id + `","message":{"id":"m` + id + `","model":"` + model + `","usage":{"input_tokens":10,"output_tokens":` + strconv.Itoa(out) + `}}}` + "\n"
 }
 
 func itoa(n int) string {

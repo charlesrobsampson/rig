@@ -180,11 +180,48 @@ func TestUsageSplitsASessionByWorkingDirectory(t *testing.T) {
 	for _, c := range s.CWDs {
 		cost += c.CostUSD
 	}
-	if math.Abs(cost-s.CostUSD) > 1e-12 || rep.Directories[0].CWDs != nil {
-		t.Errorf("parts %v, session %v, dir cwds %v", cost, s.CostUSD, rep.Directories[0].CWDs)
+	if math.Abs(cost-s.CostUSD) > 1e-12 {
+		t.Errorf("parts %v, session %v", cost, s.CostUSD)
 	}
 	stdout, _, _ = rig(t, deps{}, "usage", dir)
 	if !strings.Contains(stdout, "/h/my-proj +2") {
 		t.Errorf("table lacks the first cwd and +2:\n%s", stdout)
+	}
+}
+
+func TestUsageTableCWDColumnAndEmptyCWDsAreAnArray(t *testing.T) {
+	rigEnv(t)
+	dir := t.TempDir()
+	put := func(rel, content string) {
+		p := filepath.Join(dir, rel)
+		os.MkdirAll(filepath.Dir(p), 0o700)
+		os.WriteFile(p, []byte(content), 0o600)
+	}
+	req := func(ts, id, cwd string) string {
+		c := ""
+		if cwd != "" {
+			c = `"cwd":"` + cwd + `",`
+		}
+		return `{"type":"assistant","timestamp":"` + ts + `",` + c + `"requestId":"r` + id + `","message":{"id":"m` + id + `","model":"claude-sonnet-5-5","usage":{"input_tokens":10,"output_tokens":100}}}` + "\n"
+	}
+	// first entry without cwd, a later one with
+	put("projects/-a/s1.jsonl", req("2026-11-25T10:00:00Z", "1", "")+req("2026-11-25T10:01:00Z", "2", "/h/p"))
+	// the same request in a sub-agent file under another cwd counts once, under s2's cwd
+	put("projects/-b/s2.jsonl", req("2026-11-25T11:00:00Z", "3", "/h/first"))
+	put("projects/-b/s2/subagents/x.jsonl", req("2026-11-25T11:00:01Z", "3", "/h/second"))
+	stdout, _, code := rig(t, deps{}, "usage", dir)
+	if code != 0 || !strings.Contains(stdout, "- +1") || !strings.Contains(stdout, "/h/first ") || strings.Contains(stdout, "/h/second") {
+		t.Errorf("table:\n%s", stdout)
+	}
+	stdout, _, _ = rig(t, deps{}, "usage", dir, "--json")
+	if strings.Count(stdout, `"cwds"`) != 3 {
+		t.Errorf("every session has cwds, even with nothing counted, and directories have none:\n%s", stdout)
+	}
+	var rep usageReport
+	json.Unmarshal([]byte(stdout), &rep)
+	for _, s := range rep.Directories[0].Sessions {
+		if strings.HasSuffix(s.File, "x.jsonl") && (s.CWDs == nil || len(s.CWDs) != 0) {
+			t.Errorf("sub-agent with nothing counted: %+v", s.CWDs)
+		}
 	}
 }
