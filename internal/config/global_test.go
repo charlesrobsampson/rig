@@ -136,6 +136,7 @@ func TestLoadGlobalRejectsBadConfigFiles(t *testing.T) {
 		{"relative env file", `{"secrets":{"env_file":"secrets.env"}}`, []string{"secrets.env_file", "absolute"}},
 		{"empty keychain service", `{"secrets":{"keychain_service":""}}`, []string{"secrets.keychain_service"}},
 		{"empty agent base", `{"docker":{"agent_base":""}}`, []string{"docker.agent_base"}},
+		{"zero pids limit", `{"docker":{"agent_pids_limit":0}}`, []string{"docker.agent_pids_limit"}},
 		{"empty claude version", `{"docker":{"claude_version":""}}`, []string{"docker.claude_version"}},
 		{"bad egress host", `{"egress":{"default_allow":["bad host!"]}}`, []string{"egress.default_allow", "bad host!"}},
 		{"bad egress port", `{"egress":{"default_ports":[70000]}}`, []string{"egress.default_ports", "70000"}},

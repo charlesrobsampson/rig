@@ -73,6 +73,9 @@ type ServiceSummary struct {
 	// IdleSince is when the agent last became idle; present only while its state is
 	// idle and state records the time.
 	IdleSince *time.Time `json:"idle_since,omitempty"`
+	// Pids is the number of processes in the service's agent container, zombies
+	// included, as the last reconcile pass counted them; absent when not measured.
+	Pids int `json:"pids,omitempty"`
 }
 
 type TicketGetParams struct {

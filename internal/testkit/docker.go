@@ -56,6 +56,7 @@ type fakeCtr struct {
 	spec docker.ContainerSpec
 	logs []string
 	ip   map[string]string // per network name
+	pids int               // what ContainerPids reports
 }
 
 func NewFakeDocker() *FakeDocker {
@@ -452,12 +453,12 @@ func (f *FakeDocker) CreateContainer(ctx context.Context, spec docker.ContainerS
 			return docker.ContainerInfo{}, fmt.Errorf("%w: mount source %s does not exist", docker.ErrInvalid, m.Source)
 		}
 	}
-	c := &fakeCtr{spec: spec, ip: map[string]string{}}
+	c := &fakeCtr{spec: spec, ip: map[string]string{}, pids: 1}
 	f.nextCtr++
 	c.info = docker.ContainerInfo{
 		ID: fmt.Sprintf("ctr-%d", f.nextCtr), Name: spec.Name, Image: spec.Image, State: docker.StateCreated, Health: docker.HealthNone,
 		Labels: copyLabels(spec.Labels), Env: copyLabels(spec.Env), Mounts: append([]docker.Mount(nil), spec.Mounts...),
-		Ports: append([]docker.PortBinding(nil), spec.Ports...), Networks: map[string]docker.ContainerNetwork{},
+		Ports: append([]docker.PortBinding(nil), spec.Ports...), Init: spec.Init, PidsLimit: spec.PidsLimit, Networks: map[string]docker.ContainerNetwork{},
 	}
 	if spec.Network != "" {
 		n := f.findNet(spec.Network)
@@ -636,6 +637,31 @@ func (f *FakeDocker) ListContainers(ctx context.Context, labels map[string]strin
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
+}
+
+// SetPids sets the process count ContainerPids reports for a container.
+func (f *FakeDocker) SetPids(nameOrID string, n int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if c := f.find(nameOrID); c != nil {
+		c.pids = n
+	}
+}
+
+func (f *FakeDocker) ContainerPids(ctx context.Context, nameOrID string) (int, error) {
+	unlock, err := f.begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
+	c := f.find(nameOrID)
+	if c == nil {
+		return 0, fmt.Errorf("%w: container %s", docker.ErrNotFound, nameOrID)
+	}
+	if c.info.State != docker.StateRunning {
+		return 0, fmt.Errorf("%w: %s", docker.ErrNotRunning, c.info.Name)
+	}
+	return c.pids, nil
 }
 
 func (f *FakeDocker) Exec(ctx context.Context, nameOrID string, spec docker.ExecSpec) (docker.ExecResult, error) {

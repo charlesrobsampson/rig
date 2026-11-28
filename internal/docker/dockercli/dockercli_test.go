@@ -441,3 +441,60 @@ func TestImageID(t *testing.T) {
 		t.Errorf("an empty answer = %v, want ErrNotFound", err)
 	}
 }
+
+func TestCreateContainerInitAndPidsLimitFlags(t *testing.T) {
+	c, s := newClient(map[string]dockercli.Result{"inspect --type": {Stdout: `[{"Id":"c1","Name":"/a","State":{"Status":"created"},"Config":{"Image":"img"}}]`}})
+	if _, err := c.CreateContainer(ctx, docker.ContainerSpec{Name: "a", Image: "img", Init: true, PidsLimit: 4096}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.CreateContainer(ctx, docker.ContainerSpec{Name: "b", Image: "img"}); err != nil {
+		t.Fatal(err)
+	}
+	var creates []string
+	for _, call := range s.calls {
+		if call.Args[0] == "create" {
+			creates = append(creates, strings.Join(call.Args, " "))
+		}
+	}
+	if len(creates) != 2 || !strings.Contains(creates[0], "--init --pids-limit 4096") {
+		t.Errorf("create args = %v", creates)
+	}
+	if strings.Contains(creates[1], "--init") || strings.Contains(creates[1], "--pids-limit") {
+		t.Errorf("a spec without them must not pass them: %s", creates[1])
+	}
+}
+
+func TestInspectReadsInitAndPidsLimit(t *testing.T) {
+	const inspect = `[
+	 {"Id":"a","Name":"/a","State":{"Status":"running"},"Config":{"Image":"i"},"HostConfig":{"Init":true,"PidsLimit":4096}},
+	 {"Id":"b","Name":"/b","State":{"Status":"running"},"Config":{"Image":"i"},"HostConfig":{"Init":null,"PidsLimit":null}},
+	 {"Id":"c","Name":"/c","State":{"Status":"running"},"Config":{"Image":"i"},"HostConfig":{"Init":false,"PidsLimit":-1}}]`
+	c, _ := newClient(map[string]dockercli.Result{"ps --all": {Stdout: "a\nb\nc\n"}, "inspect --type": {Stdout: inspect}})
+	got, err := c.ListContainers(ctx, map[string]string{"rig.ticket": ""})
+	if err != nil || len(got) != 3 {
+		t.Fatalf("ListContainers = %v, %v", got, err)
+	}
+	if !got[0].Init || got[0].PidsLimit != 4096 {
+		t.Errorf("a = %+v", got[0])
+	}
+	for _, i := range []int{1, 2} {
+		if got[i].Init || got[i].PidsLimit != 0 {
+			t.Errorf("%s: no init and no limit expected, got %+v", got[i].Name, got[i])
+		}
+	}
+}
+
+func TestContainerPids(t *testing.T) {
+	c, s := newClient(map[string]dockercli.Result{"stats --no-stream": {Stdout: "40805\n"}})
+	n, err := c.ContainerPids(ctx, "rig-j59")
+	if err != nil || n != 40805 {
+		t.Fatalf("ContainerPids = %d, %v", n, err)
+	}
+	if args := strings.Join(s.calls[0].Args, " "); args != "stats --no-stream --format {{.PIDs}} rig-j59" {
+		t.Errorf("args = %s", args)
+	}
+	c, _ = newClient(map[string]dockercli.Result{"stats --no-stream": {Stdout: "--\n"}})
+	if _, err := c.ContainerPids(ctx, "x"); err == nil {
+		t.Error("an unparsable count must be an error")
+	}
+}

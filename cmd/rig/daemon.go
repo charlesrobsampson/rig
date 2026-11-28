@@ -195,6 +195,12 @@ func (a *app) runDaemon(cmd *cobra.Command, _ []string) error {
 		}
 		return reconciler.Drift(id)
 	})
+	reg.WithPids(func(id string) map[string]int {
+		if reconciler == nil {
+			return nil
+		}
+		return reconciler.Pids(id)
+	})
 	summaries := newSummaryService(g, secretValues(g, a.deps.keychain), bus, clk, logger)
 	reg.WithAISummary(summaries.Info)
 	daemon.RegisterTicketHandlers(srv, reg)

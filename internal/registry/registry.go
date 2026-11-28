@@ -41,6 +41,7 @@ type Registry struct {
 	aiSummary func(id string) *api.SummaryInfo
 	// drift, when set, supplies how a ticket's reality differs from its state.
 	drift func(id string) []string
+	pids  func(id string) map[string]int
 	// roundPending, when set, says whether a review round is being started for a ticket.
 	roundPending func(id string) bool
 	// reviewStale, when set, says whether a passed review is of a commit the branch has left.
@@ -112,6 +113,12 @@ func (r *Registry) WithTouched(f func(domain.Ticket, state.State) []api.TouchedI
 // WithDrift makes summaries carry the drift last found for each ticket.
 func (r *Registry) WithDrift(f func(id string) []string) *Registry {
 	r.drift = f
+	return r
+}
+
+// WithPids makes summaries carry the process count of each agent container, by service.
+func (r *Registry) WithPids(f func(id string) map[string]int) *Registry {
+	r.pids = f
 	return r
 }
 
@@ -269,6 +276,10 @@ func (r *Registry) load(id string) api.TicketGetResult {
 		res.Summary.PendingGate = r.pendingGate(*res.Ticket, *res.State)
 	}
 	if res.Ticket != nil {
+		var pids map[string]int
+		if r.pids != nil {
+			pids = r.pids(id)
+		}
 		for _, svc := range res.Ticket.Services {
 			summary := api.ServiceSummary{Name: svc.Name}
 			if ss, ok := st.Services[svc.Name]; res.State != nil && ok {
@@ -281,6 +292,9 @@ func (r *Registry) load(id string) api.TicketGetResult {
 					since := ss.Agent.IdleSince
 					summary.IdleSince = &since
 				}
+			}
+			if r.pids != nil {
+				summary.Pids = pids[svc.Name]
 			}
 			res.Summary.Services = append(res.Summary.Services, summary)
 		}

@@ -121,6 +121,8 @@ func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domai
 		Labels: docker.Labels(l.id, svc.Name, docker.RoleAgent), WorkDir: agentWorkDir,
 		User:   fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 		Mounts: mounts, Network: net.Name, TTY: true, Stdin: true,
+		// An init as process 1 reaps orphaned children; `sleep infinity` never does.
+		Init: true, PidsLimit: m.opts.Global.Docker.AgentPidsLimit,
 		Env: m.gitIdentity(ctx, svc.Repo),
 	})
 	if err != nil {
@@ -167,14 +169,17 @@ func (m *Manager) prepareContainerAgent(ctx context.Context, l loaded, svc domai
 }
 
 // agentContainer returns the id of the agent's running container: an existing one is
-// kept, a stopped one is replaced (its image or mounts may have changed).
+// kept, a stopped one is replaced (its image or mounts may have changed), and so is a
+// running one made without the init or with another process limit than the spec asks
+// for (a container from before rig reaped processes). The checkout is a host mount, so
+// replacing the container keeps the agent's files.
 func (m *Manager) agentContainer(ctx context.Context, name string, spec docker.ContainerSpec) (string, error) {
 	if existing, err := m.opts.Docker.InspectContainer(ctx, name); err == nil {
-		if existing.State == docker.StateRunning {
+		if existing.State == docker.StateRunning && existing.Init == spec.Init && existing.PidsLimit == spec.PidsLimit {
 			return existing.ID, nil
 		}
 		if err := m.opts.Docker.RemoveContainer(ctx, name, true); err != nil {
-			return "", fmt.Errorf("replace the stopped agent container: %w", err)
+			return "", fmt.Errorf("replace the agent container: %w", err)
 		}
 	}
 	created, err := m.opts.Docker.CreateContainer(ctx, spec)

@@ -103,6 +103,9 @@ type Docker struct {
 	AgentBase string `json:"agent_base"`
 	// ClaudeVersion is what the agent image's installer is asked for ("latest" by default).
 	ClaudeVersion string `json:"claude_version"`
+	// AgentPidsLimit caps the processes in each agent container, so one runaway ticket
+	// cannot exhaust the Docker VM for the others.
+	AgentPidsLimit int `json:"agent_pids_limit"`
 }
 
 type PortRange struct {
@@ -155,7 +158,7 @@ func defaultGlobal(userHome string) Global {
 		Paths:   Paths{Home: filepath.Join(userHome, ".rig")},
 		Egress:  Egress{DefaultAllow: []string{"api.anthropic.com"}, DefaultPorts: []int{443}},
 		Secrets: Secrets{KeychainService: "rig"},
-		Docker:  Docker{PortRange: PortRange{Min: 41000, Max: 41999}, AgentBase: "debian:bookworm-slim", ClaudeVersion: "latest"},
+		Docker:  Docker{PortRange: PortRange{Min: 41000, Max: 41999}, AgentBase: "debian:bookworm-slim", ClaudeVersion: "latest", AgentPidsLimit: 4096},
 	}
 }
 
@@ -462,6 +465,9 @@ func validateGlobal(g Global) []string {
 	}
 	if g.Docker.AgentBase == "" {
 		add("docker.agent_base: an image name is required")
+	}
+	if g.Docker.AgentPidsLimit < 1 {
+		add("docker.agent_pids_limit: %d must be at least 1", g.Docker.AgentPidsLimit)
 	}
 	if g.Docker.ClaudeVersion == "" {
 		add("docker.claude_version: required (use \"latest\" for the newest)")

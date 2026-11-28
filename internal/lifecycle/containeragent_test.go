@@ -288,6 +288,68 @@ func TestAContainerAgentSurvivesRepeatedStartsAndRelaunches(t *testing.T) {
 	}
 }
 
+func TestTheAgentContainerHasAnInitAndTheConfiguredProcessLimit(t *testing.T) {
+	f, dk, _ := agentsFixture(t, func(o *lifecycle.Options) { o.Global.Docker.AgentPidsLimit = 1234 })
+	f.create("demo", testkit.NewRepo(t))
+	f.mustStart("demo", domain.SandboxContainer)
+	c, err := dk.InspectContainer(ctx, "rig-demo-svc1-agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Init || c.PidsLimit != 1234 {
+		t.Errorf("init = %v, pids limit = %d; want an init and 1234", c.Init, c.PidsLimit)
+	}
+}
+
+func TestStartRecreatesARunningContainerWithoutInitOrWithAnotherLimitAndKeepsTheCheckout(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		init      bool
+		pidsLimit int
+	}{
+		{"no init", false, 4096},
+		{"no limit", true, 0},
+		{"another limit", true, 100},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f, dk, term := agentsFixture(t, func(o *lifecycle.Options) { o.Global.Docker.AgentPidsLimit = 4096 })
+			f.create("demo", testkit.NewRepo(t))
+			res := f.mustStart("demo", domain.SandboxContainer)
+			checkout := res.Checkouts[0].Path
+			scratch := filepath.Join(checkout, "uncommitted.txt")
+			if err := os.WriteFile(scratch, []byte("work in progress"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			// Make the container look like one from before rig reaped processes.
+			old, _ := dk.InspectContainer(ctx, "rig-demo-svc1-agent")
+			if err := dk.RemoveContainer(ctx, old.Name, true); err != nil {
+				t.Fatal(err)
+			}
+			legacy, err := dk.CreateContainer(ctx, docker.ContainerSpec{Name: old.Name, Image: old.Image, Labels: old.Labels,
+				Mounts: old.Mounts, Command: []string{"sleep", "infinity"}, Init: tt.init, PidsLimit: tt.pidsLimit})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := dk.StartContainer(ctx, legacy.ID); err != nil {
+				t.Fatal(err)
+			}
+			term.Exit(terminal.PaneID(res.Agents[0].PaneID), 0)
+
+			again := f.mustStart("demo", domain.SandboxContainer).Agents[0]
+			c, err := dk.InspectContainer(ctx, "rig-demo-svc1-agent")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !again.Launched || c.ID == legacy.ID || !c.Init || c.PidsLimit != 4096 || c.State != docker.StateRunning {
+				t.Errorf("agent %+v, container %s -> %s init=%v limit=%d: want a new running container with both", again, legacy.ID, c.ID, c.Init, c.PidsLimit)
+			}
+			if b, err := os.ReadFile(scratch); err != nil || string(b) != "work in progress" {
+				t.Errorf("the checkout's uncommitted file after recreate: %q, %v", b, err)
+			}
+		})
+	}
+}
+
 func TestStopRemovesTheAgentContainerBeforeTheCheckout(t *testing.T) {
 	f, dk, term := agentsFixture(t, nil)
 	f.create("demo", testkit.NewRepo(t))
